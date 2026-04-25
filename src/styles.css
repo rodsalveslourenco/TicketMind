@@ -1,19 +1,18 @@
 :root {
-  --bg: #f4f8fc;
-  --bg-soft: #eef5fb;
+  --bg: #f6f8fb;
+  --bg-soft: #edf3f8;
   --panel: #ffffff;
-  --panel-soft: #f8fbfe;
-  --line: rgba(74, 110, 150, 0.14);
-  --text: #203247;
-  --muted: #66798f;
-  --accent: #3f8fd8;
-  --accent-strong: #2f76bc;
-  --warm: #f3b56a;
-  --success: #6cbc8d;
-  --danger: #e17373;
-  --shadow: 0 18px 40px rgba(48, 77, 109, 0.08);
-  --radius: 24px;
-  --font-display: "Segoe UI", "Trebuchet MS", sans-serif;
+  --panel-soft: #f7fafc;
+  --line: rgba(79, 101, 127, 0.12);
+  --text: #1f2f43;
+  --muted: #6a7a8d;
+  --accent: #4e90cb;
+  --accent-strong: #2f6fa8;
+  --warm: #f0c58c;
+  --success: #5f9f7b;
+  --danger: #c86b6b;
+  --shadow: 0 16px 36px rgba(38, 61, 89, 0.08);
+  --font-display: "Segoe UI", "Tahoma", sans-serif;
   --font-body: "Segoe UI", "Verdana", sans-serif;
 }
 
@@ -32,9 +31,9 @@ body {
   font-family: var(--font-body);
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(114, 177, 231, 0.16), transparent 24%),
-    radial-gradient(circle at right bottom, rgba(243, 181, 106, 0.16), transparent 18%),
-    linear-gradient(180deg, #f7fbff 0%, #eff6fb 52%, #f4f8fc 100%);
+    radial-gradient(circle at top left, rgba(130, 174, 214, 0.12), transparent 24%),
+    radial-gradient(circle at right bottom, rgba(240, 197, 140, 0.1), transparent 18%),
+    linear-gradient(180deg, #f9fbfd 0%, #f2f6fa 52%, #f6f8fb 100%);
 }
 
 a {
@@ -43,7 +42,9 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -76,7 +77,7 @@ input {
 .login-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1.05fr minmax(360px, 0.82fr);
+  grid-template-columns: 1.05fr minmax(360px, 0.85fr);
   gap: 1rem;
   padding: 1rem;
 }
@@ -95,35 +96,35 @@ input {
 .topbar,
 .board-card,
 .app-footer {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.84);
   backdrop-filter: blur(10px);
 }
 
 .login-panel {
-  border-radius: 30px;
+  border-radius: 28px;
 }
 
 .login-copy {
-  padding: 3rem;
+  padding: 2.5rem;
   display: grid;
   align-content: center;
 }
 
 .login-copy h1 {
   margin: 0 0 1rem;
-  max-width: 13ch;
+  max-width: 14ch;
   font-family: var(--font-display);
-  font-size: clamp(2rem, 4vw, 3.5rem);
-  line-height: 1.02;
+  font-size: clamp(1.85rem, 3vw, 2.9rem);
+  line-height: 1.08;
   letter-spacing: -0.03em;
 }
 
 .login-copy p {
-  max-width: 62ch;
+  max-width: 58ch;
   margin: 0;
   color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.8;
+  font-size: 0.98rem;
+  line-height: 1.75;
 }
 
 .feature-grid {
@@ -138,8 +139,8 @@ input {
 .mini-card,
 .sidebar-card,
 .ticket-card {
-  padding: 1rem;
-  border-radius: 20px;
+  padding: 0.95rem;
+  border-radius: 18px;
   background: var(--panel-soft);
   border: 1px solid rgba(74, 110, 150, 0.1);
 }
@@ -161,7 +162,7 @@ input {
 }
 
 .login-form-panel {
-  padding: 2rem;
+  padding: 1.8rem;
   display: grid;
   align-content: center;
 }
@@ -180,6 +181,7 @@ input {
   margin: 0;
   font-family: var(--font-display);
   letter-spacing: -0.02em;
+  font-size: clamp(1.2rem, 1.8vw, 1.65rem);
 }
 
 .status-pill,
@@ -196,6 +198,16 @@ input {
   color: #3e7f5b;
 }
 
+.filter-pill {
+  cursor: pointer;
+}
+
+.filter-pill.is-active {
+  background: rgba(78, 144, 203, 0.12);
+  border-color: rgba(78, 144, 203, 0.2);
+  color: var(--accent-strong);
+}
+
 .login-form {
   display: grid;
   gap: 1rem;
@@ -208,7 +220,10 @@ input {
   font-weight: 700;
 }
 
-.login-form input {
+.login-form input,
+select,
+textarea,
+.inline-select {
   width: 100%;
   border: 1px solid rgba(74, 110, 150, 0.18);
   border-radius: 16px;
@@ -218,7 +233,15 @@ input {
   outline: none;
 }
 
-.login-form input:focus {
+textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
+.login-form input:focus,
+select:focus,
+textarea:focus,
+.inline-select:focus {
   border-color: rgba(63, 143, 216, 0.46);
   box-shadow: 0 0 0 4px rgba(63, 143, 216, 0.12);
 }
@@ -226,14 +249,14 @@ input {
 .form-alert {
   padding: 0.85rem 0.95rem;
   border-radius: 16px;
-  background: rgba(225, 115, 115, 0.12);
-  border: 1px solid rgba(225, 115, 115, 0.2);
+  background: rgba(200, 107, 107, 0.12);
+  border: 1px solid rgba(200, 107, 107, 0.2);
   color: #994949;
 }
 
 .primary-button,
 .ghost-button {
-  min-height: 48px;
+  min-height: 44px;
   border-radius: 999px;
   cursor: pointer;
   font-weight: 700;
@@ -243,13 +266,13 @@ input {
 .primary-button {
   border: none;
   color: #fff;
-  background: linear-gradient(135deg, #5ea6e5, #3f8fd8 55%, #2f76bc);
-  box-shadow: 0 12px 24px rgba(63, 143, 216, 0.18);
+  background: linear-gradient(135deg, #5b9ed9, #4687c3 55%, #2f6fa8);
+  box-shadow: 0 10px 22px rgba(63, 143, 216, 0.16);
 }
 
 .ghost-button {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid rgba(74, 110, 150, 0.16);
 }
 
@@ -270,14 +293,14 @@ input {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 270px 1fr;
   gap: 1rem;
   padding: 1rem;
 }
 
 .sidebar {
   padding: 1rem;
-  border-radius: 28px;
+  border-radius: 24px;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 1rem;
@@ -291,7 +314,7 @@ input {
 
 .brand-panel strong {
   display: block;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -303,11 +326,11 @@ input {
 }
 
 .brand-mark {
-  width: 54px;
-  height: 54px;
+  width: 50px;
+  height: 50px;
   display: grid;
   place-items: center;
-  border-radius: 18px;
+  border-radius: 16px;
   background: linear-gradient(135deg, rgba(94, 166, 229, 0.22), rgba(243, 181, 106, 0.22));
   color: var(--accent-strong);
   font-weight: 900;
@@ -338,8 +361,8 @@ input {
 }
 
 .topbar {
-  border-radius: 24px;
-  padding: 1.1rem 1.2rem;
+  border-radius: 22px;
+  padding: 1rem 1.1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -347,7 +370,7 @@ input {
 }
 
 .topbar h1 {
-  font-size: clamp(1.6rem, 2vw, 2.1rem);
+  font-size: clamp(1.35rem, 1.8vw, 1.8rem);
 }
 
 .topbar-actions {
@@ -379,7 +402,7 @@ input {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.95rem 1.1rem;
-  border-radius: 20px;
+  border-radius: 18px;
   font-size: 0.92rem;
 }
 
@@ -401,7 +424,7 @@ input {
 }
 
 .board-card {
-  border-radius: 24px;
+  border-radius: 22px;
   padding: 1.1rem;
 }
 
@@ -442,6 +465,21 @@ input {
   border: 1px solid rgba(74, 110, 150, 0.08);
 }
 
+.data-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.data-form textarea,
+.data-form button {
+  grid-column: 1 / -1;
+}
+
+.compact-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .table-row strong,
 .kpi-item strong,
 .ticket-table-row strong {
@@ -465,7 +503,7 @@ input {
 }
 
 .metric-card strong {
-  font-size: 1.75rem;
+  font-size: 1.55rem;
   font-family: var(--font-display);
 }
 
@@ -475,7 +513,7 @@ input {
 }
 
 .ticket-card h3 {
-  font-size: 1rem;
+  font-size: 0.98rem;
 }
 
 .ticket-top {
@@ -488,8 +526,8 @@ input {
 
 .badge-crítica,
 .badge-alta {
-  background: rgba(225, 115, 115, 0.12);
-  border-color: rgba(225, 115, 115, 0.2);
+  background: rgba(200, 107, 107, 0.12);
+  border-color: rgba(200, 107, 107, 0.2);
   color: #9e5050;
 }
 
@@ -497,6 +535,12 @@ input {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(90px, 1fr));
   align-items: start;
+}
+
+.inline-select {
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
 }
 
 .toolbar {
@@ -519,7 +563,9 @@ input {
   .split-grid,
   .metric-grid,
   .capabilities-grid,
-  .feature-grid {
+  .feature-grid,
+  .data-form,
+  .compact-form {
     grid-template-columns: 1fr;
   }
 

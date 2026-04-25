@@ -34,24 +34,24 @@ function LoginPage() {
     <div className="login-shell">
       <section className="login-panel login-copy">
         <span className="eyebrow">TicketMind</span>
-        <h1>Um sistema de chamados mais claro, leve e fácil de usar.</h1>
+        <h1>Gestão profissional de chamados, ativos e operação.</h1>
         <p>
-          Organize o atendimento da sua equipe com uma central simples para chamados,
-          conhecimento, ativos, SLAs, relatórios e automações.
+          Centralize o service desk com abertura de chamados, base de conhecimento,
+          automações, indicadores e controle operacional em tempo real.
         </p>
 
         <div className="feature-grid">
           <article className="feature-card">
-            <strong>Atendimento mais fluido</strong>
-            <span>Abra, acompanhe e resolva chamados sem excesso de telas ou complexidade.</span>
+            <strong>Operação centralizada</strong>
+            <span>Chamados, artigos, ativos e regras operacionais no mesmo ambiente.</span>
           </article>
           <article className="feature-card">
-            <strong>Operação bem organizada</strong>
-            <span>Filas, ativos, artigos e indicadores no mesmo ambiente de trabalho.</span>
+            <strong>Governança contínua</strong>
+            <span>Fila, prioridade, SLA, responsáveis e histórico com acompanhamento claro.</span>
           </article>
           <article className="feature-card">
-            <strong>Pronto para evoluir</strong>
-            <span>Base preparada para integrações, automações e autenticação real no backend.</span>
+            <strong>Base pronta para evoluir</strong>
+            <span>Estrutura preparada para integrações e autenticação com backend dedicado.</span>
           </article>
         </div>
       </section>
@@ -62,12 +62,12 @@ function LoginPage() {
             <span className="eyebrow">Acesso</span>
             <h2>Entrar no TicketMind</h2>
           </div>
-          <div className="status-pill">Demonstração</div>
+          <div className="status-pill">Ambiente de demonstração</div>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
-            Email
+            E-mail
             <input
               autoComplete="username"
               onChange={updateField("email")}
@@ -91,12 +91,12 @@ function LoginPage() {
           {error ? <div className="form-alert">{error}</div> : null}
 
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "Entrando..." : "Entrar"}
+            {submitting ? "Validando acesso..." : "Entrar"}
           </button>
 
           <div className="demo-box">
             <strong>Acesso de demonstração</strong>
-            <span>Email: {demoCredentials.email}</span>
+            <span>E-mail: {demoCredentials.email}</span>
             <span>Senha: {demoCredentials.password}</span>
           </div>
         </form>

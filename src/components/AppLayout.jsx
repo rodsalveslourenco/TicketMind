@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { summary } from "../data/mockData";
+import { useAppData } from "../data/AppDataContext";
 
 const navigation = [
   { to: "/app/dashboard", label: "Visão geral" },
@@ -14,6 +14,7 @@ const navigation = [
 
 function AppLayout() {
   const { user, logout } = useAuth();
+  const { summary } = useAppData();
 
   return (
     <div className="app-shell">
@@ -22,7 +23,7 @@ function AppLayout() {
           <div className="brand-mark">TM</div>
           <div>
             <strong>TicketMind</strong>
-            <span>Central de chamados mais simples e organizada</span>
+            <span>Plataforma de atendimento e operação</span>
           </div>
         </div>
 
@@ -41,15 +42,15 @@ function AppLayout() {
         <div className="sidebar-card">
           <span className="eyebrow">Resumo do dia</span>
           <strong>{summary.slaCompliance}% dos chamados no prazo</strong>
-          <p>{summary.criticalOpen} chamados críticos ainda pedem atenção da equipe.</p>
+          <p>{summary.criticalOpen} chamados críticos exigem atenção imediata.</p>
         </div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
           <div>
-            <h1>Painel de atendimento</h1>
-            <p>Acompanhe a operação, distribua chamados e mantenha tudo sob controle.</p>
+            <h1>Central de serviços</h1>
+            <p>Gerencie chamados, ativos, conhecimento e regras operacionais em um único ambiente.</p>
           </div>
 
           <div className="topbar-actions">
@@ -71,7 +72,7 @@ function AppLayout() {
 
         <footer className="app-footer">
           <span>TicketMind é um produto SysteMind.</span>
-          <span>Feito para times que precisam atender melhor com menos atrito.</span>
+          <span>Atendimento, governança e operação em uma plataforma única.</span>
         </footer>
       </div>
     </div>

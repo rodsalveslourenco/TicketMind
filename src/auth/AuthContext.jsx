@@ -8,7 +8,7 @@ const demoUser = {
   name: "Rodrigo Alves",
   email: "admin@ticketmind.local",
   role: "Administrador",
-  team: "Suporte e operações",
+  team: "Operações de TI",
 };
 
 export function AuthProvider({ children }) {

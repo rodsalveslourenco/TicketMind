@@ -1,6 +1,9 @@
-import { queues, reports, summary, tickets } from "../data/mockData";
+import { useAppData } from "../data/AppDataContext";
 
 function DashboardPage() {
+  const { queues, reports, summary, tickets } = useAppData();
+  const spotlightTickets = tickets.slice(0, 4);
+
   return (
     <div className="page-grid">
       <section className="hero-board">
@@ -29,12 +32,12 @@ function DashboardPage() {
 
         <div className="board-card">
           <div className="card-heading">
-            <h2>Filas e equilíbrio de operação</h2>
+            <h2>Filas e equilíbrio operacional</h2>
             <span>{summary.slaCompliance}% dentro do SLA</span>
           </div>
           <div className="table-list">
             {queues.map((queue) => (
-              <div className="table-row" key={queue.name}>
+              <div className="table-row" key={queue.id}>
                 <div>
                   <strong>{queue.name}</strong>
                   <span>{queue.assigned} pessoas alocadas</span>
@@ -52,11 +55,11 @@ function DashboardPage() {
       <section className="split-grid">
         <div className="board-card">
           <div className="card-heading">
-            <h2>Chamados que merecem atenção</h2>
+            <h2>Chamados prioritários</h2>
             <span>Atualização recente da operação</span>
           </div>
           <div className="ticket-stack">
-            {tickets.map((ticket) => (
+            {spotlightTickets.map((ticket) => (
               <article className="ticket-card" key={ticket.id}>
                 <div className="ticket-top">
                   <strong>{ticket.id}</strong>
@@ -83,7 +86,7 @@ function DashboardPage() {
           </div>
           <div className="kpi-list">
             {reports.map((report) => (
-              <div className="kpi-item" key={report.label}>
+              <div className="kpi-item" key={report.id}>
                 <div>
                   <strong>{report.label}</strong>
                   <span>Tendência no período</span>
