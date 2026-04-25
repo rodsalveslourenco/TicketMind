@@ -8,7 +8,7 @@ const demoUser = {
   name: "Rodrigo Alves",
   email: "admin@ticketmind.local",
   role: "Administrador",
-  team: "Service Desk",
+  team: "Suporte e operações",
 };
 
 export function AuthProvider({ children }) {
@@ -23,13 +23,13 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const login = async ({ email, password, otp }) => {
-    if (!email || !password || !otp) {
-      throw new Error("Preencha email, senha e código MFA.");
+  const login = async ({ email, password }) => {
+    if (!email || !password) {
+      throw new Error("Preencha email e senha para continuar.");
     }
 
-    if (email !== demoUser.email || password !== "TicketMind@2026" || otp !== "246810") {
-      throw new Error("Credenciais inválidas. Use o usuário de demonstração.");
+    if (email !== demoUser.email || password !== "TicketMind@2026") {
+      throw new Error("Credenciais inválidas. Use o acesso de demonstração.");
     }
 
     const nextSession = {
@@ -58,7 +58,6 @@ export function AuthProvider({ children }) {
       demoCredentials: {
         email: demoUser.email,
         password: "TicketMind@2026",
-        otp: "246810",
       },
     }),
     [loading, session],

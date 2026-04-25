@@ -34,25 +34,24 @@ function LoginPage() {
     <div className="login-shell">
       <section className="login-panel login-copy">
         <span className="eyebrow">TicketMind</span>
-        <h1>Service desk em React com base para um ITSM completo.</h1>
+        <h1>Um sistema de chamados mais claro, leve e fácil de usar.</h1>
         <p>
-          Estrutura pronta para chamados, catálogo de serviços, base de conhecimento,
-          CMDB, SLAs, automações, relatórios, aprovações, trilha de auditoria e integração
-          com autenticação real.
+          Organize o atendimento da sua equipe com uma central simples para chamados,
+          conhecimento, ativos, SLAs, relatórios e automações.
         </p>
 
         <div className="feature-grid">
           <article className="feature-card">
-            <strong>Segurança preparada</strong>
-            <span>Rotas protegidas, MFA no fluxo e arquitetura pronta para backend/SSO.</span>
+            <strong>Atendimento mais fluido</strong>
+            <span>Abra, acompanhe e resolva chamados sem excesso de telas ou complexidade.</span>
           </article>
           <article className="feature-card">
-            <strong>Operação centralizada</strong>
-            <span>Chamados, ativos, artigos, filas, SLAs e relatórios no mesmo painel.</span>
+            <strong>Operação bem organizada</strong>
+            <span>Filas, ativos, artigos e indicadores no mesmo ambiente de trabalho.</span>
           </article>
           <article className="feature-card">
-            <strong>Escalável para produção</strong>
-            <span>Separação clara entre autenticação, layout, dados e módulos de negócio.</span>
+            <strong>Pronto para evoluir</strong>
+            <span>Base preparada para integrações, automações e autenticação real no backend.</span>
           </article>
         </div>
       </section>
@@ -60,15 +59,15 @@ function LoginPage() {
       <section className="login-panel login-form-panel">
         <div className="login-header">
           <div>
-            <span className="eyebrow">Acesso seguro</span>
+            <span className="eyebrow">Acesso</span>
             <h2>Entrar no TicketMind</h2>
           </div>
-          <div className="status-pill">MFA exigido</div>
+          <div className="status-pill">Demonstração</div>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
-            Email corporativo
+            Email
             <input
               autoComplete="username"
               onChange={updateField("email")}
@@ -89,27 +88,16 @@ function LoginPage() {
             />
           </label>
 
-          <label>
-            Código MFA
-            <input
-              inputMode="numeric"
-              onChange={updateField("otp")}
-              placeholder="6 dígitos"
-              value={form.otp}
-            />
-          </label>
-
           {error ? <div className="form-alert">{error}</div> : null}
 
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "Validando..." : "Entrar com segurança"}
+            {submitting ? "Entrando..." : "Entrar"}
           </button>
 
           <div className="demo-box">
-            <strong>Credenciais de demonstração</strong>
+            <strong>Acesso de demonstração</strong>
             <span>Email: {demoCredentials.email}</span>
             <span>Senha: {demoCredentials.password}</span>
-            <span>MFA: {demoCredentials.otp}</span>
           </div>
         </form>
       </section>

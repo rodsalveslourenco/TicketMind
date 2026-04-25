@@ -8,11 +8,11 @@ export const summary = {
 };
 
 export const queues = [
-  { name: "Service Desk N1", open: 62, overdue: 5, assigned: 11 },
+  { name: "Suporte inicial", open: 62, overdue: 5, assigned: 11 },
   { name: "Infraestrutura", open: 28, overdue: 2, assigned: 6 },
   { name: "Aplicações", open: 31, overdue: 1, assigned: 7 },
   { name: "Segurança", open: 17, overdue: 1, assigned: 4 },
-  { name: "Mudanças e projetos", open: 10, overdue: 0, assigned: 3 },
+  { name: "Projetos e mudanças", open: 10, overdue: 0, assigned: 3 },
 ];
 
 export const tickets = [
@@ -48,7 +48,7 @@ export const tickets = [
     status: "Planejada",
     requester: "Infra",
     assignee: "Core Team",
-    queue: "Mudanças e projetos",
+    queue: "Projetos e mudanças",
     sla: "Planejada",
     updatedAt: "há 17 min",
   },
@@ -57,7 +57,7 @@ export const tickets = [
     title: "Falhas recorrentes no coletor de inventário",
     type: "Problema",
     priority: "Alta",
-    status: "Análise raiz",
+    status: "Análise de causa",
     requester: "Operações",
     assignee: "Aplicações",
     queue: "Aplicações",
@@ -68,7 +68,7 @@ export const tickets = [
 
 export const knowledgeArticles = [
   {
-    title: "Procedimento padrão para reset de MFA",
+    title: "Reset de senha em menos de 2 minutos",
     category: "Acesso",
     owner: "Segurança",
     lastUpdate: "24/04/2026",
@@ -89,7 +89,7 @@ export const knowledgeArticles = [
 
 export const assets = [
   { name: "Firewall matriz", type: "FortiGate 200F", owner: "Segurança", health: "Saudável" },
-  { name: "Cluster virtualização", type: "Proxmox 8", owner: "Infraestrutura", health: "Atenção" },
+  { name: "Cluster de virtualização", type: "Proxmox 8", owner: "Infraestrutura", health: "Atenção" },
   { name: "ERP Produção", type: "Aplicação crítica", owner: "Aplicações", health: "Monitorado" },
   { name: "Switch core", type: "Cisco C9300", owner: "Rede", health: "Saudável" },
 ];
@@ -98,25 +98,25 @@ export const automations = [
   {
     name: "Escalonamento automático de P1",
     trigger: "Prioridade crítica sem aceite em 5 min",
-    action: "Escala para coordenador + Teams + SMS",
+    action: "Escala para coordenador e envia alerta à liderança",
   },
   {
-    name: "Classificação de requisição de acesso",
-    trigger: "Formulário catálogo / acesso",
-    action: "Direciona para IAM + aprovação do gestor",
+    name: "Direcionamento de acesso",
+    trigger: "Solicitação de acesso no catálogo",
+    action: "Encaminha para IAM e envia para aprovação do gestor",
   },
   {
-    name: "Encerramento com CSAT",
+    name: "Encerramento com pesquisa",
     trigger: "Chamado resolvido",
-    action: "Envia pesquisa e fecha em 48h sem objeção",
+    action: "Envia CSAT e encerra automaticamente após 48h sem retorno",
   },
 ];
 
 export const reports = [
   { label: "Tempo médio de primeira resposta", value: "11 min", trend: "-18%" },
   { label: "Tempo médio de resolução", value: "4h 22m", trend: "-9%" },
-  { label: "Taxa de reabertura", value: "3.1%", trend: "-1.4pp" },
-  { label: "Mudanças bem-sucedidas", value: "98.2%", trend: "+2.3pp" },
+  { label: "Taxa de reabertura", value: "3,1%", trend: "-1,4 pp" },
+  { label: "Mudanças bem-sucedidas", value: "98,2%", trend: "+2,3 pp" },
 ];
 
 export const adminModules = [

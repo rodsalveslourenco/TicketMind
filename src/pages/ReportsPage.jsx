@@ -6,7 +6,7 @@ function ReportsPage() {
       <div className="card-heading">
         <div>
           <h2>Relatórios e indicadores</h2>
-          <span>Volume, SLA, produtividade, satisfação, backlog, mudanças e auditoria.</span>
+          <span>Volume, SLA, produtividade, satisfação, backlog e auditoria.</span>
         </div>
       </div>
 

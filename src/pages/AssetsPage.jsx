@@ -6,7 +6,7 @@ function AssetsPage() {
       <div className="card-heading">
         <div>
           <h2>Ativos e CMDB</h2>
-          <span>Inventário, relações de dependência, contratos, fornecedores e impacto por serviço.</span>
+          <span>Inventário, dependências, contratos e impacto por serviço de forma mais simples.</span>
         </div>
       </div>
 

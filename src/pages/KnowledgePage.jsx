@@ -6,7 +6,7 @@ function KnowledgePage() {
       <div className="card-heading">
         <div>
           <h2>Base de conhecimento</h2>
-          <span>Artigos, runbooks, FAQs, playbooks e documentação operacional.</span>
+          <span>Artigos, runbooks, FAQs e documentação útil para o dia a dia.</span>
         </div>
         <button className="ghost-button" type="button">
           Novo artigo

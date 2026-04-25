@@ -13,15 +13,15 @@ function DashboardPage() {
           <article className="metric-card">
             <span>Críticos ativos</span>
             <strong>{summary.criticalOpen}</strong>
-            <small>Monitorados em tempo real</small>
+            <small>Casos que exigem prioridade imediata</small>
           </article>
           <article className="metric-card">
             <span>Primeira resposta</span>
             <strong>{summary.firstResponseMinutes} min</strong>
-            <small>Média ponderada por prioridade</small>
+            <small>Média do time de atendimento</small>
           </article>
           <article className="metric-card">
-            <span>CSAT</span>
+            <span>Satisfação</span>
             <strong>{summary.csat}/5</strong>
             <small>Baseado nos últimos 30 dias</small>
           </article>
@@ -29,7 +29,7 @@ function DashboardPage() {
 
         <div className="board-card">
           <div className="card-heading">
-            <h2>Filas e capacidade operacional</h2>
+            <h2>Filas e equilíbrio de operação</h2>
             <span>{summary.slaCompliance}% dentro do SLA</span>
           </div>
           <div className="table-list">
@@ -37,7 +37,7 @@ function DashboardPage() {
               <div className="table-row" key={queue.name}>
                 <div>
                   <strong>{queue.name}</strong>
-                  <span>{queue.assigned} agentes alocados</span>
+                  <span>{queue.assigned} pessoas alocadas</span>
                 </div>
                 <div className="row-stats">
                   <span>{queue.open} abertos</span>
@@ -52,8 +52,8 @@ function DashboardPage() {
       <section className="split-grid">
         <div className="board-card">
           <div className="card-heading">
-            <h2>Chamados prioritários</h2>
-            <span>Última atualização em tempo real</span>
+            <h2>Chamados que merecem atenção</h2>
+            <span>Atualização recente da operação</span>
           </div>
           <div className="ticket-stack">
             {tickets.map((ticket) => (
@@ -78,8 +78,8 @@ function DashboardPage() {
 
         <div className="board-card">
           <div className="card-heading">
-            <h2>KPIs executivos</h2>
-            <span>Governança de operação</span>
+            <h2>Indicadores executivos</h2>
+            <span>Leitura rápida da operação</span>
           </div>
           <div className="kpi-list">
             {reports.map((report) => (

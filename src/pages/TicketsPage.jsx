@@ -6,7 +6,7 @@ function TicketsPage() {
       <div className="card-heading">
         <div>
           <h2>Gestão de chamados</h2>
-          <span>Incidentes, requisições, problemas, mudanças e tarefas</span>
+          <span>Incidentes, requisições, problemas, mudanças e tarefas em um só lugar.</span>
         </div>
         <button className="primary-button" type="button">
           Novo chamado
@@ -39,16 +39,16 @@ function TicketsPage() {
 
       <div className="capabilities-grid">
         <article className="mini-card">
-          <strong>Recursos previstos</strong>
-          <span>Catálogo de serviços, aprovação multinível, templates, formulários dinâmicos e portal do usuário.</span>
+          <strong>Atendimento mais organizado</strong>
+          <span>Classificação, prioridade, aprovação, histórico e acompanhamento com menos atrito.</span>
         </article>
         <article className="mini-card">
-          <strong>Operação de atendimento</strong>
-          <span>Triagem, priorização, vínculo a ativo, causa raiz, mudanças relacionadas e trilha de auditoria.</span>
+          <strong>Fluxo operacional claro</strong>
+          <span>Triagem, vínculo com ativos, causa raiz, mudanças relacionadas e visão de contexto.</span>
         </article>
         <article className="mini-card">
-          <strong>Integrações comuns</strong>
-          <span>Email parser, webhooks, Teams, WhatsApp, ERP, inventário, monitoramento e identidade corporativa.</span>
+          <strong>Integrações preparadas</strong>
+          <span>Email, webhooks, Teams, ERP, inventário e monitoramento podem entrar na próxima fase.</span>
         </article>
       </div>
     </div>

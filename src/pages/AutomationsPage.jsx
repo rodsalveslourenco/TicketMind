@@ -6,7 +6,7 @@ function AutomationsPage() {
       <div className="card-heading">
         <div>
           <h2>SLAs, regras e automações</h2>
-          <span>Escalonamento, atribuição, alertas, gatilhos, workflows e calendário operacional.</span>
+          <span>Escalonamento, alertas, gatilhos e fluxos que economizam tempo da equipe.</span>
         </div>
       </div>
 
