@@ -4,12 +4,14 @@ import { useAppData } from "../data/AppDataContext";
 const defaultCreateForm = {
   title: "",
   type: "Incidente",
-  priority: "Média",
   requester: "",
-  assignee: "",
   queue: "Service Desk",
   category: "",
   source: "Portal",
+  location: "",
+  urgency: "Média",
+  impact: "Média",
+  openedAt: new Date().toISOString(),
   dueDate: "",
   watchers: "",
   description: "",
@@ -17,16 +19,19 @@ const defaultCreateForm = {
 };
 
 const detailFields = [
-  { key: "type", label: "Tipo" },
-  { key: "priority", label: "Prioridade" },
-  { key: "status", label: "Status" },
-  { key: "queue", label: "Fila" },
-  { key: "requester", label: "Solicitante" },
-  { key: "assignee", label: "Responsável" },
-  { key: "source", label: "Origem" },
-  { key: "category", label: "Categoria" },
-  { key: "dueDate", label: "Prazo" },
-  { key: "watchers", label: "Acompanhantes" },
+  { key: "type", label: "Tipo", kind: "select" },
+  { key: "status", label: "Status", kind: "select" },
+  { key: "queue", label: "Fila", kind: "select" },
+  { key: "requester", label: "Solicitante", kind: "input" },
+  { key: "source", label: "Origem", kind: "select" },
+  { key: "category", label: "Categoria", kind: "input" },
+  { key: "location", label: "Localização", kind: "input" },
+  { key: "urgency", label: "Urgência", kind: "select" },
+  { key: "impact", label: "Impacto", kind: "select" },
+  { key: "dueDate", label: "Data limite", kind: "date" },
+  { key: "openedAt", label: "Abertura", kind: "datetime" },
+  { key: "watchers", label: "Observadores", kind: "input" },
+  { key: "assignee", label: "Técnico responsável", kind: "input" },
 ];
 
 function readFileAsDataUrl(file) {
@@ -57,6 +62,10 @@ function formatBytes(size) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function toIsoOrEmpty(value) {
+  return value ? new Date(value).toISOString() : "";
+}
+
 function TicketsPage() {
   const {
     addTicketAttachments,
@@ -64,6 +73,7 @@ function TicketsPage() {
     deleteTicket,
     removeTicketAttachment,
     tickets,
+    toLocalDatetimeInput,
     updateTicket,
   } = useAppData();
   const [filter, setFilter] = useState("Todos");
@@ -104,20 +114,23 @@ function TicketsPage() {
         description: selectedTicket.description,
         resolutionNotes: selectedTicket.resolutionNotes || "",
         type: selectedTicket.type,
-        priority: selectedTicket.priority,
         status: selectedTicket.status,
         queue: selectedTicket.queue,
         requester: selectedTicket.requester,
         assignee: selectedTicket.assignee,
         source: selectedTicket.source,
         category: selectedTicket.category,
-        dueDate: selectedTicket.dueDate,
+        location: selectedTicket.location || "",
+        urgency: selectedTicket.urgency || "Média",
+        impact: selectedTicket.impact || "Média",
+        openedAt: toLocalDatetimeInput(selectedTicket.openedAt),
+        dueDate: selectedTicket.dueDate ? selectedTicket.dueDate.slice(0, 10) : "",
         watchers: selectedTicket.watchers || "",
       });
     } else {
       setDetailForm(null);
     }
-  }, [selectedTicket, filteredTickets]);
+  }, [selectedTicket, filteredTickets, toLocalDatetimeInput]);
 
   const updateCreateField = (field) => (event) =>
     setCreateForm((current) => ({ ...current, [field]: event.target.value }));
@@ -146,9 +159,17 @@ function TicketsPage() {
       return;
     }
 
-    const createdTicket = createTicket(createForm);
+    const createdTicket = createTicket({
+      ...createForm,
+      openedAt: toIsoOrEmpty(createForm.openedAt) || new Date().toISOString(),
+      dueDate: createForm.dueDate || "",
+    });
+
     setShowCreateForm(false);
-    setCreateForm(defaultCreateForm);
+    setCreateForm({
+      ...defaultCreateForm,
+      openedAt: new Date().toISOString(),
+    });
     setSelectedTicketId(createdTicket?.id ?? null);
   };
 
@@ -159,7 +180,11 @@ function TicketsPage() {
       return;
     }
 
-    updateTicket(selectedTicket.id, detailForm);
+    updateTicket(selectedTicket.id, {
+      ...detailForm,
+      openedAt: toIsoOrEmpty(detailForm.openedAt),
+      dueDate: detailForm.dueDate || "",
+    });
   };
 
   const handleDeleteTicket = () => {
@@ -186,11 +211,11 @@ function TicketsPage() {
 
   return (
     <div className="ticket-workspace">
-      <section className="ticket-list-panel board-card">
-        <div className="card-heading">
+      <section className="ticket-list-panel board-card glpi-panel">
+        <div className="glpi-toolbar">
           <div>
-            <h2>Chamados</h2>
-            <span>Fila operacional com abertura, acompanhamento e tratamento detalhado.</span>
+            <h2>Fila de chamados</h2>
+            <span>Painel operacional com abertura, triagem e acompanhamento.</span>
           </div>
           <button
             className="primary-button"
@@ -202,60 +227,100 @@ function TicketsPage() {
         </div>
 
         {showCreateForm ? (
-          <form className="ticket-create-form" onSubmit={handleCreateSubmit}>
-            <div className="ticket-create-grid">
-              <input onChange={updateCreateField("title")} placeholder="Título do chamado" value={createForm.title} />
-              <select onChange={updateCreateField("type")} value={createForm.type}>
-                <option>Incidente</option>
-                <option>Requisição</option>
-                <option>Problema</option>
-              </select>
-              <select onChange={updateCreateField("priority")} value={createForm.priority}>
-                <option>Baixa</option>
-                <option>Média</option>
-                <option>Alta</option>
-                <option>Crítica</option>
-              </select>
-              <input onChange={updateCreateField("requester")} placeholder="Solicitante" value={createForm.requester} />
-              <input onChange={updateCreateField("assignee")} placeholder="Responsável inicial" value={createForm.assignee} />
-              <select onChange={updateCreateField("queue")} value={createForm.queue}>
-                <option>Service Desk</option>
-                <option>Infraestrutura</option>
-                <option>Aplicações</option>
-                <option>Segurança</option>
-              </select>
-              <input onChange={updateCreateField("category")} placeholder="Categoria" value={createForm.category} />
-              <select onChange={updateCreateField("source")} value={createForm.source}>
-                <option>Portal</option>
-                <option>E-mail</option>
-                <option>Telefone</option>
-                <option>Monitoramento</option>
-              </select>
-              <input onChange={updateCreateField("dueDate")} placeholder="Prazo" type="date" value={createForm.dueDate} />
-              <input
-                className="ticket-create-span"
-                onChange={updateCreateField("watchers")}
-                placeholder="Acompanhantes"
-                value={createForm.watchers}
-              />
-              <textarea
-                onChange={updateCreateField("description")}
-                placeholder="Descreva o chamado com o máximo de contexto"
-                value={createForm.description}
-              />
+          <form className="ticket-create-form glpi-ticket-form" onSubmit={handleCreateSubmit}>
+            <div className="form-section-header">
+              <strong>Abertura de chamado</strong>
+              <span>Preencha os campos principais antes de registrar o ticket.</span>
             </div>
 
-            <div className="attachment-toolbar">
+            <div className="glpi-form-grid">
+              <label className="field-block field-span-2">
+                <span>Título</span>
+                <input onChange={updateCreateField("title")} value={createForm.title} />
+              </label>
+              <label className="field-block">
+                <span>Tipo</span>
+                <select onChange={updateCreateField("type")} value={createForm.type}>
+                  <option>Incidente</option>
+                  <option>Requisição</option>
+                  <option>Problema</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Categoria</span>
+                <input onChange={updateCreateField("category")} value={createForm.category} />
+              </label>
+              <label className="field-block">
+                <span>Solicitante</span>
+                <input onChange={updateCreateField("requester")} value={createForm.requester} />
+              </label>
+              <label className="field-block">
+                <span>Fila</span>
+                <select onChange={updateCreateField("queue")} value={createForm.queue}>
+                  <option>Service Desk</option>
+                  <option>Infraestrutura</option>
+                  <option>Aplicações</option>
+                  <option>Segurança</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Origem</span>
+                <select onChange={updateCreateField("source")} value={createForm.source}>
+                  <option>Portal</option>
+                  <option>E-mail</option>
+                  <option>Telefone</option>
+                  <option>Monitoramento</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Localização</span>
+                <input onChange={updateCreateField("location")} value={createForm.location} />
+              </label>
+              <label className="field-block">
+                <span>Urgência</span>
+                <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
+                  <option>Baixa</option>
+                  <option>Média</option>
+                  <option>Alta</option>
+                  <option>Crítica</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Impacto</span>
+                <select onChange={updateCreateField("impact")} value={createForm.impact}>
+                  <option>Baixa</option>
+                  <option>Média</option>
+                  <option>Alta</option>
+                  <option>Crítica</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Data e hora da abertura</span>
+                <input
+                  onChange={updateCreateField("openedAt")}
+                  type="datetime-local"
+                  value={toLocalDatetimeInput(createForm.openedAt)}
+                />
+              </label>
+              <label className="field-block">
+                <span>Data limite</span>
+                <input onChange={updateCreateField("dueDate")} type="date" value={createForm.dueDate} />
+              </label>
+              <label className="field-block field-span-2">
+                <span>Observadores</span>
+                <input onChange={updateCreateField("watchers")} value={createForm.watchers} />
+              </label>
+              <label className="field-block field-full">
+                <span>Descrição</span>
+                <textarea onChange={updateCreateField("description")} value={createForm.description} />
+              </label>
+            </div>
+
+            <div className="attachment-toolbar glpi-subbar">
               <button className="ghost-button" onClick={() => createInputRef.current?.click()} type="button">
                 Anexar arquivos
               </button>
-              <input
-                hidden
-                multiple
-                onChange={handleCreateAttachments}
-                ref={createInputRef}
-                type="file"
-              />
+              <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
               <span>{createForm.attachments.length} arquivo(s) selecionado(s)</span>
             </div>
 
@@ -272,13 +337,16 @@ function TicketsPage() {
 
             <div className="ticket-create-actions">
               <button className="primary-button" type="submit">
-                Abrir chamado
+                Registrar chamado
               </button>
               <button
                 className="ghost-button"
                 onClick={() => {
                   setShowCreateForm(false);
-                  setCreateForm(defaultCreateForm);
+                  setCreateForm({
+                    ...defaultCreateForm,
+                    openedAt: new Date().toISOString(),
+                  });
                 }}
                 type="button"
               >
@@ -288,7 +356,7 @@ function TicketsPage() {
           </form>
         ) : null}
 
-        <div className="toolbar">
+        <div className="toolbar glpi-filter-bar">
           {["Todos", "Incidente", "Requisição", "Aguardando aprovação", "Próximos do SLA"].map((item) => (
             <button
               key={item}
@@ -323,20 +391,23 @@ function TicketsPage() {
                 <span>{ticket.requester}</span>
                 <span>{ticket.queue}</span>
                 <span>{ticket.assignee}</span>
-                <span>{ticket.sla}</span>
+                <span>{ticket.openedAtLabel}</span>
               </div>
             </button>
           ))}
         </div>
       </section>
 
-      <section className="ticket-detail-panel board-card">
+      <section className="ticket-detail-panel board-card glpi-panel">
         {selectedTicket && detailForm ? (
           <form className="ticket-detail-form" onSubmit={handleSaveTicket}>
-            <div className="card-heading">
+            <div className="glpi-toolbar">
               <div>
                 <h2>{selectedTicket.id}</h2>
-                <span>{selectedTicket.createdAt}</span>
+                <span>
+                  Aberto em {selectedTicket.openedAtLabel}
+                  {selectedTicket.dueDateLabel ? ` • limite ${selectedTicket.dueDateLabel}` : ""}
+                </span>
               </div>
               <div className="ticket-detail-actions">
                 <button className="ghost-button" type="submit">
@@ -348,7 +419,7 @@ function TicketsPage() {
               </div>
             </div>
 
-            <label className="field-block">
+            <label className="field-block field-full">
               <span>Título</span>
               <input onChange={updateDetailField("title")} value={detailForm.title} />
             </label>
@@ -357,22 +428,14 @@ function TicketsPage() {
               {detailFields.map((field) => (
                 <label className="field-block" key={field.key}>
                   <span>{field.label}</span>
-                  {field.key === "type" ? (
+                  {field.kind === "select" && field.key === "type" ? (
                     <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                       <option>Incidente</option>
                       <option>Requisição</option>
                       <option>Problema</option>
                     </select>
                   ) : null}
-                  {field.key === "priority" ? (
-                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                      <option>Baixa</option>
-                      <option>Média</option>
-                      <option>Alta</option>
-                      <option>Crítica</option>
-                    </select>
-                  ) : null}
-                  {field.key === "status" ? (
+                  {field.kind === "select" && field.key === "status" ? (
                     <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                       <option>Aberto</option>
                       <option>Em atendimento</option>
@@ -381,7 +444,7 @@ function TicketsPage() {
                       <option>Resolvido</option>
                     </select>
                   ) : null}
-                  {field.key === "queue" ? (
+                  {field.kind === "select" && field.key === "queue" ? (
                     <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                       <option>Service Desk</option>
                       <option>Infraestrutura</option>
@@ -389,7 +452,7 @@ function TicketsPage() {
                       <option>Segurança</option>
                     </select>
                   ) : null}
-                  {field.key === "source" ? (
+                  {field.kind === "select" && field.key === "source" ? (
                     <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                       <option>Portal</option>
                       <option>E-mail</option>
@@ -397,29 +460,58 @@ function TicketsPage() {
                       <option>Monitoramento</option>
                     </select>
                   ) : null}
-                  {["type", "priority", "status", "queue", "source"].includes(field.key) ? null : (
+                  {field.kind === "select" && (field.key === "urgency" || field.key === "impact") ? (
+                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                      <option>Baixa</option>
+                      <option>Média</option>
+                      <option>Alta</option>
+                      <option>Crítica</option>
+                    </select>
+                  ) : null}
+                  {field.kind === "input" ? (
+                    <input onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""} />
+                  ) : null}
+                  {field.kind === "date" ? (
+                    <input onChange={updateDetailField(field.key)} type="date" value={detailForm[field.key] || ""} />
+                  ) : null}
+                  {field.kind === "datetime" ? (
                     <input
                       onChange={updateDetailField(field.key)}
-                      type={field.key === "dueDate" ? "date" : "text"}
+                      type="datetime-local"
                       value={detailForm[field.key] || ""}
                     />
-                  )}
+                  ) : null}
                 </label>
               ))}
             </div>
 
-            <label className="field-block">
+            <div className="glpi-info-strip">
+              <div>
+                <span>Prioridade calculada</span>
+                <strong>{selectedTicket.priority}</strong>
+              </div>
+              <div>
+                <span>SLA</span>
+                <strong>{selectedTicket.sla}</strong>
+              </div>
+              <div>
+                <span>Última atualização</span>
+                <strong>{selectedTicket.updatedAt}</strong>
+              </div>
+            </div>
+
+            <label className="field-block field-full">
               <span>Descrição</span>
               <textarea onChange={updateDetailField("description")} value={detailForm.description} />
             </label>
 
-            <label className="field-block">
-              <span>Notas de resolução</span>
+            <label className="field-block field-full">
+              <span>Solução / acompanhamento técnico</span>
               <textarea onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
             </label>
 
             <div className="ticket-attachment-panel">
-              <div className="attachment-toolbar">
+              <div className="attachment-toolbar glpi-subbar">
                 <div>
                   <strong>Anexos</strong>
                   <span>Prints, documentos e evidências vinculadas ao chamado.</span>
@@ -427,13 +519,7 @@ function TicketsPage() {
                 <button className="ghost-button" onClick={() => detailInputRef.current?.click()} type="button">
                   Adicionar anexos
                 </button>
-                <input
-                  hidden
-                  multiple
-                  onChange={handleDetailAttachments}
-                  ref={detailInputRef}
-                  type="file"
-                />
+                <input hidden multiple onChange={handleDetailAttachments} ref={detailInputRef} type="file" />
               </div>
 
               {selectedTicket.attachments?.length ? (

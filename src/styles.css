@@ -1,17 +1,20 @@
 :root {
-  --bg: #eef3f8;
-  --bg-strong: #e5edf5;
+  --bg: #edf2f7;
+  --bg-strong: #dfe7f0;
   --panel: #ffffff;
-  --panel-soft: #f7f9fc;
-  --line: #d6e0ea;
-  --text: #24374a;
-  --muted: #6b7a8c;
-  --accent: #2f6ea6;
-  --accent-soft: #e9f1f8;
-  --success: #3f8d63;
-  --danger: #be5757;
-  --warning: #cf8c2c;
-  --shadow: 0 16px 34px rgba(32, 53, 75, 0.08);
+  --panel-soft: #f7f9fb;
+  --panel-alt: #eef3f7;
+  --line: #cfd8e3;
+  --line-strong: #b9c7d6;
+  --text: #263545;
+  --muted: #6f7f91;
+  --accent: #1f4f7b;
+  --accent-soft: #e4edf5;
+  --accent-strong: #173a5b;
+  --success: #2f7a52;
+  --danger: #b84f4f;
+  --warning: #a36f26;
+  --shadow: 0 12px 28px rgba(34, 52, 70, 0.08);
   --font-display: "Segoe UI", "Tahoma", sans-serif;
   --font-body: "Segoe UI", "Verdana", sans-serif;
 }
@@ -31,8 +34,7 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   background:
-    radial-gradient(circle at top left, rgba(47, 110, 166, 0.08), transparent 24%),
-    linear-gradient(180deg, #f8fbfd 0%, #eef3f8 100%);
+    linear-gradient(180deg, #f6f8fb 0%, #edf2f7 100%);
 }
 
 a {
@@ -51,24 +53,24 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #cfd9e3;
-  border-radius: 12px;
-  padding: 0.78rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
   color: var(--text);
   background: #fff;
   outline: none;
 }
 
 textarea {
-  min-height: 112px;
+  min-height: 120px;
   resize: vertical;
 }
 
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #7ca4c9;
-  box-shadow: 0 0 0 4px rgba(47, 110, 166, 0.12);
+  border-color: #87a3bf;
+  box-shadow: 0 0 0 3px rgba(31, 79, 123, 0.1);
 }
 
 .screen-center {
@@ -110,13 +112,13 @@ textarea:focus {
 .sidebar,
 .topbar,
 .app-footer {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
 }
 
 .login-panel {
-  border-radius: 28px;
+  border-radius: 18px;
 }
 
 .login-copy {
@@ -126,10 +128,10 @@ textarea:focus {
 }
 
 .login-copy h1 {
-  max-width: 14ch;
+  max-width: 15ch;
   margin: 0 0 1rem;
   font-family: var(--font-display);
-  font-size: clamp(1.9rem, 3vw, 2.9rem);
+  font-size: clamp(1.85rem, 3vw, 2.7rem);
   line-height: 1.08;
   letter-spacing: -0.03em;
 }
@@ -154,8 +156,8 @@ textarea:focus {
 .sidebar-card,
 .ticket-card {
   padding: 1rem;
-  border-radius: 16px;
-  border: 1px solid #dde6ef;
+  border-radius: 10px;
+  border: 1px solid #dde4ec;
   background: var(--panel-soft);
 }
 
@@ -191,11 +193,12 @@ textarea:focus {
 
 .login-header h2,
 .topbar h1,
-.card-heading h2 {
+.card-heading h2,
+.glpi-toolbar h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(1.18rem, 1.7vw, 1.6rem);
-  letter-spacing: -0.02em;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  letter-spacing: -0.01em;
 }
 
 .status-pill,
@@ -204,12 +207,12 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0.2rem 0.7rem;
+  min-height: 28px;
+  padding: 0.16rem 0.65rem;
   border-radius: 999px;
-  font-size: 0.78rem;
-  border: 1px solid #d8e5f0;
-  background: #f5f9fc;
+  font-size: 0.76rem;
+  border: 1px solid #d3deea;
+  background: #f4f8fb;
   color: var(--accent);
 }
 
@@ -223,7 +226,7 @@ textarea:focus {
 
 .filter-pill.is-active {
   background: var(--accent-soft);
-  border-color: #c1d5e7;
+  border-color: #b9cade;
 }
 
 .login-form {
@@ -239,7 +242,7 @@ textarea:focus {
 
 .form-alert {
   padding: 0.85rem 0.95rem;
-  border-radius: 14px;
+  border-radius: 10px;
   border: 1px solid #efcbcb;
   background: #fff4f4;
   color: #955050;
@@ -248,9 +251,9 @@ textarea:focus {
 .primary-button,
 .ghost-button,
 .danger-button {
-  min-height: 42px;
-  border-radius: 999px;
-  padding: 0 1rem;
+  min-height: 40px;
+  border-radius: 8px;
+  padding: 0 0.9rem;
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
@@ -258,21 +261,21 @@ textarea:focus {
 
 .primary-button {
   color: #fff;
-  border: none;
-  background: linear-gradient(135deg, #3f7fb7, #2f6ea6);
-  box-shadow: 0 12px 24px rgba(47, 110, 166, 0.16);
+  border: 1px solid #204e79;
+  background: linear-gradient(180deg, #356891, #1f4f7b);
+  box-shadow: 0 8px 18px rgba(31, 79, 123, 0.14);
 }
 
 .ghost-button {
   color: var(--text);
-  border: 1px solid #cfdae5;
+  border: 1px solid var(--line-strong);
   background: #fff;
 }
 
 .danger-button {
   color: #fff;
-  border: none;
-  background: linear-gradient(135deg, #cf6d6d, #be5757);
+  border: 1px solid #9f4343;
+  background: linear-gradient(180deg, #c76161, #b84f4f);
 }
 
 .primary-button:hover,
@@ -285,7 +288,7 @@ textarea:focus {
   display: grid;
   gap: 0.2rem;
   padding: 1rem;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #f5f8fb;
   color: var(--muted);
 }
@@ -293,7 +296,7 @@ textarea:focus {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 250px 1fr;
   gap: 1rem;
   padding: 1rem;
 }
@@ -303,7 +306,9 @@ textarea:focus {
   grid-template-rows: auto 1fr auto;
   gap: 1rem;
   padding: 1rem;
-  border-radius: 22px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2a5d89 0%, #214a70 100%);
+  color: #fff;
 }
 
 .brand-panel {
@@ -319,21 +324,25 @@ textarea:focus {
 }
 
 .brand-panel span,
-.sidebar-card p,
+.sidebar-card p {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .topbar p,
 .app-footer span {
   color: var(--muted);
 }
 
 .brand-mark {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
-  border-radius: 14px;
-  color: var(--accent);
+  border-radius: 10px;
+  color: #fff;
   font-weight: 900;
-  background: linear-gradient(135deg, #edf3f9, #e2ebf5);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .sidebar-nav {
@@ -344,14 +353,24 @@ textarea:focus {
 
 .nav-link {
   padding: 0.82rem 0.95rem;
-  border-radius: 12px;
-  color: var(--muted);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .nav-link.is-active,
 .nav-link:hover {
-  color: var(--text);
-  background: #edf3f9;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-card {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-card .eyebrow,
+.sidebar-card strong {
+  color: #fff;
 }
 
 .workspace {
@@ -365,12 +384,12 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.1rem;
-  border-radius: 20px;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
 }
 
 .topbar h1 {
-  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
+  font-size: clamp(1.18rem, 1.8vw, 1.5rem);
 }
 
 .topbar-actions {
@@ -382,8 +401,8 @@ textarea:focus {
 .user-badge {
   display: grid;
   gap: 0.15rem;
-  padding: 0.75rem 0.9rem;
-  border-radius: 14px;
+  padding: 0.7rem 0.85rem;
+  border-radius: 8px;
   background: #f7fafc;
 }
 
@@ -401,9 +420,9 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.9rem 1rem;
-  border-radius: 18px;
-  font-size: 0.92rem;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
 }
 
 .page-grid,
@@ -428,11 +447,12 @@ textarea:focus {
 }
 
 .board-card {
-  padding: 1.05rem;
-  border-radius: 20px;
+  padding: 1rem;
+  border-radius: 12px;
 }
 
-.card-heading {
+.card-heading,
+.glpi-toolbar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -444,7 +464,9 @@ textarea:focus {
 .table-row span,
 .ticket-card p,
 .ticket-meta span,
-.kpi-item span {
+.kpi-item span,
+.glpi-toolbar span,
+.form-section-header span {
   color: var(--muted);
 }
 
@@ -455,7 +477,7 @@ textarea:focus {
 }
 
 .metric-card strong {
-  font-size: 1.55rem;
+  font-size: 1.45rem;
   font-family: var(--font-display);
 }
 
@@ -466,7 +488,7 @@ textarea:focus {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 0.95rem;
-  border-radius: 14px;
+  border-radius: 8px;
   background: #f8fafc;
   border: 1px solid #dee7f0;
 }
@@ -508,7 +530,7 @@ textarea:focus {
 
 .ticket-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
   gap: 1rem;
   min-height: 0;
 }
@@ -518,30 +540,56 @@ textarea:focus {
   min-height: 0;
 }
 
+.glpi-panel {
+  border-top: 3px solid var(--accent);
+}
+
 .ticket-create-form,
 .ticket-detail-form {
   display: grid;
   gap: 1rem;
 }
 
-.ticket-create-form {
+.glpi-ticket-form,
+.ticket-attachment-panel {
   margin-bottom: 1rem;
   padding: 1rem;
-  border: 1px solid #dbe5ee;
-  border-radius: 16px;
-  background: #f9fbfd;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-alt);
 }
 
-.ticket-create-grid,
+.form-section-header {
+  display: grid;
+  gap: 0.2rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.glpi-form-grid,
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
 }
 
-.ticket-create-grid textarea,
-.ticket-create-span {
+.field-block {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field-block span {
+  color: #57697d;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.field-full {
   grid-column: 1 / -1;
+}
+
+.field-span-2 {
+  grid-column: span 2;
 }
 
 .ticket-create-actions,
@@ -555,8 +603,8 @@ textarea:focus {
 
 .ticket-rows {
   display: grid;
-  gap: 0.7rem;
-  max-height: 60vh;
+  gap: 0.6rem;
+  max-height: 62vh;
   overflow: auto;
   padding-right: 0.2rem;
 }
@@ -564,17 +612,17 @@ textarea:focus {
 .ticket-row-card {
   width: 100%;
   text-align: left;
-  padding: 0.95rem 1rem;
-  border-radius: 14px;
-  border: 1px solid #d8e2eb;
-  background: #f9fbfd;
+  padding: 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #d6dee8;
+  background: #fff;
   cursor: pointer;
 }
 
 .ticket-row-card.is-selected {
-  border-color: #b9d0e4;
-  background: #eef4fa;
-  box-shadow: inset 0 0 0 1px #c5d9ea;
+  border-color: #95b0c9;
+  background: #edf3f8;
+  box-shadow: inset 0 0 0 1px #b7cade;
 }
 
 .ticket-row-main {
@@ -592,7 +640,7 @@ textarea:focus {
 
 .ticket-row-title h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.98rem;
 }
 
 .ticket-row-meta,
@@ -608,22 +656,31 @@ textarea:focus {
   overflow: auto;
 }
 
-.field-block {
+.glpi-info-strip {
   display: grid;
-  gap: 0.4rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  padding: 0.9rem;
+  border-radius: 8px;
+  background: #f4f7fa;
+  border: 1px solid var(--line);
 }
 
-.field-block span {
+.glpi-info-strip span {
+  display: block;
+  margin-bottom: 0.15rem;
   color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 700;
+  font-size: 0.8rem;
 }
 
-.ticket-attachment-panel {
-  padding: 1rem;
-  border-radius: 16px;
-  border: 1px solid #dbe5ee;
-  background: #f9fbfd;
+.glpi-subbar {
+  padding-top: 0.25rem;
+}
+
+.glpi-filter-bar {
+  padding: 0.2rem 0 0.8rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.8rem;
 }
 
 .attachment-toolbar {
@@ -649,8 +706,8 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.8rem 0.9rem;
-  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  border-radius: 8px;
   background: #fff;
   border: 1px solid #dce6ef;
 }
@@ -681,7 +738,7 @@ textarea:focus {
   gap: 0.35rem;
   padding: 1rem;
   border: 1px dashed #cddae6;
-  border-radius: 14px;
+  border-radius: 8px;
   background: #f8fbfd;
   color: var(--muted);
 }
@@ -697,10 +754,11 @@ textarea:focus {
   .metric-grid,
   .split-grid,
   .split-grid-wide,
-  .ticket-create-grid,
+  .glpi-form-grid,
   .detail-grid,
   .login-shell,
-  .app-shell {
+  .app-shell,
+  .glpi-info-strip {
     grid-template-columns: 1fr;
   }
 
@@ -722,6 +780,7 @@ textarea:focus {
   .topbar,
   .topbar-actions,
   .card-heading,
+  .glpi-toolbar,
   .table-row,
   .kpi-item,
   .attachment-item,
@@ -735,5 +794,10 @@ textarea:focus {
 
   .ticket-rows {
     max-height: none;
+  }
+
+  .field-span-2,
+  .field-full {
+    grid-column: auto;
   }
 }

@@ -18,21 +18,80 @@ function readInitialState() {
   }
 }
 
-function formatDateTime() {
+function formatDate(isoValue) {
+  if (!isoValue) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+  }).format(new Date(isoValue));
+}
+
+function formatTimestamp(isoValue) {
+  if (!isoValue) {
+    return "";
+  }
+
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(new Date());
+  }).format(new Date(isoValue));
 }
 
-function formatDate() {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-  }).format(new Date());
+function toLocalDatetimeInput(isoValue) {
+  if (!isoValue) {
+    return "";
+  }
+
+  const date = new Date(isoValue);
+  const pad = (value) => String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function nextId(prefix, list) {
   return `${prefix}-${list.length + 1}-${Date.now().toString(36)}`;
+}
+
+function computePriority(urgency, impact) {
+  const scoreMap = {
+    Baixa: 1,
+    Média: 2,
+    Alta: 3,
+    Crítica: 4,
+  };
+  const score = Math.max(scoreMap[urgency] ?? 2, scoreMap[impact] ?? 2);
+
+  if (score >= 4) {
+    return "Crítica";
+  }
+
+  if (score === 3) {
+    return "Alta";
+  }
+
+  if (score === 2) {
+    return "Média";
+  }
+
+  return "Baixa";
+}
+
+function computeSla(priority) {
+  if (priority === "Crítica") {
+    return "15 min";
+  }
+
+  if (priority === "Alta") {
+    return "1h";
+  }
+
+  if (priority === "Média") {
+    return "4h";
+  }
+
+  return "8h";
 }
 
 export function AppDataProvider({ children }) {
@@ -92,21 +151,29 @@ export function AppDataProvider({ children }) {
         Problema: "PRB",
       };
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
+      const openedAt = payload.openedAt || new Date().toISOString();
+      const priority = computePriority(payload.urgency, payload.impact);
+
       createdTicket = {
         id: `${typeCodeMap[payload.type] ?? "TCK"}-${nextNumber}`,
         title: payload.title,
         type: payload.type,
-        priority: payload.priority,
+        priority,
+        urgency: payload.urgency,
+        impact: payload.impact,
         status: "Aberto",
         requester: payload.requester,
-        assignee: payload.assignee || "Triagem",
+        assignee: "Triagem",
         queue: payload.queue,
         category: payload.category,
         source: payload.source,
-        sla: payload.priority === "Crítica" ? "15 min" : payload.priority === "Alta" ? "1h" : "4h",
+        location: payload.location,
+        sla: computeSla(priority),
         updatedAt: "Agora",
-        createdAt: formatDateTime(),
-        dueDate: payload.dueDate || formatDate(),
+        openedAt,
+        openedAtLabel: formatTimestamp(openedAt),
+        dueDate: payload.dueDate || "",
+        dueDateLabel: payload.dueDate ? formatDate(payload.dueDate) : "",
         description: payload.description,
         resolutionNotes: "",
         watchers: payload.watchers || "",
@@ -125,15 +192,31 @@ export function AppDataProvider({ children }) {
   const updateTicket = (ticketId, updates) => {
     setData((current) => ({
       ...current,
-      tickets: current.tickets.map((ticket) =>
-        ticket.id === ticketId
-          ? {
-              ...ticket,
-              ...updates,
-              updatedAt: "Agora",
-            }
-          : ticket,
-      ),
+      tickets: current.tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+
+        const nextUrgency = updates.urgency ?? ticket.urgency;
+        const nextImpact = updates.impact ?? ticket.impact;
+        const priority = computePriority(nextUrgency, nextImpact);
+        const openedAt = updates.openedAt ?? ticket.openedAt;
+        const dueDate = updates.dueDate ?? ticket.dueDate;
+
+        return {
+          ...ticket,
+          ...updates,
+          urgency: nextUrgency,
+          impact: nextImpact,
+          priority,
+          sla: computeSla(priority),
+          openedAt,
+          openedAtLabel: formatTimestamp(openedAt),
+          dueDate,
+          dueDateLabel: dueDate ? formatDate(dueDate) : "",
+          updatedAt: "Agora",
+        };
+      }),
     }));
   };
 
@@ -182,7 +265,7 @@ export function AppDataProvider({ children }) {
       knowledgeArticles: [
         {
           id: nextId("kb", current.knowledgeArticles),
-          lastUpdate: formatDate(),
+          lastUpdate: formatDate(new Date().toISOString()),
           ...payload,
         },
         ...current.knowledgeArticles,
@@ -203,6 +286,7 @@ export function AppDataProvider({ children }) {
       addTicketAttachments,
       removeTicketAttachment,
       addKnowledgeArticle,
+      toLocalDatetimeInput,
     }),
     [summary, queueStats, data],
   );
