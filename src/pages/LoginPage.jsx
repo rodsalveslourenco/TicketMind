@@ -34,24 +34,24 @@ function LoginPage() {
     <div className="login-shell">
       <section className="login-panel login-copy">
         <span className="eyebrow">TicketMind</span>
-        <h1>Gestão profissional de chamados, ativos e operação.</h1>
+        <h1>Plataforma profissional para operação de chamados.</h1>
         <p>
-          Centralize o service desk com abertura de chamados, base de conhecimento,
-          automações, indicadores e controle operacional em tempo real.
+          Registre solicitações, trate incidentes, acompanhe SLA e mantenha cada atendimento
+          documentado com histórico, responsáveis e anexos.
         </p>
 
         <div className="feature-grid">
           <article className="feature-card">
-            <strong>Operação centralizada</strong>
-            <span>Chamados, artigos, ativos e regras operacionais no mesmo ambiente.</span>
+            <strong>Fila operacional</strong>
+            <span>Lista de chamados com seleção rápida, prioridade, status e responsável.</span>
           </article>
           <article className="feature-card">
-            <strong>Governança contínua</strong>
-            <span>Fila, prioridade, SLA, responsáveis e histórico com acompanhamento claro.</span>
+            <strong>Tratativa completa</strong>
+            <span>Atualize o ticket com descrição técnica, notas de resolução e evidências.</span>
           </article>
           <article className="feature-card">
-            <strong>Base pronta para evoluir</strong>
-            <span>Estrutura preparada para integrações e autenticação com backend dedicado.</span>
+            <strong>Base de apoio</strong>
+            <span>Documente procedimentos para reduzir retrabalho no atendimento.</span>
           </article>
         </div>
       </section>

@@ -18,11 +18,16 @@ function readInitialState() {
   }
 }
 
-function formatNow() {
+function formatDateTime() {
   return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date());
+}
+
+function formatDate() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
   }).format(new Date());
 }
 
@@ -38,59 +43,56 @@ export function AppDataProvider({ children }) {
   }, [data]);
 
   const summary = useMemo(() => {
-    const openTickets = data.tickets.length;
-    const criticalOpen = data.tickets.filter((ticket) => ticket.priority === "Crítica").length;
+    const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovação", "Análise"];
+    const openTickets = data.tickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
+    const criticalOpen = data.tickets.filter(
+      (ticket) => ticket.priority === "Crítica" && openStatuses.includes(ticket.status),
+    ).length;
     const waitingApproval = data.tickets.filter(
       (ticket) => ticket.status === "Aguardando aprovação",
     ).length;
-    const firstResponseMinutes = Math.max(8, 14 - data.automations.filter((item) => item.enabled).length);
-    const csat = 4.7;
+    const solved = data.tickets.filter((ticket) => ticket.status === "Resolvido").length;
     const slaCompliance = openTickets
       ? Number((((openTickets - waitingApproval) / openTickets) * 100).toFixed(1))
       : 100;
-    const backlogTrend = openTickets > 12 ? -8 : -2;
 
     return {
       openTickets,
       criticalOpen,
       waitingApproval,
-      firstResponseMinutes,
-      csat,
+      solved,
+      firstResponseMinutes: 11,
+      csat: 4.7,
       slaCompliance,
-      backlogTrend,
+      backlogTrend: openTickets > 12 ? -8 : -3,
     };
-  }, [data]);
+  }, [data.tickets]);
 
   const queueStats = useMemo(
     () =>
       data.queues.map((queue) => {
         const queueTickets = data.tickets.filter((ticket) => ticket.queue === queue.name);
-        const overdue = queueTickets.filter(
-          (ticket) =>
-            ticket.status === "Aguardando aprovação" ||
-            ticket.priority === "Crítica" ||
-            ticket.sla.toLowerCase().includes("min"),
-        ).length;
 
         return {
           ...queue,
           open: queueTickets.length,
-          overdue,
+          overdue: queueTickets.filter((ticket) => ticket.sla.toLowerCase().includes("min")).length,
         };
       }),
     [data.queues, data.tickets],
   );
 
   const createTicket = (payload) => {
+    let createdTicket = null;
+
     setData((current) => {
       const typeCodeMap = {
         Incidente: "INC",
         Requisição: "REQ",
         Problema: "PRB",
-        Mudança: "CHG",
       };
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
-      const ticket = {
+      createdTicket = {
         id: `${typeCodeMap[payload.type] ?? "TCK"}-${nextNumber}`,
         title: payload.title,
         type: payload.type,
@@ -99,23 +101,77 @@ export function AppDataProvider({ children }) {
         requester: payload.requester,
         assignee: payload.assignee || "Triagem",
         queue: payload.queue,
+        category: payload.category,
+        source: payload.source,
         sla: payload.priority === "Crítica" ? "15 min" : payload.priority === "Alta" ? "1h" : "4h",
         updatedAt: "Agora",
+        createdAt: formatDateTime(),
+        dueDate: payload.dueDate || formatDate(),
         description: payload.description,
+        resolutionNotes: "",
+        watchers: payload.watchers || "",
+        attachments: payload.attachments || [],
       };
 
       return {
         ...current,
-        tickets: [ticket, ...current.tickets],
+        tickets: [createdTicket, ...current.tickets],
       };
     });
+
+    return createdTicket;
   };
 
-  const updateTicketStatus = (ticketId, status) => {
+  const updateTicket = (ticketId, updates) => {
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
-        ticket.id === ticketId ? { ...ticket, status, updatedAt: "Agora" } : ticket,
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              ...updates,
+              updatedAt: "Agora",
+            }
+          : ticket,
+      ),
+    }));
+  };
+
+  const deleteTicket = (ticketId) => {
+    setData((current) => ({
+      ...current,
+      tickets: current.tickets.filter((ticket) => ticket.id !== ticketId),
+    }));
+  };
+
+  const addTicketAttachments = (ticketId, attachments) => {
+    setData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              attachments: [...(ticket.attachments || []), ...attachments],
+              updatedAt: "Agora",
+            }
+          : ticket,
+      ),
+    }));
+  };
+
+  const removeTicketAttachment = (ticketId, attachmentId) => {
+    setData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              attachments: (ticket.attachments || []).filter(
+                (attachment) => attachment.id !== attachmentId,
+              ),
+              updatedAt: "Agora",
+            }
+          : ticket,
       ),
     }));
   };
@@ -126,62 +182,10 @@ export function AppDataProvider({ children }) {
       knowledgeArticles: [
         {
           id: nextId("kb", current.knowledgeArticles),
-          lastUpdate: formatNow(),
+          lastUpdate: formatDate(),
           ...payload,
         },
         ...current.knowledgeArticles,
-      ],
-    }));
-  };
-
-  const addAsset = (payload) => {
-    setData((current) => ({
-      ...current,
-      assets: [
-        {
-          id: nextId("at", current.assets),
-          ...payload,
-        },
-        ...current.assets,
-      ],
-    }));
-  };
-
-  const addAutomation = (payload) => {
-    setData((current) => ({
-      ...current,
-      automations: [
-        {
-          id: nextId("au", current.automations),
-          enabled: true,
-          ...payload,
-        },
-        ...current.automations,
-      ],
-    }));
-  };
-
-  const toggleAutomation = (automationId) => {
-    setData((current) => ({
-      ...current,
-      automations: current.automations.map((automation) =>
-        automation.id === automationId
-          ? { ...automation, enabled: !automation.enabled }
-          : automation,
-      ),
-    }));
-  };
-
-  const addUser = (payload) => {
-    setData((current) => ({
-      ...current,
-      users: [
-        {
-          id: nextId("usr", current.users),
-          status: "Ativo",
-          ...payload,
-        },
-        ...current.users,
       ],
     }));
   };
@@ -192,18 +196,13 @@ export function AppDataProvider({ children }) {
       queues: queueStats,
       tickets: data.tickets,
       knowledgeArticles: data.knowledgeArticles,
-      assets: data.assets,
-      automations: data.automations,
       reports: data.reports,
-      serviceCatalog: data.serviceCatalog,
-      users: data.users,
       createTicket,
-      updateTicketStatus,
+      updateTicket,
+      deleteTicket,
+      addTicketAttachments,
+      removeTicketAttachment,
       addKnowledgeArticle,
-      addAsset,
-      addAutomation,
-      toggleAutomation,
-      addUser,
     }),
     [summary, queueStats, data],
   );

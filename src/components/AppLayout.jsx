@@ -6,10 +6,6 @@ const navigation = [
   { to: "/app/dashboard", label: "Visão geral" },
   { to: "/app/tickets", label: "Chamados" },
   { to: "/app/knowledge", label: "Conhecimento" },
-  { to: "/app/assets", label: "Ativos e CMDB" },
-  { to: "/app/reports", label: "Relatórios" },
-  { to: "/app/automations", label: "Regras e SLAs" },
-  { to: "/app/admin", label: "Administração" },
 ];
 
 function AppLayout() {
@@ -23,7 +19,7 @@ function AppLayout() {
           <div className="brand-mark">TM</div>
           <div>
             <strong>TicketMind</strong>
-            <span>Plataforma de atendimento e operação</span>
+            <span>Service desk e gestão de chamados</span>
           </div>
         </div>
 
@@ -40,17 +36,17 @@ function AppLayout() {
         </nav>
 
         <div className="sidebar-card">
-          <span className="eyebrow">Resumo do dia</span>
+          <span className="eyebrow">Monitoramento</span>
           <strong>{summary.slaCompliance}% dos chamados no prazo</strong>
-          <p>{summary.criticalOpen} chamados críticos exigem atenção imediata.</p>
+          <p>{summary.criticalOpen} chamados críticos em tratamento no momento.</p>
         </div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
           <div>
-            <h1>Central de serviços</h1>
-            <p>Gerencie chamados, ativos, conhecimento e regras operacionais em um único ambiente.</p>
+            <h1>Central de atendimento</h1>
+            <p>Controle a fila, acompanhe o atendimento e trate cada chamado com contexto completo.</p>
           </div>
 
           <div className="topbar-actions">
@@ -72,7 +68,7 @@ function AppLayout() {
 
         <footer className="app-footer">
           <span>TicketMind é um produto SysteMind.</span>
-          <span>Atendimento, governança e operação em uma plataforma única.</span>
+          <span>Projetado para operações de atendimento com padrão profissional.</span>
         </footer>
       </div>
     </div>

@@ -35,7 +35,7 @@ function KnowledgePage() {
         <div className="card-heading">
           <div>
             <h2>Base de conhecimento</h2>
-            <span>Documente procedimentos, artigos e orientações para acelerar o atendimento.</span>
+            <span>Procedimentos e artigos de apoio para reduzir tempo de atendimento.</span>
           </div>
         </div>
 
@@ -44,8 +44,8 @@ function KnowledgePage() {
           <select onChange={updateField("category")} value={form.category}>
             <option>Procedimento</option>
             <option>Acesso</option>
-            <option>Service Desk</option>
             <option>Aplicações</option>
+            <option>Infraestrutura</option>
           </select>
           <input onChange={updateField("owner")} placeholder="Responsável" value={form.owner} />
           <textarea onChange={updateField("summary")} placeholder="Resumo do conteúdo" value={form.summary} />
