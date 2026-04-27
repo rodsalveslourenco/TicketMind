@@ -40,11 +40,8 @@ function AppLayout() {
 
         <div className="sidebar-card">
           <span className="eyebrow">Resumo operacional</span>
-          <strong>{summary.slaCompliance}% dos chamados dentro do prazo</strong>
-          <p>
-            {summary.openTickets} itens em fila, {summary.activeProjects} projetos ativos e{" "}
-            {summary.activeApis} APIs em operacao.
-          </p>
+          <strong>{summary.slaCompliance}% no SLA</strong>
+          <p>{summary.openTickets} chamados | {summary.activeAssets} ativos | {summary.activeProjects} projetos</p>
         </div>
       </aside>
 
@@ -69,8 +66,8 @@ function AppLayout() {
         </main>
 
         <footer className="app-footer">
-          <span>TicketMind | Operacao profissional de service desk</span>
-          <span>Atendimento, governanca e integracao em um unico fluxo</span>
+          <span>TicketMind</span>
+          <span>{summary.openTickets} chamados abertos</span>
         </footer>
       </div>
 
