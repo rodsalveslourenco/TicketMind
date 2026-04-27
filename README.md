@@ -39,11 +39,6 @@ Preview local:
 npm run preview
 ```
 
-## Credenciais de demonstração
-
-- Email: `admin@ticketmind.local`
-- Senha: `TicketMind@2026`
-- MFA: `246810`
 
 ## Estrutura
 
