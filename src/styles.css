@@ -751,6 +751,49 @@ textarea:focus {
   max-height: none;
 }
 
+.permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.permission-card {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.permission-card input {
+  width: auto;
+}
+
+.table-row-stack {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.row-stats-wrap {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.permissions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.user-password-row {
+  display: flex;
+  gap: 0.45rem;
+  color: var(--muted);
+}
+
 .ticket-row-card.is-selected {
   border-color: #95b0c9;
   background: #edf3f8;

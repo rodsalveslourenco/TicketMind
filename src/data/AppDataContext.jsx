@@ -6,9 +6,7 @@ const AppDataContext = createContext(null);
 
 function readInitialState() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (!stored) {
-    return seedData;
-  }
+  if (!stored) return seedData;
 
   try {
     return JSON.parse(stored);
@@ -18,29 +16,17 @@ function readInitialState() {
 }
 
 function formatDate(isoValue) {
-  if (!isoValue) {
-    return "";
-  }
-
+  if (!isoValue) return "";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(isoValue));
 }
 
 function formatTimestamp(isoValue) {
-  if (!isoValue) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(isoValue));
+  if (!isoValue) return "";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(isoValue));
 }
 
 function toLocalDatetimeInput(isoValue) {
-  if (!isoValue) {
-    return "";
-  }
-
+  if (!isoValue) return "";
   const date = new Date(isoValue);
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -60,7 +46,6 @@ function normalizeText(value) {
 function computePriority(urgency, impact) {
   const scoreMap = { baixa: 1, media: 2, alta: 3, critica: 4 };
   const score = Math.max(scoreMap[normalizeText(urgency)] ?? 2, scoreMap[normalizeText(impact)] ?? 2);
-
   if (score >= 4) return "Critica";
   if (score === 3) return "Alta";
   if (score === 2) return "Media";
@@ -73,6 +58,18 @@ function computeSla(priority) {
   if (normalizedPriority === "alta") return "1h";
   if (normalizedPriority === "media") return "4h";
   return "8h";
+}
+
+function sanitizeUserPayload(payload) {
+  return {
+    name: payload.name,
+    email: payload.email,
+    password: payload.password,
+    role: payload.role,
+    team: payload.team,
+    department: payload.department,
+    permissions: payload.permissions,
+  };
 }
 
 export function AppDataProvider({ children }) {
@@ -169,9 +166,7 @@ export function AppDataProvider({ children }) {
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) => {
-        if (ticket.id !== ticketId) {
-          return ticket;
-        }
+        if (ticket.id !== ticketId) return ticket;
 
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
@@ -241,11 +236,7 @@ export function AppDataProvider({ children }) {
     setData((current) => {
       createdUser = {
         id: nextId("u", current.users || []),
-        name: payload.name,
-        email: payload.email,
-        role: payload.role,
-        team: payload.team,
-        department: payload.department,
+        ...sanitizeUserPayload(payload),
       };
 
       return {
@@ -257,13 +248,28 @@ export function AppDataProvider({ children }) {
     return createdUser;
   };
 
+  const updateUser = (userId, payload) => {
+    setData((current) => ({
+      ...current,
+      users: current.users.map((candidate) =>
+        candidate.id === userId ? { ...candidate, ...sanitizeUserPayload(payload) } : candidate,
+      ),
+    }));
+  };
+
+  const deleteUser = (userId) => {
+    setData((current) => ({
+      ...current,
+      users: current.users.filter((candidate) => candidate.id !== userId),
+    }));
+  };
+
   const value = useMemo(
     () => ({
       summary,
       queues: queueStats,
       users: data.users || [],
       tickets: data.tickets,
-      knowledgeArticles: data.knowledgeArticles,
       reports: data.reports,
       createTicket,
       updateTicket,
@@ -271,6 +277,8 @@ export function AppDataProvider({ children }) {
       addTicketAttachments,
       removeTicketAttachment,
       addUser,
+      updateUser,
+      deleteUser,
       toLocalDatetimeInput,
     }),
     [summary, queueStats, data],
