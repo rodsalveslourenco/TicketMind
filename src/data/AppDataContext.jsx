@@ -4,12 +4,26 @@ import { seedData } from "./seedData";
 const STORAGE_KEY = "ticketmind-data";
 const AppDataContext = createContext(null);
 
+function mergeCollections(stored) {
+  return {
+    ...seedData,
+    ...stored,
+    users: Array.isArray(stored?.users) && stored.users.length ? stored.users : seedData.users,
+    queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
+    tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
+    assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
+    projects: Array.isArray(stored?.projects) ? stored.projects : seedData.projects,
+    apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
+    reports: Array.isArray(stored?.reports) && stored.reports.length ? stored.reports : seedData.reports,
+  };
+}
+
 function readInitialState() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (!stored) return seedData;
 
   try {
-    return JSON.parse(stored);
+    return mergeCollections(JSON.parse(stored));
   } catch {
     return seedData;
   }
