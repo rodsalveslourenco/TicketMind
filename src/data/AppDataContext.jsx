@@ -22,7 +22,10 @@ function formatDate(isoValue) {
 
 function formatTimestamp(isoValue) {
   if (!isoValue) return "";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(isoValue));
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(isoValue));
 }
 
 function toLocalDatetimeInput(isoValue) {
@@ -89,6 +92,9 @@ export function AppDataProvider({ children }) {
       (ticket) => normalizeText(ticket.status) === "aguardando aprovacao",
     ).length;
     const solved = data.tickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
+    const activeAssets = data.assets.filter((asset) => normalizeText(asset.status) !== "baixado").length;
+    const activeProjects = data.projects.filter((project) => normalizeText(project.status) !== "concluido").length;
+    const activeApis = data.apiConfigs.filter((config) => normalizeText(config.status) === "ativa").length;
     const slaCompliance = openTickets
       ? Number((((openTickets - waitingApproval) / openTickets) * 100).toFixed(1))
       : 100;
@@ -98,12 +104,15 @@ export function AppDataProvider({ children }) {
       criticalOpen,
       waitingApproval,
       solved,
+      activeAssets,
+      activeProjects,
+      activeApis,
       firstResponseMinutes: 11,
       csat: 4.7,
       slaCompliance,
       backlogTrend: openTickets > 12 ? -8 : -3,
     };
-  }, [data.tickets]);
+  }, [data]);
 
   const queueStats = useMemo(
     () =>
@@ -153,10 +162,7 @@ export function AppDataProvider({ children }) {
         attachments: payload.attachments || [],
       };
 
-      return {
-        ...current,
-        tickets: [createdTicket, ...current.tickets],
-      };
+      return { ...current, tickets: [createdTicket, ...current.tickets] };
     });
 
     return createdTicket;
@@ -167,7 +173,6 @@ export function AppDataProvider({ children }) {
       ...current,
       tickets: current.tickets.map((ticket) => {
         if (ticket.id !== ticketId) return ticket;
-
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
         const priority = computePriority(nextUrgency, nextImpact);
@@ -203,11 +208,7 @@ export function AppDataProvider({ children }) {
       ...current,
       tickets: current.tickets.map((ticket) =>
         ticket.id === ticketId
-          ? {
-              ...ticket,
-              attachments: [...(ticket.attachments || []), ...attachments],
-              updatedAt: "Agora",
-            }
+          ? { ...ticket, attachments: [...(ticket.attachments || []), ...attachments], updatedAt: "Agora" }
           : ticket,
       ),
     }));
@@ -220,9 +221,7 @@ export function AppDataProvider({ children }) {
         ticket.id === ticketId
           ? {
               ...ticket,
-              attachments: (ticket.attachments || []).filter(
-                (attachment) => attachment.id !== attachmentId,
-              ),
+              attachments: (ticket.attachments || []).filter((attachment) => attachment.id !== attachmentId),
               updatedAt: "Agora",
             }
           : ticket,
@@ -232,19 +231,10 @@ export function AppDataProvider({ children }) {
 
   const addUser = (payload) => {
     let createdUser = null;
-
     setData((current) => {
-      createdUser = {
-        id: nextId("u", current.users || []),
-        ...sanitizeUserPayload(payload),
-      };
-
-      return {
-        ...current,
-        users: [createdUser, ...(current.users || [])],
-      };
+      createdUser = { id: nextId("u", current.users || []), ...sanitizeUserPayload(payload) };
+      return { ...current, users: [createdUser, ...(current.users || [])] };
     });
-
     return createdUser;
   };
 
@@ -264,12 +254,83 @@ export function AppDataProvider({ children }) {
     }));
   };
 
+  const addAsset = (payload) => {
+    setData((current) => ({
+      ...current,
+      assets: [{ id: nextId("asset", current.assets || []), ...payload }, ...(current.assets || [])],
+    }));
+  };
+
+  const updateAsset = (assetId, payload) => {
+    setData((current) => ({
+      ...current,
+      assets: current.assets.map((asset) => (asset.id === assetId ? { ...asset, ...payload } : asset)),
+    }));
+  };
+
+  const deleteAsset = (assetId) => {
+    setData((current) => ({
+      ...current,
+      assets: current.assets.filter((asset) => asset.id !== assetId),
+    }));
+  };
+
+  const addProject = (payload) => {
+    setData((current) => ({
+      ...current,
+      projects: [{ id: nextId("project", current.projects || []), ...payload }, ...(current.projects || [])],
+    }));
+  };
+
+  const updateProject = (projectId, payload) => {
+    setData((current) => ({
+      ...current,
+      projects: current.projects.map((project) =>
+        project.id === projectId ? { ...project, ...payload } : project,
+      ),
+    }));
+  };
+
+  const deleteProject = (projectId) => {
+    setData((current) => ({
+      ...current,
+      projects: current.projects.filter((project) => project.id !== projectId),
+    }));
+  };
+
+  const saveApiConfig = (payload, configId) => {
+    if (configId) {
+      setData((current) => ({
+        ...current,
+        apiConfigs: current.apiConfigs.map((config) =>
+          config.id === configId ? { ...config, ...payload } : config,
+        ),
+      }));
+      return;
+    }
+
+    setData((current) => ({
+      ...current,
+      apiConfigs: [{ id: nextId("api", current.apiConfigs || []), ...payload }, ...(current.apiConfigs || [])],
+    }));
+  };
+
+  const deleteApiConfig = (configId) => {
+    setData((current) => ({
+      ...current,
+      apiConfigs: current.apiConfigs.filter((config) => config.id !== configId),
+    }));
+  };
+
   const value = useMemo(
     () => ({
       summary,
       queues: queueStats,
       users: data.users || [],
       tickets: data.tickets,
+      assets: data.assets || [],
+      projects: data.projects || [],
+      apiConfigs: data.apiConfigs || [],
       reports: data.reports,
       createTicket,
       updateTicket,
@@ -279,6 +340,14 @@ export function AppDataProvider({ children }) {
       addUser,
       updateUser,
       deleteUser,
+      addAsset,
+      updateAsset,
+      deleteAsset,
+      addProject,
+      updateProject,
+      deleteProject,
+      saveApiConfig,
+      deleteApiConfig,
       toLocalDatetimeInput,
     }),
     [summary, queueStats, data],
@@ -289,8 +358,6 @@ export function AppDataProvider({ children }) {
 
 export function useAppData() {
   const context = useContext(AppDataContext);
-  if (!context) {
-    throw new Error("useAppData must be used within AppDataProvider");
-  }
+  if (!context) throw new Error("useAppData must be used within AppDataProvider");
   return context;
 }

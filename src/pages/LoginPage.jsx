@@ -34,24 +34,24 @@ function LoginPage() {
     <div className="login-shell">
       <section className="login-panel login-copy">
         <span className="eyebrow">TicketMind</span>
-        <h1>Plataforma profissional para operação de chamados.</h1>
+        <h1>Plataforma profissional para operacao de chamados.</h1>
         <p>
-          Registre solicitações, trate incidentes, acompanhe SLA e mantenha cada atendimento
-          documentado com histórico, responsáveis e anexos.
+          Registre solicitacoes, trate incidentes, acompanhe SLA e mantenha cada atendimento
+          documentado com historico, responsaveis e anexos.
         </p>
 
         <div className="feature-grid">
           <article className="feature-card">
             <strong>Fila operacional</strong>
-            <span>Lista de chamados com seleção rápida, prioridade, status e responsável.</span>
+            <span>Lista de chamados com selecao rapida, prioridade, status e responsavel.</span>
           </article>
           <article className="feature-card">
             <strong>Tratativa completa</strong>
-            <span>Atualize o ticket com descrição técnica, notas de resolução e evidências.</span>
+            <span>Atualize o ticket com descricao tecnica, notas de resolucao e evidencias.</span>
           </article>
           <article className="feature-card">
-            <strong>Base de apoio</strong>
-            <span>Documente procedimentos para reduzir retrabalho no atendimento.</span>
+            <strong>Operacao integrada</strong>
+            <span>Conecte atendimento, ativos, projetos e integracoes em uma unica rotina.</span>
           </article>
         </div>
       </section>
@@ -62,7 +62,7 @@ function LoginPage() {
             <span className="eyebrow">Acesso</span>
             <h2>Entrar no TicketMind</h2>
           </div>
-          <div className="status-pill">Ambiente de demonstração</div>
+          <div className="status-pill">Ambiente interno</div>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
@@ -71,7 +71,7 @@ function LoginPage() {
             <input
               autoComplete="username"
               onChange={updateField("email")}
-              placeholder="admin@ticketmind.local"
+              placeholder="usuario@empresa.com"
               type="email"
               value={form.email}
             />
@@ -90,14 +90,14 @@ function LoginPage() {
 
           {error ? <div className="form-alert">{error}</div> : null}
 
-          <button className="primary-button" disabled={submitting} type="submit">
+          <button className="primary-button interactive-button" disabled={submitting} type="submit">
             {submitting ? "Validando acesso..." : "Entrar"}
           </button>
 
           <div className="demo-box">
-            <strong>Acesso de demonstração</strong>
-            <span>E-mail: {demoCredentials.email}</span>
-            <span>Senha: {demoCredentials.password}</span>
+            <strong>Acesso inicial</strong>
+            <span>E-mail padrao: {demoCredentials.email}</span>
+            <span>Utilize a senha cadastrada para a conta.</span>
           </div>
         </form>
       </section>

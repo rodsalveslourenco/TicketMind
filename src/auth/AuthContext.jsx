@@ -1,26 +1,56 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { seedData } from "../data/seedData";
 
 const AuthContext = createContext(null);
-const STORAGE_KEY = "ticketmind-session";
+const SESSION_STORAGE_KEY = "ticketmind-session";
+const DATA_STORAGE_KEY = "ticketmind-data";
 
-const demoUser = {
-  id: "u-001",
-  name: "Rodrigo Alves",
-  email: "admin@ticketmind.local",
-  role: "Administrador",
-  team: "Operações de TI",
-};
+function readUsers() {
+  const rawData = window.localStorage.getItem(DATA_STORAGE_KEY);
+  if (!rawData) return seedData.users;
+
+  try {
+    const parsed = JSON.parse(rawData);
+    return parsed.users?.length ? parsed.users : seedData.users;
+  } catch {
+    return seedData.users;
+  }
+}
+
+function readDefaultUser() {
+  return readUsers().find((candidate) => candidate.email === seedData.currentUser.email) ?? seedData.currentUser;
+}
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const rawSession = window.sessionStorage.getItem(STORAGE_KEY);
+    const rawSession = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (rawSession) {
-      setSession(JSON.parse(rawSession));
+      const storedSession = JSON.parse(rawSession);
+      const currentUser = readUsers().find((candidate) => candidate.id === storedSession.user?.id);
+      setSession(currentUser ? { ...storedSession, user: currentUser } : storedSession);
     }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const syncSessionUser = () => {
+      setSession((current) => {
+        if (!current?.user?.id) return current;
+        const currentUser = readUsers().find((candidate) => candidate.id === current.user.id);
+        if (!currentUser) return current;
+        const nextSession = { ...current, user: currentUser };
+        window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+        return nextSession;
+      });
+    };
+
+    window.addEventListener("storage", syncSessionUser);
+    syncSessionUser();
+
+    return () => window.removeEventListener("storage", syncSessionUser);
   }, []);
 
   const login = async ({ email, password }) => {
@@ -28,22 +58,27 @@ export function AuthProvider({ children }) {
       throw new Error("Preencha email e senha para continuar.");
     }
 
-    if (email !== demoUser.email || password !== "TicketMind@2026") {
-      throw new Error("Credenciais inválidas. Use o acesso de demonstração.");
+    const currentUser = readUsers().find(
+      (candidate) =>
+        candidate.email.toLowerCase() === email.trim().toLowerCase() && candidate.password === password,
+    );
+
+    if (!currentUser) {
+      throw new Error("Credenciais invalidas.");
     }
 
     const nextSession = {
       token: "demo-secure-token",
-      user: demoUser,
+      user: currentUser,
       issuedAt: new Date().toISOString(),
     };
 
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
     setSession(nextSession);
   };
 
   const logout = () => {
-    window.sessionStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
     setSession(null);
   };
 
@@ -56,8 +91,8 @@ export function AuthProvider({ children }) {
       login,
       logout,
       demoCredentials: {
-        email: demoUser.email,
-        password: "TicketMind@2026",
+        email: readDefaultUser().email,
+        password: "",
       },
     }),
     [loading, session],

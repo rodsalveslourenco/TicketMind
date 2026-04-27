@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 
 const permissionFields = [
@@ -7,6 +8,12 @@ const permissionFields = [
   { key: "tickets_manage", label: "Gerenciar chamados" },
   { key: "users_view", label: "Ver usuarios" },
   { key: "users_manage", label: "Gerenciar usuarios" },
+  { key: "assets_view", label: "Ver ativos" },
+  { key: "assets_manage", label: "Gerenciar ativos" },
+  { key: "projects_view", label: "Ver projetos" },
+  { key: "projects_manage", label: "Gerenciar projetos" },
+  { key: "api_view", label: "Ver API REST" },
+  { key: "api_manage", label: "Gerenciar API REST" },
   { key: "reports_view", label: "Ver relatorios" },
   { key: "sla_manage", label: "Gerenciar SLA" },
 ];
@@ -17,6 +24,12 @@ const defaultPermissions = {
   tickets_manage: false,
   users_view: false,
   users_manage: false,
+  assets_view: true,
+  assets_manage: false,
+  projects_view: true,
+  projects_manage: false,
+  api_view: false,
+  api_manage: false,
   reports_view: false,
   sla_manage: false,
 };
@@ -31,18 +44,23 @@ const defaultUserForm = {
   permissions: defaultPermissions,
 };
 
+function maskPassword(password) {
+  return "*".repeat(Math.max(String(password || "").length, 8));
+}
+
 function UsersPage() {
+  const { user } = useAuth();
   const { addUser, deleteUser, updateUser, users } = useAppData();
   const [form, setForm] = useState(defaultUserForm);
   const [editingUserId, setEditingUserId] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [revealedUserIds, setRevealedUserIds] = useState([]);
 
+  const canRevealPasswords = user?.department === "TI";
   const orderedUsers = useMemo(() => users.slice().sort((left, right) => left.name.localeCompare(right.name)), [users]);
 
   const updateField = (field) => (event) => {
-    setForm((current) => ({
-      ...current,
-      [field]: event.target.value,
-    }));
+    setForm((current) => ({ ...current, [field]: event.target.value }));
   };
 
   const updatePermission = (permissionKey) => (event) => {
@@ -60,19 +78,22 @@ function UsersPage() {
     setEditingUserId(null);
   };
 
+  const flashNotice = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 1800);
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
-
-    if (!form.name || !form.email || !form.team || !form.password) {
-      return;
-    }
+    if (!form.name || !form.email || !form.team || !form.password) return;
 
     if (editingUserId) {
       updateUser(editingUserId, form);
+      flashNotice("Usuario atualizado.");
     } else {
       addUser(form);
+      flashNotice("Usuario cadastrado.");
     }
-
     resetForm();
   };
 
@@ -92,14 +113,22 @@ function UsersPage() {
     });
   };
 
+  const togglePassword = (userId) => {
+    if (!canRevealPasswords) return;
+    setRevealedUserIds((current) =>
+      current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId],
+    );
+  };
+
   return (
     <div className="users-page">
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
             <h2>{editingUserId ? "Editar usuario" : "Cadastro de usuarios"}</h2>
-            <span>Inclui senha, permissoes detalhadas e manutencao do cadastro.</span>
+            <span>Administracao de contas, perfis e acessos por modulo.</span>
           </div>
+          {notice ? <span className="status-pill status-pill-success">{notice}</span> : null}
         </div>
 
         <form className="glpi-ticket-form user-form" onSubmit={handleSubmit}>
@@ -114,7 +143,7 @@ function UsersPage() {
             </label>
             <label className="field-block">
               <span>Senha</span>
-              <input onChange={updateField("password")} type="text" value={form.password} />
+              <input onChange={updateField("password")} type="password" value={form.password} />
             </label>
             <label className="field-block">
               <span>Perfil</span>
@@ -156,11 +185,11 @@ function UsersPage() {
           </div>
 
           <div className="ticket-create-actions">
-            <button className="primary-button" type="submit">
+            <button className="primary-button interactive-button" type="submit">
               {editingUserId ? "Salvar usuario" : "Cadastrar usuario"}
             </button>
             {editingUserId ? (
-              <button className="ghost-button" onClick={resetForm} type="button">
+              <button className="ghost-button interactive-button" onClick={resetForm} type="button">
                 Cancelar edicao
               </button>
             ) : null}
@@ -172,7 +201,7 @@ function UsersPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Usuarios cadastrados</h2>
-            <span>Edite ou exclua usuarios e revise as permissoes por modulo.</span>
+            <span>Revise acessos, perfis e manutencao de contas.</span>
           </div>
         </div>
 
@@ -190,7 +219,16 @@ function UsersPage() {
               </div>
               <div className="user-password-row">
                 <strong>Senha:</strong>
-                <span>{candidate.password}</span>
+                <span>
+                  {canRevealPasswords && revealedUserIds.includes(candidate.id)
+                    ? candidate.password
+                    : maskPassword(candidate.password)}
+                </span>
+                {canRevealPasswords ? (
+                  <button className="ghost-link interactive-button" onClick={() => togglePassword(candidate.id)} type="button">
+                    {revealedUserIds.includes(candidate.id) ? "Ocultar" : "Revelar"}
+                  </button>
+                ) : null}
               </div>
               <div className="permissions-inline">
                 {permissionFields
@@ -202,10 +240,17 @@ function UsersPage() {
                   ))}
               </div>
               <div className="ticket-create-actions">
-                <button className="ghost-button" onClick={() => handleEdit(candidate)} type="button">
+                <button className="ghost-button interactive-button" onClick={() => handleEdit(candidate)} type="button">
                   Editar
                 </button>
-                <button className="danger-button" onClick={() => deleteUser(candidate.id)} type="button">
+                <button
+                  className="danger-button interactive-button"
+                  onClick={() => {
+                    deleteUser(candidate.id);
+                    flashNotice("Usuario removido.");
+                  }}
+                  type="button"
+                >
                   Excluir
                 </button>
               </div>

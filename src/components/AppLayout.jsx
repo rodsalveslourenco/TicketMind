@@ -3,14 +3,18 @@ import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 
 const navigation = [
-  { to: "/app/dashboard", label: "Visao geral" },
-  { to: "/app/tickets", label: "Chamados" },
-  { to: "/app/users", label: "Usuarios" },
+  { to: "/app/dashboard", label: "Dashboard", permission: "dashboard" },
+  { to: "/app/tickets", label: "Chamados", permission: "tickets_view" },
+  { to: "/app/assets", label: "Ativos", permission: "assets_view" },
+  { to: "/app/projects", label: "Projetos", permission: "projects_view" },
+  { to: "/app/api-rest", label: "API REST", permission: "api_view" },
+  { to: "/app/users", label: "Usuarios", permission: "users_view" },
 ];
 
 function AppLayout() {
   const { user, logout } = useAuth();
   const { summary } = useAppData();
+  const availableNavigation = navigation.filter((item) => user?.permissions?.[item.permission] ?? true);
 
   return (
     <div className="app-shell">
@@ -19,15 +23,15 @@ function AppLayout() {
           <div className="brand-mark">TM</div>
           <div>
             <strong>TicketMind</strong>
-            <span>Service desk e gestao de chamados</span>
+            <span>Operacao integrada de atendimento</span>
           </div>
         </div>
 
         <nav className="sidebar-nav">
-          {navigation.map((item) => (
+          {availableNavigation.map((item) => (
             <NavLink
               key={item.to}
-              className={({ isActive }) => `nav-link${isActive ? " is-active" : ""}`}
+              className={({ isActive }) => `nav-link interactive-button${isActive ? " is-active" : ""}`}
               to={item.to}
             >
               {item.label}
@@ -36,27 +40,27 @@ function AppLayout() {
         </nav>
 
         <div className="sidebar-card">
-          <span className="eyebrow">Monitoramento</span>
-          <strong>{summary.slaCompliance}% dos chamados no prazo</strong>
-          <p>{summary.criticalOpen} chamados criticos em tratamento no momento.</p>
+          <span className="eyebrow">Resumo operacional</span>
+          <strong>{summary.slaCompliance}% dos chamados dentro do prazo</strong>
+          <p>
+            {summary.openTickets} itens em fila, {summary.activeProjects} projetos ativos e{" "}
+            {summary.activeApis} APIs em operacao.
+          </p>
         </div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
           <div>
-            <h1>Central de atendimento</h1>
-            <p>Controle a fila, acompanhe o atendimento e trate cada chamado com contexto completo.</p>
+            <h1>Central de operacoes</h1>
+            <p>Atendimento, ativos, integracoes e projetos em uma unica trilha operacional.</p>
           </div>
-
           <div className="topbar-actions">
             <div className="user-badge">
               <strong>{user?.name}</strong>
-              <span>
-                {user?.role} • {user?.team}
-              </span>
+              <span>{user?.role} | {user?.team}</span>
             </div>
-            <button className="ghost-button" onClick={logout} type="button">
+            <button className="ghost-button interactive-button" onClick={logout} type="button">
               Sair
             </button>
           </div>
@@ -67,8 +71,8 @@ function AppLayout() {
         </main>
 
         <footer className="app-footer">
-          <span>TicketMind e um produto SysteMind.</span>
-          <span>Projetado para operacoes de atendimento com padrao profissional.</span>
+          <span>TicketMind | Operacao profissional de service desk</span>
+          <span>Atendimento, governanca e integracao em um unico fluxo</span>
         </footer>
       </div>
     </div>

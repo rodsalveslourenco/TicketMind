@@ -66,8 +66,9 @@ function normalizeText(value) {
 
 function getPriorityBadgeClass(priority) {
   const normalized = normalizeText(priority);
-  if (normalized === "critica") return "badge-crítica";
+  if (normalized === "critica") return "badge-critica";
   if (normalized === "alta") return "badge-alta";
+  if (normalized === "baixa") return "badge-baixa";
   return "badge-neutral";
 }
 
@@ -98,6 +99,7 @@ function TicketsPage() {
   const [watcherQuery, setWatcherQuery] = useState("");
   const [detailTicketId, setDetailTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
+  const [notice, setNotice] = useState("");
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
@@ -137,6 +139,11 @@ function TicketsPage() {
       .slice(0, 6);
   }, [createForm.watchers, user?.id, users, watcherQuery]);
 
+  const flashNotice = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 1800);
+  };
+
   useEffect(() => {
     if (!detailTicket) {
       setDetailForm(null);
@@ -174,7 +181,7 @@ function TicketsPage() {
 
     const handleEscape = (event) => {
       if (event.key === "Escape") {
-        handleCloseCreateModal();
+        setShowCreateForm(false);
       }
     };
 
@@ -261,6 +268,7 @@ function TicketsPage() {
       dueDate: createForm.dueDate || "",
     });
 
+    flashNotice("Chamado criado.");
     handleCloseCreateModal();
   };
 
@@ -273,12 +281,14 @@ function TicketsPage() {
       openedAt: toIsoOrEmpty(detailForm.openedAt),
       dueDate: detailForm.dueDate || "",
     });
+    flashNotice("Chamado atualizado.");
   };
 
   const handleDeleteTicket = () => {
     if (!detailTicket) return;
     deleteTicket(detailTicket.id);
     setDetailTicketId(null);
+    flashNotice("Chamado removido.");
   };
 
   const handleDetailAttachments = async (event) => {
@@ -287,6 +297,7 @@ function TicketsPage() {
 
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
     addTicketAttachments(detailTicket.id, attachments);
+    flashNotice("Anexos adicionados.");
     event.target.value = "";
   };
 
@@ -296,18 +307,21 @@ function TicketsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Fila de chamados</h2>
-            <span>Clique duplo em um chamado para abrir os detalhes em pop-up.</span>
+            <span>Duplo clique para abrir o registro completo.</span>
           </div>
-          <button className="primary-button" onClick={handleOpenCreateModal} type="button">
-            + Criar chamado
-          </button>
+          <div className="ticket-create-actions">
+            {notice ? <span className="status-pill status-pill-success">{notice}</span> : null}
+            <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
+              + Criar chamado
+            </button>
+          </div>
         </div>
 
         <div className="toolbar glpi-filter-bar">
           {["Todos", "Incidente", "Requisicao", "Aguardando aprovacao", "Proximos do SLA"].map((item) => (
             <button
               key={item}
-              className={`filter-pill${filter === item ? " is-active" : ""}`}
+              className={`filter-pill interactive-button${filter === item ? " is-active" : ""}`}
               onClick={() => setFilter(item)}
               type="button"
             >
@@ -319,7 +333,7 @@ function TicketsPage() {
         <div className="ticket-rows ticket-rows-wide">
           {filteredTickets.map((ticket) => (
             <button
-              className="ticket-row-card"
+              className="ticket-row-card interactive-button"
               key={ticket.id}
               onDoubleClick={() => setDetailTicketId(ticket.id)}
               type="button"
@@ -357,9 +371,9 @@ function TicketsPage() {
               <div className="ticket-modal-header">
                 <div className="form-section-header">
                   <strong>Abertura de chamado</strong>
-                  <span>Solicitante travado no usuario logado.</span>
+                  <span>Registro de incidente, requisicao ou problema.</span>
                 </div>
-                <button className="ghost-button" onClick={handleCloseCreateModal} type="button">
+                <button className="ghost-button interactive-button" onClick={handleCloseCreateModal} type="button">
                   Fechar
                 </button>
               </div>
@@ -381,7 +395,7 @@ function TicketsPage() {
                   <span>Solicitante</span>
                   <div className="requester-stamp">
                     <strong>{user?.name || "Usuario nao identificado"}</strong>
-                    <small>{user ? `${user.email} • ${user.role}` : "Faca login para registrar o solicitante."}</small>
+                    <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
                   </div>
                 </div>
                 <label className="field-block">
@@ -440,13 +454,13 @@ function TicketsPage() {
                       <div className="watcher-suggestions">
                         {watcherSuggestions.map((candidate) => (
                           <button
-                            className="watcher-suggestion"
+                            className="watcher-suggestion interactive-button"
                             key={candidate.id}
                             onClick={() => handleAddWatcher(candidate)}
                             type="button"
                           >
                             <strong>{candidate.name}</strong>
-                            <small>{candidate.email} • {candidate.team}</small>
+                            <small>{candidate.email} | {candidate.team}</small>
                           </button>
                         ))}
                       </div>
@@ -460,7 +474,11 @@ function TicketsPage() {
               </div>
 
               <div className="attachment-toolbar glpi-subbar">
-                <button className="ghost-button" onClick={() => createInputRef.current?.click()} type="button">
+                <button
+                  className="ghost-button interactive-button"
+                  onClick={() => createInputRef.current?.click()}
+                  type="button"
+                >
                   Anexar arquivos
                 </button>
                 <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
@@ -479,10 +497,10 @@ function TicketsPage() {
               ) : null}
 
               <div className="ticket-create-actions">
-                <button className="primary-button" type="submit">
+                <button className="primary-button interactive-button" type="submit">
                   Registrar chamado
                 </button>
-                <button className="ghost-button" onClick={handleCloseCreateModal} type="button">
+                <button className="ghost-button interactive-button" onClick={handleCloseCreateModal} type="button">
                   Cancelar
                 </button>
               </div>
@@ -505,14 +523,18 @@ function TicketsPage() {
                   <h2>{detailTicket.id}</h2>
                   <span className="modal-subtitle">
                     Aberto em {detailTicket.openedAtLabel}
-                    {detailTicket.dueDateLabel ? ` • limite ${detailTicket.dueDateLabel}` : ""}
+                    {detailTicket.dueDateLabel ? ` | limite ${detailTicket.dueDateLabel}` : ""}
                   </span>
                 </div>
                 <div className="ticket-detail-actions">
-                  <button className="ghost-button" onClick={() => setDetailTicketId(null)} type="button">
+                  <button
+                    className="ghost-button interactive-button"
+                    onClick={() => setDetailTicketId(null)}
+                    type="button"
+                  >
                     Fechar
                   </button>
-                  <button className="danger-button" onClick={handleDeleteTicket} type="button">
+                  <button className="danger-button interactive-button" onClick={handleDeleteTicket} type="button">
                     Excluir
                   </button>
                 </div>
@@ -572,7 +594,7 @@ function TicketsPage() {
                         <option value="">Selecione um tecnico de TI</option>
                         {tiUsers.map((candidate) => (
                           <option key={candidate.id} value={candidate.name}>
-                            {candidate.name} • {candidate.team}
+                            {candidate.name} | {candidate.team}
                           </option>
                         ))}
                       </select>
@@ -625,7 +647,11 @@ function TicketsPage() {
                     <strong>Anexos</strong>
                     <span>Prints, documentos e evidencias vinculadas ao chamado.</span>
                   </div>
-                  <button className="ghost-button" onClick={() => detailInputRef.current?.click()} type="button">
+                  <button
+                    className="ghost-button interactive-button"
+                    onClick={() => detailInputRef.current?.click()}
+                    type="button"
+                  >
                     Adicionar anexos
                   </button>
                   <input hidden multiple onChange={handleDetailAttachments} ref={detailInputRef} type="file" />
@@ -644,8 +670,11 @@ function TicketsPage() {
                             Baixar
                           </a>
                           <button
-                            className="ghost-link danger-link"
-                            onClick={() => removeTicketAttachment(detailTicket.id, attachment.id)}
+                            className="ghost-link danger-link interactive-button"
+                            onClick={() => {
+                              removeTicketAttachment(detailTicket.id, attachment.id);
+                              flashNotice("Anexo removido.");
+                            }}
                             type="button"
                           >
                             Remover
@@ -663,7 +692,7 @@ function TicketsPage() {
               </div>
 
               <div className="ticket-create-actions">
-                <button className="primary-button" type="submit">
+                <button className="primary-button interactive-button" type="submit">
                   Salvar alteracoes
                 </button>
               </div>
