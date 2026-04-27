@@ -550,6 +550,31 @@ textarea:focus {
   gap: 1rem;
 }
 
+.ticket-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: rgba(26, 39, 52, 0.42);
+  backdrop-filter: blur(6px);
+}
+
+.ticket-modal {
+  width: min(880px, 100%);
+  max-height: calc(100vh - 2.4rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.ticket-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .glpi-ticket-form,
 .ticket-attachment-panel {
   margin-bottom: 1rem;
@@ -584,6 +609,24 @@ textarea:focus {
   font-weight: 700;
 }
 
+.requester-stamp {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 42px;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.requester-stamp strong {
+  display: block;
+}
+
+.requester-stamp small {
+  color: var(--muted);
+}
+
 .field-full {
   grid-column: 1 / -1;
 }
@@ -599,6 +642,74 @@ textarea:focus {
   align-items: center;
   gap: 0.7rem;
   flex-wrap: wrap;
+}
+
+.watcher-picker {
+  position: relative;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.watcher-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.watcher-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid #c7d5e2;
+  background: #eef4f9;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.watcher-chip button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.watcher-suggestions {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 16px 32px rgba(34, 52, 70, 0.12);
+}
+
+.watcher-suggestion {
+  display: grid;
+  gap: 0.12rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.watcher-suggestion:hover {
+  background: #edf3f8;
+}
+
+.watcher-suggestion small {
+  color: var(--muted);
 }
 
 .ticket-rows {

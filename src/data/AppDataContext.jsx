@@ -54,17 +54,24 @@ function nextId(prefix, list) {
   return `${prefix}-${list.length + 1}-${Date.now().toString(36)}`;
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function computePriority(urgency, impact) {
   const scoreMap = {
-    Baixa: 1,
-    Média: 2,
-    Alta: 3,
-    Crítica: 4,
+    baixa: 1,
+    media: 2,
+    alta: 3,
+    critica: 4,
   };
-  const score = Math.max(scoreMap[urgency] ?? 2, scoreMap[impact] ?? 2);
+  const score = Math.max(scoreMap[normalizeText(urgency)] ?? 2, scoreMap[normalizeText(impact)] ?? 2);
 
   if (score >= 4) {
-    return "Crítica";
+    return "Critica";
   }
 
   if (score === 3) {
@@ -72,22 +79,24 @@ function computePriority(urgency, impact) {
   }
 
   if (score === 2) {
-    return "Média";
+    return "Media";
   }
 
   return "Baixa";
 }
 
 function computeSla(priority) {
-  if (priority === "Crítica") {
+  const normalizedPriority = normalizeText(priority);
+
+  if (normalizedPriority === "critica") {
     return "15 min";
   }
 
-  if (priority === "Alta") {
+  if (normalizedPriority === "alta") {
     return "1h";
   }
 
-  if (priority === "Média") {
+  if (normalizedPriority === "media") {
     return "4h";
   }
 
@@ -102,15 +111,15 @@ export function AppDataProvider({ children }) {
   }, [data]);
 
   const summary = useMemo(() => {
-    const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovação", "Análise"];
+    const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovacao", "Analise"];
     const openTickets = data.tickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
     const criticalOpen = data.tickets.filter(
-      (ticket) => ticket.priority === "Crítica" && openStatuses.includes(ticket.status),
+      (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.includes(ticket.status),
     ).length;
     const waitingApproval = data.tickets.filter(
-      (ticket) => ticket.status === "Aguardando aprovação",
+      (ticket) => normalizeText(ticket.status) === "aguardando aprovacao",
     ).length;
-    const solved = data.tickets.filter((ticket) => ticket.status === "Resolvido").length;
+    const solved = data.tickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
     const slaCompliance = openTickets
       ? Number((((openTickets - waitingApproval) / openTickets) * 100).toFixed(1))
       : 100;
@@ -146,16 +155,16 @@ export function AppDataProvider({ children }) {
 
     setData((current) => {
       const typeCodeMap = {
-        Incidente: "INC",
-        Requisição: "REQ",
-        Problema: "PRB",
+        incidente: "INC",
+        requisicao: "REQ",
+        problema: "PRB",
       };
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
       const openedAt = payload.openedAt || new Date().toISOString();
       const priority = computePriority(payload.urgency, payload.impact);
 
       createdTicket = {
-        id: `${typeCodeMap[payload.type] ?? "TCK"}-${nextNumber}`,
+        id: `${typeCodeMap[normalizeText(payload.type)] ?? "TCK"}-${nextNumber}`,
         title: payload.title,
         type: payload.type,
         priority,
@@ -277,6 +286,7 @@ export function AppDataProvider({ children }) {
     () => ({
       summary,
       queues: queueStats,
+      users: data.users || [],
       tickets: data.tickets,
       knowledgeArticles: data.knowledgeArticles,
       reports: data.reports,
