@@ -38,7 +38,7 @@ export const seedData = {
     role: "Administrador",
     team: "Operacoes de TI",
     department: "TI",
-    password: "TicketMind@2026",
+    password: "admin0123",
     permissions: adminPermissions,
   },
   users: [
@@ -49,7 +49,7 @@ export const seedData = {
       role: "Administrador",
       team: "Operacoes de TI",
       department: "TI",
-      password: "TicketMind@2026",
+      password: "admin0123",
       permissions: adminPermissions,
     },
     {

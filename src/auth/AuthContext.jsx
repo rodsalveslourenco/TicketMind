@@ -5,15 +5,21 @@ const AuthContext = createContext(null);
 const SESSION_STORAGE_KEY = "ticketmind-session";
 const DATA_STORAGE_KEY = "ticketmind-data";
 
+function normalizeAdminPassword(users) {
+  return (users || []).map((candidate) =>
+    candidate.email === "admin@ticketmind.local" ? { ...candidate, password: "admin0123" } : candidate,
+  );
+}
+
 function readUsers() {
   const rawData = window.localStorage.getItem(DATA_STORAGE_KEY);
-  if (!rawData) return seedData.users;
+  if (!rawData) return normalizeAdminPassword(seedData.users);
 
   try {
     const parsed = JSON.parse(rawData);
-    return parsed.users?.length ? parsed.users : seedData.users;
+    return parsed.users?.length ? normalizeAdminPassword(parsed.users) : normalizeAdminPassword(seedData.users);
   } catch {
-    return seedData.users;
+    return normalizeAdminPassword(seedData.users);
   }
 }
 
