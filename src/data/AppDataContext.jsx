@@ -17,11 +17,29 @@ function hydrateUsers(users) {
   }));
 }
 
+function mergeCatalogItems(storedItems, seedItems, identityBuilder) {
+  const currentItems = Array.isArray(storedItems) ? storedItems : [];
+  const identities = new Set(currentItems.map(identityBuilder));
+  const missingSeedItems = seedItems.filter((item) => !identities.has(identityBuilder(item)));
+  return [...currentItems, ...missingSeedItems];
+}
+
 function mergeCollections(stored) {
   const users = hydrateUsers(stored?.users);
   const currentUser =
     users.find((candidate) => candidate.email === seedData.currentUser.email) ??
     { ...seedData.currentUser, password: "admin0123" };
+
+  const brands = mergeCatalogItems(
+    stored?.brands,
+    seedData.brands,
+    (brand) => `${normalizeText(brand.assetType)}::${normalizeText(brand.name)}`,
+  );
+  const models = mergeCatalogItems(
+    stored?.models,
+    seedData.models,
+    (model) => `${normalizeText(model.assetType)}::${normalizeText(model.brandName)}::${normalizeText(model.name)}`,
+  );
 
   return {
     ...seedData,
@@ -31,8 +49,8 @@ function mergeCollections(stored) {
     queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
     tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
-    brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
-    models: Array.isArray(stored?.models) ? stored.models : seedData.models,
+    brands,
+    models,
     projects: Array.isArray(stored?.projects) ? stored.projects : seedData.projects,
     apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
     reports: Array.isArray(stored?.reports) && stored.reports.length ? stored.reports : seedData.reports,
@@ -515,3 +533,4 @@ export function useAppData() {
   if (!context) throw new Error("useAppData must be used within AppDataProvider");
   return context;
 }
+
