@@ -6,7 +6,6 @@ const AppDataContext = createContext(null);
 
 function readInitialState() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
-
   if (!stored) {
     return seedData;
   }
@@ -23,9 +22,7 @@ function formatDate(isoValue) {
     return "";
   }
 
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-  }).format(new Date(isoValue));
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(isoValue));
 }
 
 function formatTimestamp(isoValue) {
@@ -46,7 +43,6 @@ function toLocalDatetimeInput(isoValue) {
 
   const date = new Date(isoValue);
   const pad = (value) => String(value).padStart(2, "0");
-
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
@@ -62,44 +58,20 @@ function normalizeText(value) {
 }
 
 function computePriority(urgency, impact) {
-  const scoreMap = {
-    baixa: 1,
-    media: 2,
-    alta: 3,
-    critica: 4,
-  };
+  const scoreMap = { baixa: 1, media: 2, alta: 3, critica: 4 };
   const score = Math.max(scoreMap[normalizeText(urgency)] ?? 2, scoreMap[normalizeText(impact)] ?? 2);
 
-  if (score >= 4) {
-    return "Critica";
-  }
-
-  if (score === 3) {
-    return "Alta";
-  }
-
-  if (score === 2) {
-    return "Media";
-  }
-
+  if (score >= 4) return "Critica";
+  if (score === 3) return "Alta";
+  if (score === 2) return "Media";
   return "Baixa";
 }
 
 function computeSla(priority) {
   const normalizedPriority = normalizeText(priority);
-
-  if (normalizedPriority === "critica") {
-    return "15 min";
-  }
-
-  if (normalizedPriority === "alta") {
-    return "1h";
-  }
-
-  if (normalizedPriority === "media") {
-    return "4h";
-  }
-
+  if (normalizedPriority === "critica") return "15 min";
+  if (normalizedPriority === "alta") return "1h";
+  if (normalizedPriority === "media") return "4h";
   return "8h";
 }
 
@@ -140,7 +112,6 @@ export function AppDataProvider({ children }) {
     () =>
       data.queues.map((queue) => {
         const queueTickets = data.tickets.filter((ticket) => ticket.queue === queue.name);
-
         return {
           ...queue,
           open: queueTickets.length,
@@ -154,11 +125,7 @@ export function AppDataProvider({ children }) {
     let createdTicket = null;
 
     setData((current) => {
-      const typeCodeMap = {
-        incidente: "INC",
-        requisicao: "REQ",
-        problema: "PRB",
-      };
+      const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
       const openedAt = payload.openedAt || new Date().toISOString();
       const priority = computePriority(payload.urgency, payload.impact);
@@ -172,7 +139,7 @@ export function AppDataProvider({ children }) {
         impact: payload.impact,
         status: "Aberto",
         requester: payload.requester,
-        assignee: "Triagem",
+        assignee: payload.assignee || "Triagem TI",
         queue: payload.queue,
         category: payload.category,
         source: payload.source,
@@ -268,18 +235,26 @@ export function AppDataProvider({ children }) {
     }));
   };
 
-  const addKnowledgeArticle = (payload) => {
-    setData((current) => ({
-      ...current,
-      knowledgeArticles: [
-        {
-          id: nextId("kb", current.knowledgeArticles),
-          lastUpdate: formatDate(new Date().toISOString()),
-          ...payload,
-        },
-        ...current.knowledgeArticles,
-      ],
-    }));
+  const addUser = (payload) => {
+    let createdUser = null;
+
+    setData((current) => {
+      createdUser = {
+        id: nextId("u", current.users || []),
+        name: payload.name,
+        email: payload.email,
+        role: payload.role,
+        team: payload.team,
+        department: payload.department,
+      };
+
+      return {
+        ...current,
+        users: [createdUser, ...(current.users || [])],
+      };
+    });
+
+    return createdUser;
   };
 
   const value = useMemo(
@@ -295,7 +270,7 @@ export function AppDataProvider({ children }) {
       deleteTicket,
       addTicketAttachments,
       removeTicketAttachment,
-      addKnowledgeArticle,
+      addUser,
       toLocalDatetimeInput,
     }),
     [summary, queueStats, data],
@@ -306,10 +281,8 @@ export function AppDataProvider({ children }) {
 
 export function useAppData() {
   const context = useContext(AppDataContext);
-
   if (!context) {
     throw new Error("useAppData must be used within AppDataProvider");
   }
-
   return context;
 }

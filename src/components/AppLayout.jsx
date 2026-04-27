@@ -3,9 +3,9 @@ import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 
 const navigation = [
-  { to: "/app/dashboard", label: "Visão geral" },
+  { to: "/app/dashboard", label: "Visao geral" },
   { to: "/app/tickets", label: "Chamados" },
-  { to: "/app/knowledge", label: "Conhecimento" },
+  { to: "/app/users", label: "Usuarios" },
 ];
 
 function AppLayout() {
@@ -19,7 +19,7 @@ function AppLayout() {
           <div className="brand-mark">TM</div>
           <div>
             <strong>TicketMind</strong>
-            <span>Service desk e gestão de chamados</span>
+            <span>Service desk e gestao de chamados</span>
           </div>
         </div>
 
@@ -38,7 +38,7 @@ function AppLayout() {
         <div className="sidebar-card">
           <span className="eyebrow">Monitoramento</span>
           <strong>{summary.slaCompliance}% dos chamados no prazo</strong>
-          <p>{summary.criticalOpen} chamados críticos em tratamento no momento.</p>
+          <p>{summary.criticalOpen} chamados criticos em tratamento no momento.</p>
         </div>
       </aside>
 
@@ -67,8 +67,8 @@ function AppLayout() {
         </main>
 
         <footer className="app-footer">
-          <span>TicketMind é um produto SysteMind.</span>
-          <span>Projetado para operações de atendimento com padrão profissional.</span>
+          <span>TicketMind e um produto SysteMind.</span>
+          <span>Projetado para operacoes de atendimento com padrao profissional.</span>
         </footer>
       </div>
     </div>

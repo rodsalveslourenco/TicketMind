@@ -5,7 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import TicketsPage from "./pages/TicketsPage";
-import KnowledgePage from "./pages/KnowledgePage";
+import UsersPage from "./pages/UsersPage";
 
 function App() {
   const { isAuthenticated } = useAuth();
@@ -28,7 +28,7 @@ function App() {
         <Route element={<Navigate replace to="/app/dashboard" />} index />
         <Route element={<DashboardPage />} path="dashboard" />
         <Route element={<TicketsPage />} path="tickets" />
-        <Route element={<KnowledgePage />} path="knowledge" />
+        <Route element={<UsersPage />} path="users" />
       </Route>
 
       <Route

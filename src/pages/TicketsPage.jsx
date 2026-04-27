@@ -28,7 +28,7 @@ const detailFields = [
   { key: "dueDate", label: "Data limite", kind: "date" },
   { key: "openedAt", label: "Abertura", kind: "datetime" },
   { key: "watchers", label: "Observadores", kind: "input" },
-  { key: "assignee", label: "Tecnico responsavel", kind: "input" },
+  { key: "assignee", label: "Tecnico responsavel", kind: "assignee" },
 ];
 
 function readFileAsDataUrl(file) {
@@ -48,14 +48,8 @@ function readFileAsDataUrl(file) {
 }
 
 function formatBytes(size) {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
@@ -72,15 +66,8 @@ function normalizeText(value) {
 
 function getPriorityBadgeClass(priority) {
   const normalized = normalizeText(priority);
-
-  if (normalized === "critica") {
-    return "badge-crítica";
-  }
-
-  if (normalized === "alta") {
-    return "badge-alta";
-  }
-
+  if (normalized === "critica") return "badge-crítica";
+  if (normalized === "alta") return "badge-alta";
   return "badge-neutral";
 }
 
@@ -109,17 +96,19 @@ function TicketsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
-  const [selectedTicketId, setSelectedTicketId] = useState(tickets[0]?.id ?? null);
+  const [detailTicketId, setDetailTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
 
-  const filteredTickets = useMemo(() => {
-    if (filter === "Todos") {
-      return tickets;
-    }
+  const tiUsers = useMemo(
+    () => users.filter((candidate) => normalizeText(candidate.department) === "ti"),
+    [users],
+  );
 
+  const filteredTickets = useMemo(() => {
+    if (filter === "Todos") return tickets;
     if (filter === "Proximos do SLA") {
       return tickets.filter((ticket) => ticket.sla.toLowerCase().includes("min"));
     }
@@ -131,23 +120,17 @@ function TicketsPage() {
     );
   }, [filter, tickets]);
 
-  const selectedTicket =
-    filteredTickets.find((ticket) => ticket.id === selectedTicketId) ??
-    tickets.find((ticket) => ticket.id === selectedTicketId) ??
-    filteredTickets[0] ??
-    null;
+  const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
 
   const watcherSuggestions = useMemo(() => {
     const query = normalizeText(watcherQuery);
-    if (!query) {
-      return [];
-    }
+    if (!query) return [];
 
     return users
       .filter((candidate) => candidate.id !== user?.id)
       .filter((candidate) => !createForm.watchers.some((watcher) => watcher.id === candidate.id))
       .filter((candidate) =>
-        [candidate.name, candidate.email, candidate.team].some((value) =>
+        [candidate.name, candidate.email, candidate.team, candidate.department].some((value) =>
           normalizeText(value).includes(query),
         ),
       )
@@ -155,39 +138,33 @@ function TicketsPage() {
   }, [createForm.watchers, user?.id, users, watcherQuery]);
 
   useEffect(() => {
-    if (!selectedTicket && filteredTickets[0]) {
-      setSelectedTicketId(filteredTickets[0].id);
+    if (!detailTicket) {
+      setDetailForm(null);
       return;
     }
 
-    if (selectedTicket) {
-      setDetailForm({
-        title: selectedTicket.title,
-        description: selectedTicket.description,
-        resolutionNotes: selectedTicket.resolutionNotes || "",
-        type: selectedTicket.type,
-        status: selectedTicket.status,
-        queue: selectedTicket.queue,
-        requester: selectedTicket.requester,
-        assignee: selectedTicket.assignee,
-        source: selectedTicket.source,
-        category: selectedTicket.category,
-        location: selectedTicket.location || "",
-        urgency: selectedTicket.urgency || "Media",
-        impact: selectedTicket.impact || "Media",
-        openedAt: toLocalDatetimeInput(selectedTicket.openedAt),
-        dueDate: selectedTicket.dueDate ? selectedTicket.dueDate.slice(0, 10) : "",
-        watchers: selectedTicket.watchers || "",
-      });
-    } else {
-      setDetailForm(null);
-    }
-  }, [selectedTicket, filteredTickets, toLocalDatetimeInput]);
+    setDetailForm({
+      title: detailTicket.title,
+      description: detailTicket.description,
+      resolutionNotes: detailTicket.resolutionNotes || "",
+      type: detailTicket.type,
+      status: detailTicket.status,
+      queue: detailTicket.queue,
+      requester: detailTicket.requester,
+      assignee: detailTicket.assignee,
+      source: detailTicket.source,
+      category: detailTicket.category,
+      location: detailTicket.location || "",
+      urgency: detailTicket.urgency || "Media",
+      impact: detailTicket.impact || "Media",
+      openedAt: toLocalDatetimeInput(detailTicket.openedAt),
+      dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
+      watchers: detailTicket.watchers || "",
+    });
+  }, [detailTicket, toLocalDatetimeInput]);
 
   useEffect(() => {
-    if (!showCreateForm) {
-      return undefined;
-    }
+    if (!showCreateForm) return undefined;
 
     const handlePointerDown = (event) => {
       if (watcherBoxRef.current && !watcherBoxRef.current.contains(event.target)) {
@@ -210,6 +187,19 @@ function TicketsPage() {
     };
   }, [showCreateForm]);
 
+  useEffect(() => {
+    if (!detailTicketId) return undefined;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setDetailTicketId(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [detailTicketId]);
+
   const updateCreateField = (field) => (event) =>
     setCreateForm((current) => ({ ...current, [field]: event.target.value }));
 
@@ -218,9 +208,7 @@ function TicketsPage() {
 
   const handleCreateAttachments = async (event) => {
     const nextFiles = Array.from(event.target.files || []);
-    if (!nextFiles.length) {
-      return;
-    }
+    if (!nextFiles.length) return;
 
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
     setCreateForm((current) => ({
@@ -259,34 +247,28 @@ function TicketsPage() {
 
   const handleCreateSubmit = (event) => {
     event.preventDefault();
+    if (!createForm.title || !user?.name || !createForm.description) return;
 
-    if (!createForm.title || !user?.name || !createForm.description) {
-      return;
-    }
-
-    const createdTicket = createTicket({
+    createTicket({
       ...createForm,
       requester: user.name,
       queue: "Service Desk",
       category: "Geral",
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
+      assignee: "Triagem TI",
       openedAt: toIsoOrEmpty(createForm.openedAt) || new Date().toISOString(),
       dueDate: createForm.dueDate || "",
     });
 
     handleCloseCreateModal();
-    setSelectedTicketId(createdTicket?.id ?? null);
   };
 
   const handleSaveTicket = (event) => {
     event.preventDefault();
+    if (!detailTicket || !detailForm?.title || !detailForm?.requester) return;
 
-    if (!selectedTicket || !detailForm?.title || !detailForm?.requester) {
-      return;
-    }
-
-    updateTicket(selectedTicket.id, {
+    updateTicket(detailTicket.id, {
       ...detailForm,
       openedAt: toIsoOrEmpty(detailForm.openedAt),
       dueDate: detailForm.dueDate || "",
@@ -294,34 +276,27 @@ function TicketsPage() {
   };
 
   const handleDeleteTicket = () => {
-    if (!selectedTicket) {
-      return;
-    }
-
-    const currentIndex = tickets.findIndex((ticket) => ticket.id === selectedTicket.id);
-    const fallbackTicket = tickets[currentIndex + 1] || tickets[currentIndex - 1] || null;
-    deleteTicket(selectedTicket.id);
-    setSelectedTicketId(fallbackTicket?.id ?? null);
+    if (!detailTicket) return;
+    deleteTicket(detailTicket.id);
+    setDetailTicketId(null);
   };
 
   const handleDetailAttachments = async (event) => {
     const nextFiles = Array.from(event.target.files || []);
-    if (!nextFiles.length || !selectedTicket) {
-      return;
-    }
+    if (!nextFiles.length || !detailTicket) return;
 
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
-    addTicketAttachments(selectedTicket.id, attachments);
+    addTicketAttachments(detailTicket.id, attachments);
     event.target.value = "";
   };
 
   return (
-    <div className="ticket-workspace">
+    <div className="ticket-page">
       <section className="ticket-list-panel board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
             <h2>Fila de chamados</h2>
-            <span>Painel operacional com abertura, triagem e acompanhamento.</span>
+            <span>Clique duplo em um chamado para abrir os detalhes em pop-up.</span>
           </div>
           <button className="primary-button" onClick={handleOpenCreateModal} type="button">
             + Criar chamado
@@ -341,12 +316,12 @@ function TicketsPage() {
           ))}
         </div>
 
-        <div className="ticket-rows">
+        <div className="ticket-rows ticket-rows-wide">
           {filteredTickets.map((ticket) => (
             <button
-              className={`ticket-row-card${ticket.id === selectedTicket?.id ? " is-selected" : ""}`}
+              className="ticket-row-card"
               key={ticket.id}
-              onClick={() => setSelectedTicketId(ticket.id)}
+              onDoubleClick={() => setDetailTicketId(ticket.id)}
               type="button"
             >
               <div className="ticket-row-main">
@@ -377,13 +352,12 @@ function TicketsPage() {
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="ticket-create-title"
           >
             <form className="ticket-create-form glpi-ticket-form" onSubmit={handleCreateSubmit}>
               <div className="ticket-modal-header">
                 <div className="form-section-header">
-                  <strong id="ticket-create-title">Abertura de chamado</strong>
-                  <span>Formulario em pop-up com solicitante travado no usuario logado.</span>
+                  <strong>Abertura de chamado</strong>
+                  <span>Solicitante travado no usuario logado.</span>
                 </div>
                 <button className="ghost-button" onClick={handleCloseCreateModal} type="button">
                   Fechar
@@ -407,9 +381,7 @@ function TicketsPage() {
                   <span>Solicitante</span>
                   <div className="requester-stamp">
                     <strong>{user?.name || "Usuario nao identificado"}</strong>
-                    <small>
-                      {user ? `${user.email} • ${user.role}` : "Faca login para registrar o solicitante."}
-                    </small>
+                    <small>{user ? `${user.email} • ${user.role}` : "Faca login para registrar o solicitante."}</small>
                   </div>
                 </div>
                 <label className="field-block">
@@ -474,9 +446,7 @@ function TicketsPage() {
                             type="button"
                           >
                             <strong>{candidate.name}</strong>
-                            <small>
-                              {candidate.email} • {candidate.team}
-                            </small>
+                            <small>{candidate.email} • {candidate.team}</small>
                           </button>
                         ))}
                       </div>
@@ -521,168 +491,186 @@ function TicketsPage() {
         </div>
       ) : null}
 
-      <section className="ticket-detail-panel board-card glpi-panel">
-        {selectedTicket && detailForm ? (
-          <form className="ticket-detail-form" onSubmit={handleSaveTicket}>
-            <div className="glpi-toolbar">
-              <div>
-                <h2>{selectedTicket.id}</h2>
-                <span>
-                  Aberto em {selectedTicket.openedAtLabel}
-                  {selectedTicket.dueDateLabel ? ` • limite ${selectedTicket.dueDateLabel}` : ""}
-                </span>
+      {detailTicket && detailForm ? (
+        <div className="ticket-modal-backdrop" onClick={() => setDetailTicketId(null)} role="presentation">
+          <div
+            className="ticket-modal ticket-modal-large board-card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <form className="ticket-detail-form" onSubmit={handleSaveTicket}>
+              <div className="ticket-modal-header">
+                <div>
+                  <h2>{detailTicket.id}</h2>
+                  <span className="modal-subtitle">
+                    Aberto em {detailTicket.openedAtLabel}
+                    {detailTicket.dueDateLabel ? ` • limite ${detailTicket.dueDateLabel}` : ""}
+                  </span>
+                </div>
+                <div className="ticket-detail-actions">
+                  <button className="ghost-button" onClick={() => setDetailTicketId(null)} type="button">
+                    Fechar
+                  </button>
+                  <button className="danger-button" onClick={handleDeleteTicket} type="button">
+                    Excluir
+                  </button>
+                </div>
               </div>
-              <div className="ticket-detail-actions">
-                <button className="ghost-button" type="submit">
+
+              <label className="field-block field-full">
+                <span>Titulo</span>
+                <input onChange={updateDetailField("title")} value={detailForm.title} />
+              </label>
+
+              <div className="detail-grid">
+                {detailFields.map((field) => (
+                  <label className="field-block" key={field.key}>
+                    <span>{field.label}</span>
+                    {field.kind === "select" && field.key === "type" ? (
+                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                        <option>Incidente</option>
+                        <option>Requisicao</option>
+                        <option>Problema</option>
+                      </select>
+                    ) : null}
+                    {field.kind === "select" && field.key === "status" ? (
+                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                        <option>Aberto</option>
+                        <option>Em atendimento</option>
+                        <option>Aguardando aprovacao</option>
+                        <option>Analise</option>
+                        <option>Resolvido</option>
+                      </select>
+                    ) : null}
+                    {field.kind === "select" && field.key === "queue" ? (
+                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                        <option>Service Desk</option>
+                        <option>Infraestrutura</option>
+                        <option>Aplicacoes</option>
+                        <option>Seguranca</option>
+                      </select>
+                    ) : null}
+                    {field.kind === "select" && field.key === "source" ? (
+                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                        <option>Portal</option>
+                        <option>E-mail</option>
+                        <option>Telefone</option>
+                        <option>Monitoramento</option>
+                      </select>
+                    ) : null}
+                    {field.kind === "select" && (field.key === "urgency" || field.key === "impact") ? (
+                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                        <option>Baixa</option>
+                        <option>Media</option>
+                        <option>Alta</option>
+                        <option>Critica</option>
+                      </select>
+                    ) : null}
+                    {field.kind === "assignee" ? (
+                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""}>
+                        <option value="">Selecione um tecnico de TI</option>
+                        {tiUsers.map((candidate) => (
+                          <option key={candidate.id} value={candidate.name}>
+                            {candidate.name} • {candidate.team}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {field.kind === "input" ? (
+                      <input onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""} />
+                    ) : null}
+                    {field.kind === "date" ? (
+                      <input onChange={updateDetailField(field.key)} type="date" value={detailForm[field.key] || ""} />
+                    ) : null}
+                    {field.kind === "datetime" ? (
+                      <input
+                        onChange={updateDetailField(field.key)}
+                        type="datetime-local"
+                        value={detailForm[field.key] || ""}
+                      />
+                    ) : null}
+                  </label>
+                ))}
+              </div>
+
+              <div className="glpi-info-strip">
+                <div>
+                  <span>Prioridade calculada</span>
+                  <strong>{detailTicket.priority}</strong>
+                </div>
+                <div>
+                  <span>SLA</span>
+                  <strong>{detailTicket.sla}</strong>
+                </div>
+                <div>
+                  <span>Ultima atualizacao</span>
+                  <strong>{detailTicket.updatedAt}</strong>
+                </div>
+              </div>
+
+              <label className="field-block field-full">
+                <span>Descricao</span>
+                <textarea onChange={updateDetailField("description")} value={detailForm.description} />
+              </label>
+
+              <label className="field-block field-full">
+                <span>Solucao / acompanhamento tecnico</span>
+                <textarea onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
+              </label>
+
+              <div className="ticket-attachment-panel">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Anexos</strong>
+                    <span>Prints, documentos e evidencias vinculadas ao chamado.</span>
+                  </div>
+                  <button className="ghost-button" onClick={() => detailInputRef.current?.click()} type="button">
+                    Adicionar anexos
+                  </button>
+                  <input hidden multiple onChange={handleDetailAttachments} ref={detailInputRef} type="file" />
+                </div>
+
+                {detailTicket.attachments?.length ? (
+                  <div className="attachment-list">
+                    {detailTicket.attachments.map((attachment) => (
+                      <div className="attachment-item attachment-item-actions" key={attachment.id}>
+                        <div>
+                          <strong>{attachment.name}</strong>
+                          <span>{formatBytes(attachment.size)}</span>
+                        </div>
+                        <div className="attachment-actions">
+                          <a className="ghost-link" download={attachment.name} href={attachment.url}>
+                            Baixar
+                          </a>
+                          <button
+                            className="ghost-link danger-link"
+                            onClick={() => removeTicketAttachment(detailTicket.id, attachment.id)}
+                            type="button"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Nenhum anexo vinculado.</strong>
+                    <span>Use o botao acima para anexar prints, PDFs, planilhas ou outros arquivos.</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="ticket-create-actions">
+                <button className="primary-button" type="submit">
                   Salvar alteracoes
                 </button>
-                <button className="danger-button" onClick={handleDeleteTicket} type="button">
-                  Excluir chamado
-                </button>
               </div>
-            </div>
-
-            <label className="field-block field-full">
-              <span>Titulo</span>
-              <input onChange={updateDetailField("title")} value={detailForm.title} />
-            </label>
-
-            <div className="detail-grid">
-              {detailFields.map((field) => (
-                <label className="field-block" key={field.key}>
-                  <span>{field.label}</span>
-                  {field.kind === "select" && field.key === "type" ? (
-                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                      <option>Incidente</option>
-                      <option>Requisicao</option>
-                      <option>Problema</option>
-                    </select>
-                  ) : null}
-                  {field.kind === "select" && field.key === "status" ? (
-                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                      <option>Aberto</option>
-                      <option>Em atendimento</option>
-                      <option>Aguardando aprovacao</option>
-                      <option>Analise</option>
-                      <option>Resolvido</option>
-                    </select>
-                  ) : null}
-                  {field.kind === "select" && field.key === "queue" ? (
-                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                      <option>Service Desk</option>
-                      <option>Infraestrutura</option>
-                      <option>Aplicacoes</option>
-                      <option>Seguranca</option>
-                    </select>
-                  ) : null}
-                  {field.kind === "select" && field.key === "source" ? (
-                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                      <option>Portal</option>
-                      <option>E-mail</option>
-                      <option>Telefone</option>
-                      <option>Monitoramento</option>
-                    </select>
-                  ) : null}
-                  {field.kind === "select" && (field.key === "urgency" || field.key === "impact") ? (
-                    <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                      <option>Baixa</option>
-                      <option>Media</option>
-                      <option>Alta</option>
-                      <option>Critica</option>
-                    </select>
-                  ) : null}
-                  {field.kind === "input" ? (
-                    <input onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""} />
-                  ) : null}
-                  {field.kind === "date" ? (
-                    <input onChange={updateDetailField(field.key)} type="date" value={detailForm[field.key] || ""} />
-                  ) : null}
-                  {field.kind === "datetime" ? (
-                    <input
-                      onChange={updateDetailField(field.key)}
-                      type="datetime-local"
-                      value={detailForm[field.key] || ""}
-                    />
-                  ) : null}
-                </label>
-              ))}
-            </div>
-
-            <div className="glpi-info-strip">
-              <div>
-                <span>Prioridade calculada</span>
-                <strong>{selectedTicket.priority}</strong>
-              </div>
-              <div>
-                <span>SLA</span>
-                <strong>{selectedTicket.sla}</strong>
-              </div>
-              <div>
-                <span>Ultima atualizacao</span>
-                <strong>{selectedTicket.updatedAt}</strong>
-              </div>
-            </div>
-
-            <label className="field-block field-full">
-              <span>Descricao</span>
-              <textarea onChange={updateDetailField("description")} value={detailForm.description} />
-            </label>
-
-            <label className="field-block field-full">
-              <span>Solucao / acompanhamento tecnico</span>
-              <textarea onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
-            </label>
-
-            <div className="ticket-attachment-panel">
-              <div className="attachment-toolbar glpi-subbar">
-                <div>
-                  <strong>Anexos</strong>
-                  <span>Prints, documentos e evidencias vinculadas ao chamado.</span>
-                </div>
-                <button className="ghost-button" onClick={() => detailInputRef.current?.click()} type="button">
-                  Adicionar anexos
-                </button>
-                <input hidden multiple onChange={handleDetailAttachments} ref={detailInputRef} type="file" />
-              </div>
-
-              {selectedTicket.attachments?.length ? (
-                <div className="attachment-list">
-                  {selectedTicket.attachments.map((attachment) => (
-                    <div className="attachment-item attachment-item-actions" key={attachment.id}>
-                      <div>
-                        <strong>{attachment.name}</strong>
-                        <span>{formatBytes(attachment.size)}</span>
-                      </div>
-                      <div className="attachment-actions">
-                        <a className="ghost-link" download={attachment.name} href={attachment.url}>
-                          Baixar
-                        </a>
-                        <button
-                          className="ghost-link danger-link"
-                          onClick={() => removeTicketAttachment(selectedTicket.id, attachment.id)}
-                          type="button"
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <strong>Nenhum anexo vinculado.</strong>
-                  <span>Use o botao acima para anexar prints, PDFs, planilhas ou outros arquivos.</span>
-                </div>
-              )}
-            </div>
-          </form>
-        ) : (
-          <div className="empty-state empty-state-large">
-            <strong>Nenhum chamado selecionado.</strong>
-            <span>Escolha um item da fila para abrir o formulario completo do atendimento.</span>
+            </form>
           </div>
-        )}
-      </section>
+        </div>
+      ) : null}
     </div>
   );
 }
