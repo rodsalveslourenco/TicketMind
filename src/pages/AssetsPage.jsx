@@ -340,10 +340,6 @@ function AssetsPage() {
                 </div>
               </div>
               <div className="glpi-form-grid">
-                <label className="field-block field-span-2">
-                  <span>Nome</span>
-                  <input onChange={updateField("name")} value={form.name} />
-                </label>
                 <label className="field-block">
                   <span>Tipo</span>
                   <select onChange={updateField("type")} value={form.type}>
@@ -351,6 +347,10 @@ function AssetsPage() {
                       <option key={type}>{type}</option>
                     ))}
                   </select>
+                </label>
+                <label className="field-block field-span-2">
+                  <span>Nome</span>
+                  <input onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
                   <span>Usuario</span>
