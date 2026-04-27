@@ -48,6 +48,14 @@ function maskPassword(password) {
   return "*".repeat(Math.max(String(password || "").length, 8));
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function UsersPage() {
   const { user } = useAuth();
   const { addUser, deleteUser, pushToast, updateUser, users } = useAppData();
@@ -122,6 +130,15 @@ function UsersPage() {
     event.preventDefault();
     if (!form.name || !form.email || !form.team || !form.password) return;
 
+    const normalizedEmail = normalizeText(form.email);
+    const duplicatedUser = users.find(
+      (candidate) => normalizeText(candidate.email) === normalizedEmail && candidate.id !== editingUserId,
+    );
+    if (duplicatedUser) {
+      pushToast("Email ja cadastrado", duplicatedUser.email, "warning");
+      return;
+    }
+
     if (editingUserId) {
       updateUser(editingUserId, form);
       pushToast("Usuario atualizado", form.name);
@@ -150,6 +167,20 @@ function UsersPage() {
     setRevealedUserIds((current) =>
       current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId],
     );
+  };
+
+  const handleDeleteUser = (candidate) => {
+    if (!candidate) return;
+    if (candidate.id === user?.id) {
+      pushToast("Operacao bloqueada", "Nao e permitido excluir o usuario logado.", "warning");
+      return;
+    }
+
+    deleteUser(candidate.id);
+    setDetailUserId(null);
+    setShowCreateModal(false);
+    resetForm();
+    pushToast("Usuario removido", candidate.name);
   };
 
   return (
@@ -221,9 +252,17 @@ function UsersPage() {
                       : maskPassword(candidate.password)}
                   </span>
                   {canRevealPasswords ? (
-                    <span className="ghost-link" onClick={() => togglePassword(candidate.id)} role="button" tabIndex={0}>
+                    <button
+                      className="ghost-link"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        togglePassword(candidate.id);
+                      }}
+                      type="button"
+                    >
                       {revealedUserIds.includes(candidate.id) ? "Ocultar" : "Revelar"}
-                    </span>
+                    </button>
                   ) : null}
                 </div>
                 <div className="permissions-inline">
@@ -336,11 +375,7 @@ function UsersPage() {
                   </button>
                   <button
                     className="danger-button interactive-button"
-                    onClick={() => {
-                      deleteUser(detailUser.id);
-                      setDetailUserId(null);
-                      pushToast("Usuario removido", detailUser.name);
-                    }}
+                    onClick={() => handleDeleteUser(detailUser)}
                     type="button"
                   >
                     Excluir

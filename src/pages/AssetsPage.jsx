@@ -51,6 +51,10 @@ function getAssetPriorityClass(criticality) {
   return "priority-line-media";
 }
 
+function clampNonNegative(value) {
+  return Math.max(Number(value) || 0, 0);
+}
+
 function AssetsPage() {
   const { addAsset, assets, deleteAsset, pushToast, updateAsset, users } = useAppData();
   const [viewMode, setViewMode] = useState("list");
@@ -112,7 +116,7 @@ function AssetsPage() {
     setForm((current) => ({
       ...current,
       [field]:
-        field === "stockQuantity" || field === "availableQuantity" ? Number(nextValue || 0) : nextValue,
+        field === "stockQuantity" || field === "availableQuantity" ? clampNonNegative(nextValue) : nextValue,
     }));
   };
 
@@ -123,6 +127,8 @@ function AssetsPage() {
 
   const buildPayload = () => ({
     ...form,
+    stockQuantity: clampNonNegative(form.stockQuantity),
+    availableQuantity: clampNonNegative(form.availableQuantity),
     imei: isPhoneType ? form.imei : "",
     phoneLine: isPhoneType ? form.phoneLine : "",
   });
@@ -167,6 +173,11 @@ function AssetsPage() {
     if (!form.name || !form.owner || !form.location) return;
 
     const payload = buildPayload();
+    if (payload.availableQuantity > payload.stockQuantity) {
+      pushToast("Estoque inconsistente", "Disponivel nao pode ser maior que o estoque total.", "warning");
+      return;
+    }
+
     if (editingId) {
       updateAsset(editingId, payload);
       pushToast("Ativo atualizado", form.name);

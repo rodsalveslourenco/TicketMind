@@ -10,7 +10,20 @@ function buildDefaultUsers() {
 }
 
 function readUsers() {
-  return buildDefaultUsers();
+  const rawData = window.localStorage.getItem(DATA_STORAGE_KEY);
+  if (!rawData) return buildDefaultUsers();
+
+  try {
+    const parsed = JSON.parse(rawData);
+    const parsedUsers = Array.isArray(parsed?.users) && parsed.users.length ? parsed.users : buildDefaultUsers();
+    return parsedUsers.map((candidate) => ({
+      ...candidate,
+      password: candidate.password || "admin0123",
+      permissions: { ...(candidate.permissions || {}) },
+    }));
+  } catch {
+    return buildDefaultUsers();
+  }
 }
 
 function readDefaultUser() {
@@ -23,27 +36,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const rawData = window.localStorage.getItem(DATA_STORAGE_KEY);
-    if (rawData) {
-      try {
-        const parsed = JSON.parse(rawData);
-        window.localStorage.setItem(
-          DATA_STORAGE_KEY,
-          JSON.stringify({
-            ...parsed,
-            currentUser: { ...seedData.currentUser, password: "admin0123" },
-            users: buildDefaultUsers(),
-          }),
-        );
-      } catch {
-        window.localStorage.setItem(
-          DATA_STORAGE_KEY,
-          JSON.stringify({
-            ...seedData,
-            currentUser: { ...seedData.currentUser, password: "admin0123" },
-            users: buildDefaultUsers(),
-          }),
-        );
-      }
+    if (!rawData) {
+      window.localStorage.setItem(
+        DATA_STORAGE_KEY,
+        JSON.stringify({
+          ...seedData,
+          currentUser: { ...seedData.currentUser, password: "admin0123" },
+          users: buildDefaultUsers(),
+        }),
+      );
     }
 
     const rawSession = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -112,7 +113,7 @@ export function AuthProvider({ children }) {
       logout,
       demoCredentials: {
         email: readDefaultUser().email,
-        password: "",
+        password: "admin0123",
       },
     }),
     [loading, session],

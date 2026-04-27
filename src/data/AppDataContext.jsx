@@ -8,12 +8,26 @@ function buildDefaultUsers() {
   return seedData.users.map((candidate) => ({ ...candidate, password: "admin0123" }));
 }
 
+function hydrateUsers(users) {
+  const baseUsers = Array.isArray(users) && users.length ? users : buildDefaultUsers();
+  return baseUsers.map((candidate) => ({
+    ...candidate,
+    password: candidate.password || "admin0123",
+    permissions: { ...(candidate.permissions || {}) },
+  }));
+}
+
 function mergeCollections(stored) {
+  const users = hydrateUsers(stored?.users);
+  const currentUser =
+    users.find((candidate) => candidate.email === seedData.currentUser.email) ??
+    { ...seedData.currentUser, password: "admin0123" };
+
   return {
     ...seedData,
     ...stored,
-    currentUser: { ...seedData.currentUser, password: "admin0123" },
-    users: buildDefaultUsers(),
+    currentUser,
+    users,
     queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
     tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
@@ -84,13 +98,13 @@ function computeSla(priority) {
 
 function sanitizeUserPayload(payload) {
   return {
-    name: payload.name,
-    email: payload.email,
+    name: String(payload.name || "").trim(),
+    email: String(payload.email || "").trim().toLowerCase(),
     password: payload.password || "admin0123",
-    role: payload.role,
-    team: payload.team,
-    department: payload.department,
-    permissions: payload.permissions,
+    role: String(payload.role || "").trim(),
+    team: String(payload.team || "").trim(),
+    department: String(payload.department || "").trim(),
+    permissions: { ...(payload.permissions || {}) },
   };
 }
 

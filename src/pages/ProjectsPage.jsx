@@ -12,6 +12,10 @@ const defaultForm = {
   summary: "",
 };
 
+function clampProgress(value) {
+  return Math.min(100, Math.max(0, Number(value) || 0));
+}
+
 function ProjectsPage() {
   const { addProject, deleteProject, projects, pushToast, updateProject, users } = useAppData();
   const [form, setForm] = useState(defaultForm);
@@ -35,7 +39,7 @@ function ProjectsPage() {
     event.preventDefault();
     if (!form.name || !form.manager || !form.dueDate) return;
 
-    const payload = { ...form, progress: Number(form.progress) };
+    const payload = { ...form, progress: clampProgress(form.progress) };
     if (editingId) {
       updateProject(editingId, payload);
       pushToast("Projeto atualizado", form.name);

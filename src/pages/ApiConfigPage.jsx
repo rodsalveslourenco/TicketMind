@@ -11,6 +11,12 @@ const defaultForm = {
   resource: "",
 };
 
+function normalizeResource(resource) {
+  const trimmed = String(resource || "").trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
 function ApiConfigPage() {
   const { apiConfigs, deleteApiConfig, pushToast, saveApiConfig } = useAppData();
   const [form, setForm] = useState(defaultForm);
@@ -34,7 +40,16 @@ function ApiConfigPage() {
     event.preventDefault();
     if (!form.name || !form.baseUrl || !form.resource) return;
 
-    saveApiConfig({ ...form, timeout: Number(form.timeout) }, editingId);
+    saveApiConfig(
+      {
+        ...form,
+        name: form.name.trim(),
+        baseUrl: form.baseUrl.trim(),
+        resource: normalizeResource(form.resource),
+        timeout: Math.max(1, Number(form.timeout) || 1),
+      },
+      editingId,
+    );
     pushToast(editingId ? "Configuracao atualizada" : "Configuracao criada", form.name);
     resetForm();
   };
