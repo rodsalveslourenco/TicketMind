@@ -15,10 +15,8 @@ const assetTypes = [
   "Cabo de rede",
   "Monitor",
   "Suporte para notebook",
-  "Mouse com fio",
-  "Mouse sem fio",
-  "Teclado com fio",
-  "Teclado sem fio",
+  "Com fio",
+  "Sem fio",
 ];
 
 const defaultForm = {
