@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAppData } from "../data/AppDataContext";
-
-const assetTypeOptions = ["Notebook", "Desktop", "Celular", "Outros"];
+import { assetTypeOptions } from "../data/assetCatalog";
 
 const defaultBrandForm = {
   name: "",
@@ -44,12 +43,22 @@ function BrandsModelsPage() {
   const [editingModelId, setEditingModelId] = useState(null);
 
   const orderedBrands = useMemo(
-    () => brands.slice().sort((left, right) => `${left.name} ${left.assetType}`.localeCompare(`${right.name} ${right.assetType}`)),
+    () =>
+      brands
+        .slice()
+        .sort((left, right) => `${left.assetType} ${left.name}`.localeCompare(`${right.assetType} ${right.name}`)),
     [brands],
   );
 
   const orderedModels = useMemo(
-    () => models.slice().sort((left, right) => `${left.brandName} ${left.name}`.localeCompare(`${right.brandName} ${right.name}`)),
+    () =>
+      models
+        .slice()
+        .sort((left, right) =>
+          `${left.assetType} ${left.brandName} ${left.name}`.localeCompare(
+            `${right.assetType} ${right.brandName} ${right.name}`,
+          ),
+        ),
     [models],
   );
 
@@ -193,210 +202,206 @@ function BrandsModelsPage() {
           </div>
           <div className="insight-chip">
             <strong>{assetTypeOptions.length}</strong>
-            <span>tipos controlados</span>
+            <span>tipos disponiveis</span>
           </div>
         </div>
       </section>
 
-      <section className="module-grid">
-        <section className="board-card glpi-panel">
-          <div className="glpi-toolbar">
-            <div>
-              <h2>{editingBrandId ? "Editar marca" : "Cadastro de marcas"}</h2>
-            </div>
+      <section className="board-card glpi-panel">
+        <div className="glpi-toolbar">
+          <div>
+            <h2>Cadastro unificado</h2>
           </div>
+        </div>
 
-          <form className="glpi-ticket-form user-form" onSubmit={handleBrandSubmit}>
-            <div className="glpi-form-grid">
-              <label className="field-block">
-                <span>ID</span>
-                <input disabled value={editingBrandId || "Automatico"} />
-              </label>
-              <label className="field-block field-span-2">
-                <span>Nome da marca</span>
-                <input onChange={updateBrandField("name")} value={brandForm.name} />
-              </label>
-              <label className="field-block">
-                <span>Tipo de ativo</span>
-                <select onChange={updateBrandField("assetType")} value={brandForm.assetType}>
-                  {assetTypeOptions.map((assetType) => (
-                    <option key={assetType}>{assetType}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-block">
-                <span>Status</span>
-                <select onChange={updateBrandField("status")} value={brandForm.status}>
-                  <option>Ativo</option>
-                  <option>Inativo</option>
-                </select>
-              </label>
+        <div className="module-grid compact-module-grid">
+          <section className="compact-panel">
+            <div className="compact-panel-heading">
+              <strong>{editingBrandId ? "Editar marca" : "Nova marca"}</strong>
             </div>
-
-            <div className="ticket-create-actions">
-              <button className="primary-button interactive-button" type="submit">
-                {editingBrandId ? "Salvar marca" : "Cadastrar marca"}
-              </button>
-              {editingBrandId ? (
-                <button className="ghost-button interactive-button" onClick={resetBrandForm} type="button">
-                  Cancelar
+            <form className="glpi-ticket-form compact-form" onSubmit={handleBrandSubmit}>
+              <div className="glpi-form-grid compact-form-grid">
+                <label className="field-block">
+                  <span>ID</span>
+                  <input disabled value={editingBrandId || "Automatico"} />
+                </label>
+                <label className="field-block field-span-2">
+                  <span>Marca</span>
+                  <input onChange={updateBrandField("name")} value={brandForm.name} />
+                </label>
+                <label className="field-block">
+                  <span>Tipo de ativo</span>
+                  <select onChange={updateBrandField("assetType")} value={brandForm.assetType}>
+                    {assetTypeOptions.map((assetType) => (
+                      <option key={assetType}>{assetType}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Status</span>
+                  <select onChange={updateBrandField("status")} value={brandForm.status}>
+                    <option>Ativo</option>
+                    <option>Inativo</option>
+                  </select>
+                </label>
+              </div>
+              <div className="ticket-create-actions compact-actions">
+                <button className="primary-button compact-button interactive-button" type="submit">
+                  {editingBrandId ? "Salvar marca" : "Cadastrar marca"}
                 </button>
-              ) : null}
-            </div>
-          </form>
-        </section>
+                {editingBrandId ? (
+                  <button className="ghost-button compact-button interactive-button" onClick={resetBrandForm} type="button">
+                    Cancelar
+                  </button>
+                ) : null}
+              </div>
+            </form>
+          </section>
 
-        <section className="board-card glpi-panel record-grid-shell">
-          <div className="glpi-toolbar">
-            <div>
-              <h2>Marcas cadastradas</h2>
+          <section className="compact-panel">
+            <div className="compact-panel-heading">
+              <strong>{editingModelId ? "Editar modelo" : "Novo modelo"}</strong>
             </div>
-          </div>
-          <div className="record-grid">
-            {orderedBrands.map((brand) => (
-              <article className="record-card" key={brand.id}>
-                <div>
-                  <strong>{brand.name}</strong>
-                  <span>{brand.assetType}</span>
-                </div>
-                <div className="row-stats row-stats-wrap">
-                  <span>{brand.id}</span>
-                  <span>{brand.status}</span>
-                </div>
-                <div className="ticket-create-actions">
-                  <button
-                    className="ghost-button interactive-button"
-                    onClick={() => {
-                      setEditingBrandId(brand.id);
-                      setBrandForm({ name: brand.name, assetType: brand.assetType, status: brand.status });
+            <form className="glpi-ticket-form compact-form" onSubmit={handleModelSubmit}>
+              <div className="glpi-form-grid compact-form-grid">
+                <label className="field-block">
+                  <span>ID</span>
+                  <input disabled value={editingModelId || "Automatico"} />
+                </label>
+                <label className="field-block">
+                  <span>Tipo de ativo</span>
+                  <select onChange={updateModelField("assetType")} value={modelForm.assetType}>
+                    {assetTypeOptions.map((assetType) => (
+                      <option key={assetType}>{assetType}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Marca</span>
+                  <select
+                    onChange={(event) => {
+                      const selectedBrand = activeBrandsByType.find((brand) => brand.id === event.target.value);
+                      setModelForm((current) => ({
+                        ...current,
+                        brandId: event.target.value,
+                        brandName: selectedBrand?.name || "",
+                      }));
                     }}
-                    type="button"
+                    value={modelForm.brandId}
                   >
-                    Editar
+                    <option value="">Selecione</option>
+                    {activeBrandsByType.map((brand) => (
+                      <option key={brand.id} value={brand.id}>
+                        {brand.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block field-span-2">
+                  <span>Modelo</span>
+                  <input onChange={updateModelField("name")} value={modelForm.name} />
+                </label>
+                <label className="field-block">
+                  <span>Status</span>
+                  <select onChange={updateModelField("status")} value={modelForm.status}>
+                    <option>Ativo</option>
+                    <option>Inativo</option>
+                  </select>
+                </label>
+              </div>
+              <div className="ticket-create-actions compact-actions">
+                <button className="primary-button compact-button interactive-button" type="submit">
+                  {editingModelId ? "Salvar modelo" : "Cadastrar modelo"}
+                </button>
+                {editingModelId ? (
+                  <button className="ghost-button compact-button interactive-button" onClick={resetModelForm} type="button">
+                    Cancelar
                   </button>
-                  <button className="danger-button interactive-button" onClick={() => handleDeleteBrand(brand)} type="button">
-                    Excluir
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+                ) : null}
+              </div>
+            </form>
+          </section>
+        </div>
       </section>
 
-      <section className="module-grid">
-        <section className="board-card glpi-panel">
-          <div className="glpi-toolbar">
-            <div>
-              <h2>{editingModelId ? "Editar modelo" : "Cadastro de modelos"}</h2>
-            </div>
+      <section className="board-card glpi-panel">
+        <div className="glpi-toolbar">
+          <div>
+            <h2>Tabela unificada</h2>
           </div>
-
-          <form className="glpi-ticket-form user-form" onSubmit={handleModelSubmit}>
-            <div className="glpi-form-grid">
-              <label className="field-block">
-                <span>ID</span>
-                <input disabled value={editingModelId || "Automatico"} />
-              </label>
-              <label className="field-block">
-                <span>Tipo de ativo</span>
-                <select onChange={updateModelField("assetType")} value={modelForm.assetType}>
-                  {assetTypeOptions.map((assetType) => (
-                    <option key={assetType}>{assetType}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-block">
-                <span>Marca</span>
-                <select
-                  onChange={(event) => {
-                    const selectedBrand = activeBrandsByType.find((brand) => brand.id === event.target.value);
-                    setModelForm((current) => ({
-                      ...current,
-                      brandId: event.target.value,
-                      brandName: selectedBrand?.name || "",
-                    }));
+        </div>
+        <div className="record-grid compact-record-grid">
+          {orderedModels.map((model) => (
+            <article className="record-card compact-record-card" key={model.id}>
+              <div>
+                <strong>{model.assetType}</strong>
+                <span>{model.brandName}</span>
+              </div>
+              <div>
+                <strong>{model.name}</strong>
+                <span>{model.status}</span>
+              </div>
+              <div className="compact-row-actions">
+                <button
+                  className="ghost-button compact-button interactive-button"
+                  onClick={() => {
+                    setEditingModelId(model.id);
+                    setModelForm({
+                      brandId: model.brandId,
+                      brandName: model.brandName,
+                      name: model.name,
+                      assetType: model.assetType,
+                      status: model.status,
+                    });
                   }}
-                  value={modelForm.brandId}
+                  type="button"
                 >
-                  <option value="">Selecione</option>
-                  {activeBrandsByType.map((brand) => (
-                    <option key={brand.id} value={brand.id}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-block field-span-2">
-                <span>Nome do modelo</span>
-                <input onChange={updateModelField("name")} value={modelForm.name} />
-              </label>
-              <label className="field-block">
-                <span>Status</span>
-                <select onChange={updateModelField("status")} value={modelForm.status}>
-                  <option>Ativo</option>
-                  <option>Inativo</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="ticket-create-actions">
-              <button className="primary-button interactive-button" type="submit">
-                {editingModelId ? "Salvar modelo" : "Cadastrar modelo"}
-              </button>
-              {editingModelId ? (
-                <button className="ghost-button interactive-button" onClick={resetModelForm} type="button">
-                  Cancelar
+                  Editar modelo
                 </button>
-              ) : null}
-            </div>
-          </form>
-        </section>
+                <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteModel(model)} type="button">
+                  Excluir modelo
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
-        <section className="board-card glpi-panel record-grid-shell">
-          <div className="glpi-toolbar">
-            <div>
-              <h2>Modelos cadastrados</h2>
-            </div>
+      <section className="board-card glpi-panel">
+        <div className="glpi-toolbar">
+          <div>
+            <h2>Marcas por tipo</h2>
           </div>
-          <div className="record-grid">
-            {orderedModels.map((model) => (
-              <article className="record-card" key={model.id}>
-                <div>
-                  <strong>{model.name}</strong>
-                  <span>
-                    {model.brandName} | {model.assetType}
-                  </span>
-                </div>
-                <div className="row-stats row-stats-wrap">
-                  <span>{model.id}</span>
-                  <span>{model.status}</span>
-                </div>
-                <div className="ticket-create-actions">
-                  <button
-                    className="ghost-button interactive-button"
-                    onClick={() => {
-                      setEditingModelId(model.id);
-                      setModelForm({
-                        brandId: model.brandId,
-                        brandName: model.brandName,
-                        name: model.name,
-                        assetType: model.assetType,
-                        status: model.status,
-                      });
-                    }}
-                    type="button"
-                  >
-                    Editar
-                  </button>
-                  <button className="danger-button interactive-button" onClick={() => handleDeleteModel(model)} type="button">
-                    Excluir
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+        </div>
+        <div className="record-grid compact-record-grid">
+          {orderedBrands.map((brand) => (
+            <article className="record-card compact-record-card" key={brand.id}>
+              <div>
+                <strong>{brand.assetType}</strong>
+                <span>{brand.name}</span>
+              </div>
+              <div>
+                <strong>{brand.status}</strong>
+                <span>{brand.id}</span>
+              </div>
+              <div className="compact-row-actions">
+                <button
+                  className="ghost-button compact-button interactive-button"
+                  onClick={() => {
+                    setEditingBrandId(brand.id);
+                    setBrandForm({ name: brand.name, assetType: brand.assetType, status: brand.status });
+                  }}
+                  type="button"
+                >
+                  Editar marca
+                </button>
+                <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteBrand(brand)} type="button">
+                  Excluir marca
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
       </section>
     </div>
   );

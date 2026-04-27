@@ -342,10 +342,15 @@ export function AppDataProvider({ children }) {
   };
 
   const addBrand = (payload) => {
-    setData((current) => ({
-      ...current,
-      brands: [{ id: nextId("brand", current.brands || []), ...sanitizeBrandPayload(payload) }, ...(current.brands || [])],
-    }));
+    let createdBrand = null;
+    setData((current) => {
+      createdBrand = { id: nextId("brand", current.brands || []), ...sanitizeBrandPayload(payload) };
+      return {
+        ...current,
+        brands: [createdBrand, ...(current.brands || [])],
+      };
+    });
+    return createdBrand;
   };
 
   const updateBrand = (brandId, payload) => {
@@ -381,10 +386,15 @@ export function AppDataProvider({ children }) {
   };
 
   const addModel = (payload) => {
-    setData((current) => ({
-      ...current,
-      models: [{ id: nextId("model", current.models || []), ...sanitizeModelPayload(payload) }, ...(current.models || [])],
-    }));
+    let createdModel = null;
+    setData((current) => {
+      createdModel = { id: nextId("model", current.models || []), ...sanitizeModelPayload(payload) };
+      return {
+        ...current,
+        models: [createdModel, ...(current.models || [])],
+      };
+    });
+    return createdModel;
   };
 
   const updateModel = (modelId, payload) => {

@@ -2,24 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import CatalogAutocomplete from "../components/CatalogAutocomplete";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAppData } from "../data/AppDataContext";
-
-const assetTypes = [
-  "Notebook",
-  "Desktop",
-  "Celular",
-  "Servidor",
-  "Firewall",
-  "Switch",
-  "DVR",
-  "NVR",
-  "Camera",
-  "Monitor",
-  "Cabo de rede",
-  "Suporte para notebook",
-  "Aplicacao",
-  "Com fio",
-  "Sem fio",
-];
+import { assetTypeOptions } from "../data/assetCatalog";
 
 const assetStatuses = ["Ativo", "Monitorado", "Manutencao", "Baixado"];
 
@@ -42,6 +25,13 @@ const defaultForm = {
   imei: "",
   phoneLine: "",
   technicalSpec: "",
+};
+
+const defaultQuickCatalogForm = {
+  assetType: "Notebook",
+  brandName: "",
+  modelName: "",
+  status: "Ativo",
 };
 
 function normalizeText(value) {
@@ -116,13 +106,26 @@ function buildHierarchyGroups(assets, level) {
 }
 
 function AssetsPage() {
-  const { addAsset, assets, brands, deleteAsset, models, pushToast, updateAsset, users } = useAppData();
+  const {
+    addAsset,
+    addBrand,
+    addModel,
+    assets,
+    brands,
+    deleteAsset,
+    models,
+    pushToast,
+    updateAsset,
+    users,
+  } = useAppData();
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showQuickCatalogModal, setShowQuickCatalogModal] = useState(false);
   const [detailAssetId, setDetailAssetId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(defaultForm);
   const [path, setPath] = useState({ manufacturer: "", model: "", configuration: "" });
+  const [quickCatalogForm, setQuickCatalogForm] = useState(defaultQuickCatalogForm);
 
   const normalizedAssets = useMemo(
     () =>
@@ -250,6 +253,13 @@ function AssetsPage() {
     setEditingId(null);
   };
 
+  const resetQuickCatalogForm = (assetType = catalogAssetType) => {
+    setQuickCatalogForm({
+      ...defaultQuickCatalogForm,
+      assetType: assetType || "Notebook",
+    });
+  };
+
   const buildPayload = () => {
     const payload = {
       ...form,
@@ -345,6 +355,111 @@ function AssetsPage() {
 
   const openDetailModal = (asset) => {
     setDetailAssetId(asset.id);
+  };
+
+  const openQuickCatalogModal = () => {
+    resetQuickCatalogForm(catalogAssetType);
+    setShowQuickCatalogModal(true);
+  };
+
+  const handleQuickCatalogField = (field) => (event) => {
+    const nextValue = event.target.value;
+    setQuickCatalogForm((current) => ({
+      ...current,
+      [field]: nextValue,
+    }));
+  };
+
+  const handleQuickBrandSave = () => {
+    const brandName = quickCatalogForm.brandName.trim();
+    if (!brandName) {
+      pushToast("Marca obrigatoria", "Informe a marca para salvar.", "warning");
+      return;
+    }
+
+    const existingBrand = brands.find(
+      (brand) =>
+        normalizeText(brand.name) === normalizeText(brandName) &&
+        brand.assetType === quickCatalogForm.assetType,
+    );
+
+    const nextBrand = existingBrand || addBrand({
+      name: brandName,
+      assetType: quickCatalogForm.assetType,
+      status: quickCatalogForm.status,
+    });
+
+    if (!existingBrand) {
+      pushToast("Marca cadastrada", brandName);
+    } else {
+      pushToast("Marca localizada", brandName);
+    }
+
+    setForm((current) => ({
+      ...current,
+      type: quickCatalogForm.assetType,
+        brandId: nextBrand.id,
+        manufacturer: brandName,
+        modelId: "",
+        model: "",
+    }));
+    setShowQuickCatalogModal(false);
+  };
+
+  const handleQuickModelSave = () => {
+    const brandName = quickCatalogForm.brandName.trim();
+    const modelName = quickCatalogForm.modelName.trim();
+    if (!brandName || !modelName) {
+      pushToast("Dados obrigatorios", "Informe marca e modelo para salvar.", "warning");
+      return;
+    }
+
+    let resolvedBrand = brands.find(
+      (brand) =>
+        normalizeText(brand.name) === normalizeText(brandName) &&
+        brand.assetType === quickCatalogForm.assetType,
+    );
+
+    if (!resolvedBrand) {
+      resolvedBrand = addBrand({
+        name: brandName,
+        assetType: quickCatalogForm.assetType,
+        status: quickCatalogForm.status,
+      });
+    }
+
+    const existingModel = models.find(
+      (model) =>
+        model.brandId === resolvedBrand.id &&
+        model.assetType === quickCatalogForm.assetType &&
+        normalizeText(model.name) === normalizeText(modelName),
+    );
+
+    const nextModel =
+      existingModel ||
+      addModel({
+        brandId: resolvedBrand.id,
+        brandName: resolvedBrand.name,
+        name: modelName,
+        assetType: quickCatalogForm.assetType,
+        status: quickCatalogForm.status,
+      });
+
+    if (!existingModel) {
+      pushToast("Modelo cadastrado", modelName);
+    } else {
+      pushToast("Modelo localizado", modelName);
+    }
+
+    setForm((current) => ({
+      ...current,
+      type: quickCatalogForm.assetType,
+      brandId: resolvedBrand.id,
+      manufacturer: resolvedBrand.name,
+      modelId: nextModel.id,
+      model: nextModel.name,
+    }));
+    setShowQuickCatalogModal(false);
   };
 
   const setManufacturer = (manufacturer) => setPath({ manufacturer, model: "", configuration: "" });
@@ -546,63 +661,73 @@ function AssetsPage() {
                 <label className="field-block">
                   <span>Tipo</span>
                   <select onChange={updateField("type")} value={form.type}>
-                    {assetTypes.map((type) => (
+                    {assetTypeOptions.filter((type) => type !== "Outros").map((type) => (
                       <option key={type}>{type}</option>
                     ))}
                   </select>
                 </label>
                 <label className="field-block">
                   <span>Marca</span>
-                  <CatalogAutocomplete
-                    getDescription={(item) => item.assetType}
-                    getLabel={(item) => item.name}
-                    items={availableBrands}
-                    onChange={(nextValue) =>
-                      setForm((current) => ({
-                        ...current,
-                        manufacturer: nextValue,
-                        brandId: "",
-                        model: "",
-                        modelId: "",
-                      }))
-                    }
-                    onSelect={(item) =>
-                      setForm((current) => ({
-                        ...current,
-                        brandId: item.id,
-                        manufacturer: item.name,
-                        model: "",
-                        modelId: "",
-                      }))
-                    }
-                    placeholder="Digite para buscar a marca"
-                    value={form.manufacturer}
-                  />
+                  <div className="inline-field-actions">
+                    <CatalogAutocomplete
+                      getDescription={(item) => item.assetType}
+                      getLabel={(item) => item.name}
+                      items={availableBrands}
+                      onChange={(nextValue) =>
+                        setForm((current) => ({
+                          ...current,
+                          manufacturer: nextValue,
+                          brandId: "",
+                          model: "",
+                          modelId: "",
+                        }))
+                      }
+                      onSelect={(item) =>
+                        setForm((current) => ({
+                          ...current,
+                          brandId: item.id,
+                          manufacturer: item.name,
+                          model: "",
+                          modelId: "",
+                        }))
+                      }
+                      placeholder="Digite para buscar a marca"
+                      value={form.manufacturer}
+                    />
+                    <button className="ghost-button compact-button interactive-button" onClick={openQuickCatalogModal} type="button">
+                      +
+                    </button>
+                  </div>
                 </label>
                 <label className="field-block">
                   <span>Modelo</span>
-                  <CatalogAutocomplete
-                    disabled={!form.brandId}
-                    getDescription={(item) => `${item.brandName} | ${item.assetType}`}
-                    getLabel={(item) => item.name}
-                    items={availableModels}
-                    onChange={(nextValue) =>
-                      setForm((current) => ({
-                        ...current,
-                        model: nextValue,
-                        modelId: "",
-                      }))
-                    }
-                    onSelect={(item) =>
-                      setForm((current) => ({
-                        ...current,
-                        modelId: item.id,
-                        model: item.name,
-                      }))
-                    }
-                    placeholder={form.brandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
-                    value={form.model}
-                  />
+                  <div className="inline-field-actions">
+                    <CatalogAutocomplete
+                      disabled={!form.brandId}
+                      getDescription={(item) => `${item.brandName} | ${item.assetType}`}
+                      getLabel={(item) => item.name}
+                      items={availableModels}
+                      onChange={(nextValue) =>
+                        setForm((current) => ({
+                          ...current,
+                          model: nextValue,
+                          modelId: "",
+                        }))
+                      }
+                      onSelect={(item) =>
+                        setForm((current) => ({
+                          ...current,
+                          modelId: item.id,
+                          model: item.name,
+                        }))
+                      }
+                      placeholder={form.brandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
+                      value={form.model}
+                    />
+                    <button className="ghost-button compact-button interactive-button" onClick={openQuickCatalogModal} type="button">
+                      +
+                    </button>
+                  </div>
                 </label>
                 <label className="field-block field-full">
                   <span>Nome</span>
@@ -697,6 +822,54 @@ function AssetsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showQuickCatalogModal ? (
+        <div className="ticket-modal-backdrop" onClick={() => setShowQuickCatalogModal(false)} role="presentation">
+          <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="ticket-modal-header">
+              <div>
+                <h2>Cadastro rapido de Marca e Modelo</h2>
+              </div>
+              <button className="ghost-button compact-button interactive-button" onClick={() => setShowQuickCatalogModal(false)} type="button">
+                Fechar
+              </button>
+            </div>
+            <div className="glpi-form-grid compact-form-grid">
+              <label className="field-block">
+                <span>Tipo de ativo</span>
+                <select onChange={handleQuickCatalogField("assetType")} value={quickCatalogForm.assetType}>
+                  {assetTypeOptions.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Marca</span>
+                <input onChange={handleQuickCatalogField("brandName")} value={quickCatalogForm.brandName} />
+              </label>
+              <label className="field-block">
+                <span>Modelo</span>
+                <input onChange={handleQuickCatalogField("modelName")} value={quickCatalogForm.modelName} />
+              </label>
+              <label className="field-block">
+                <span>Status</span>
+                <select onChange={handleQuickCatalogField("status")} value={quickCatalogForm.status}>
+                  <option>Ativo</option>
+                  <option>Inativo</option>
+                </select>
+              </label>
+            </div>
+            <div className="ticket-create-actions compact-actions">
+              <button className="primary-button compact-button interactive-button" onClick={handleQuickBrandSave} type="button">
+                Salvar marca
+              </button>
+              <button className="primary-button compact-button interactive-button" onClick={handleQuickModelSave} type="button">
+                Salvar modelo
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
