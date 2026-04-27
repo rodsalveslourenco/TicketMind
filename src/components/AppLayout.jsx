@@ -7,6 +7,7 @@ const navigation = [
   { to: "/app/tickets", label: "Chamados", permission: "tickets_view" },
   { to: "/app/assets", label: "Ativos", permission: "assets_view" },
   { to: "/app/inventory", label: "Inventario", permission: "assets_view" },
+  { to: "/app/brands-models", label: "Marcas e Modelos", permission: "assets_manage" },
   { to: "/app/projects", label: "Projetos", permission: "projects_view" },
   { to: "/app/api-rest", label: "API REST", permission: "api_view" },
   { to: "/app/users", label: "Usuarios", permission: "users_view" },

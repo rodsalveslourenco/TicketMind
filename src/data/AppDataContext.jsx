@@ -31,6 +31,8 @@ function mergeCollections(stored) {
     queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
     tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
+    brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
+    models: Array.isArray(stored?.models) ? stored.models : seedData.models,
     projects: Array.isArray(stored?.projects) ? stored.projects : seedData.projects,
     apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
     reports: Array.isArray(stored?.reports) && stored.reports.length ? stored.reports : seedData.reports,
@@ -105,6 +107,24 @@ function sanitizeUserPayload(payload) {
     team: String(payload.team || "").trim(),
     department: String(payload.department || "").trim(),
     permissions: { ...(payload.permissions || {}) },
+  };
+}
+
+function sanitizeBrandPayload(payload) {
+  return {
+    name: String(payload.name || "").trim(),
+    assetType: String(payload.assetType || "").trim(),
+    status: String(payload.status || "Ativo").trim(),
+  };
+}
+
+function sanitizeModelPayload(payload) {
+  return {
+    brandId: String(payload.brandId || "").trim(),
+    brandName: String(payload.brandName || "").trim(),
+    name: String(payload.name || "").trim(),
+    assetType: String(payload.assetType || "").trim(),
+    status: String(payload.status || "Ativo").trim(),
   };
 }
 
@@ -321,6 +341,73 @@ export function AppDataProvider({ children }) {
     }));
   };
 
+  const addBrand = (payload) => {
+    setData((current) => ({
+      ...current,
+      brands: [{ id: nextId("brand", current.brands || []), ...sanitizeBrandPayload(payload) }, ...(current.brands || [])],
+    }));
+  };
+
+  const updateBrand = (brandId, payload) => {
+    setData((current) => ({
+      ...current,
+      brands: current.brands.map((brand) =>
+        brand.id === brandId ? { ...brand, ...sanitizeBrandPayload(payload) } : brand,
+      ),
+      models: current.models.map((model) =>
+        model.brandId === brandId
+          ? {
+              ...model,
+              brandName: payload.name,
+              assetType: payload.assetType,
+              status: payload.status === "Inativo" ? "Inativo" : model.status,
+            }
+          : model,
+      ),
+      assets: current.assets.map((asset) =>
+        asset.manufacturer === payload.previousName
+          ? { ...asset, manufacturer: payload.name }
+          : asset,
+      ),
+    }));
+  };
+
+  const deleteBrand = (brandId) => {
+    setData((current) => ({
+      ...current,
+      brands: current.brands.filter((brand) => brand.id !== brandId),
+      models: current.models.filter((model) => model.brandId !== brandId),
+    }));
+  };
+
+  const addModel = (payload) => {
+    setData((current) => ({
+      ...current,
+      models: [{ id: nextId("model", current.models || []), ...sanitizeModelPayload(payload) }, ...(current.models || [])],
+    }));
+  };
+
+  const updateModel = (modelId, payload) => {
+    setData((current) => ({
+      ...current,
+      models: current.models.map((model) =>
+        model.id === modelId ? { ...model, ...sanitizeModelPayload(payload) } : model,
+      ),
+      assets: current.assets.map((asset) =>
+        asset.manufacturer === payload.brandName && asset.model === payload.previousName
+          ? { ...asset, model: payload.name }
+          : asset,
+      ),
+    }));
+  };
+
+  const deleteModel = (modelId) => {
+    setData((current) => ({
+      ...current,
+      models: current.models.filter((model) => model.id !== modelId),
+    }));
+  };
+
   const addProject = (payload) => {
     setData((current) => ({
       ...current,
@@ -375,6 +462,8 @@ export function AppDataProvider({ children }) {
       users: data.users || [],
       tickets: data.tickets,
       assets: data.assets || [],
+      brands: data.brands || [],
+      models: data.models || [],
       projects: data.projects || [],
       apiConfigs: data.apiConfigs || [],
       reports: data.reports,
@@ -392,6 +481,12 @@ export function AppDataProvider({ children }) {
       addAsset,
       updateAsset,
       deleteAsset,
+      addBrand,
+      updateBrand,
+      deleteBrand,
+      addModel,
+      updateModel,
+      deleteModel,
       addProject,
       updateProject,
       deleteProject,

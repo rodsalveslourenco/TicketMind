@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import CatalogAutocomplete from "../components/CatalogAutocomplete";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAppData } from "../data/AppDataContext";
 
@@ -25,7 +26,9 @@ const assetStatuses = ["Ativo", "Monitorado", "Manutencao", "Baixado"];
 const defaultForm = {
   name: "",
   type: "Notebook",
+  brandId: "",
   manufacturer: "",
+  modelId: "",
   model: "",
   owner: "",
   status: "Ativo",
@@ -63,6 +66,14 @@ function isComputerType(type) {
 
 function isPhoneType(type) {
   return normalizeText(type) === "celular";
+}
+
+function mapAssetTypeToCatalog(type) {
+  const normalized = normalizeText(type);
+  if (normalized === "notebook") return "Notebook";
+  if (normalized === "desktop") return "Desktop";
+  if (normalized === "celular") return "Celular";
+  return "Outros";
 }
 
 function getAssetConfiguration(asset) {
@@ -105,7 +116,7 @@ function buildHierarchyGroups(assets, level) {
 }
 
 function AssetsPage() {
-  const { addAsset, assets, deleteAsset, pushToast, updateAsset, users } = useAppData();
+  const { addAsset, assets, brands, deleteAsset, models, pushToast, updateAsset, users } = useAppData();
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailAssetId, setDetailAssetId] = useState(null);
@@ -118,6 +129,23 @@ function AssetsPage() {
       assets.map((asset) => ({
         ...defaultForm,
         ...asset,
+        brandId:
+          asset.brandId ||
+          brands.find(
+            (brand) =>
+              brand.name === asset.manufacturer &&
+              brand.assetType === mapAssetTypeToCatalog(asset.type),
+          )?.id ||
+          "",
+        modelId:
+          asset.modelId ||
+          models.find(
+            (model) =>
+              model.name === asset.model &&
+              model.brandName === asset.manufacturer &&
+              model.assetType === mapAssetTypeToCatalog(asset.type),
+          )?.id ||
+          "",
         manufacturer: asset.manufacturer || "",
         model: asset.model || "",
         ram: asset.ram || "",
@@ -125,7 +153,25 @@ function AssetsPage() {
         processor: asset.processor || "",
         technicalSpec: asset.technicalSpec || "",
       })),
-    [assets],
+    [assets, brands, models],
+  );
+
+  const catalogAssetType = mapAssetTypeToCatalog(form.type);
+  const availableBrands = useMemo(
+    () =>
+      brands.filter((brand) => brand.status === "Ativo" && brand.assetType === catalogAssetType),
+    [brands, catalogAssetType],
+  );
+
+  const availableModels = useMemo(
+    () =>
+      models.filter(
+        (model) =>
+          model.status === "Ativo" &&
+          model.assetType === catalogAssetType &&
+          model.brandId === form.brandId,
+      ),
+    [catalogAssetType, form.brandId, models],
   );
 
   const filteredAssets = useMemo(() => {
@@ -194,6 +240,7 @@ function AssetsPage() {
     const nextValue = event.target.value;
     setForm((current) => ({
       ...current,
+      ...(field === "type" ? { brandId: "", manufacturer: "", modelId: "", model: "" } : {}),
       [field]: nextValue,
     }));
   };
@@ -207,7 +254,9 @@ function AssetsPage() {
     const payload = {
       ...form,
       name: form.name.trim(),
+      brandId: form.brandId,
       manufacturer: form.manufacturer.trim(),
+      modelId: form.modelId,
       model: form.model.trim(),
       owner: form.owner.trim(),
       location: form.location.trim(),
@@ -240,11 +289,34 @@ function AssetsPage() {
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!form.name || !form.type || !form.manufacturer || !form.model || !form.owner || !form.serial) {
-      pushToast("Campos obrigatorios", "Preencha nome, tipo, fabricante, modelo, usuario e numero de serie.", "warning");
+      pushToast("Campos obrigatorios", "Preencha nome, tipo, marca, modelo, usuario e numero de serie.", "warning");
       return;
     }
 
     const payload = buildPayload();
+    const selectedBrand = brands.find(
+      (brand) =>
+        brand.id === payload.brandId &&
+        brand.status === "Ativo" &&
+        brand.assetType === mapAssetTypeToCatalog(payload.type),
+    );
+    if (!selectedBrand || selectedBrand.name !== payload.manufacturer) {
+      pushToast("Marca invalida", "Selecione uma marca existente e compativel com o tipo do ativo.", "warning");
+      return;
+    }
+
+    const selectedModel = models.find(
+      (model) =>
+        model.id === payload.modelId &&
+        model.status === "Ativo" &&
+        model.assetType === mapAssetTypeToCatalog(payload.type) &&
+        model.brandId === payload.brandId,
+    );
+    if (!selectedModel || selectedModel.name !== payload.model) {
+      pushToast("Modelo invalido", "Selecione um modelo existente e vinculado a marca escolhida.", "warning");
+      return;
+    }
+
     const serialConflict = normalizedAssets.find(
       (asset) => normalizeText(asset.serial) === normalizeText(payload.serial) && asset.id !== editingId,
     );
@@ -480,12 +552,57 @@ function AssetsPage() {
                   </select>
                 </label>
                 <label className="field-block">
-                  <span>Fabricante</span>
-                  <input onChange={updateField("manufacturer")} value={form.manufacturer} />
+                  <span>Marca</span>
+                  <CatalogAutocomplete
+                    getDescription={(item) => item.assetType}
+                    getLabel={(item) => item.name}
+                    items={availableBrands}
+                    onChange={(nextValue) =>
+                      setForm((current) => ({
+                        ...current,
+                        manufacturer: nextValue,
+                        brandId: "",
+                        model: "",
+                        modelId: "",
+                      }))
+                    }
+                    onSelect={(item) =>
+                      setForm((current) => ({
+                        ...current,
+                        brandId: item.id,
+                        manufacturer: item.name,
+                        model: "",
+                        modelId: "",
+                      }))
+                    }
+                    placeholder="Digite para buscar a marca"
+                    value={form.manufacturer}
+                  />
                 </label>
                 <label className="field-block">
                   <span>Modelo</span>
-                  <input onChange={updateField("model")} value={form.model} />
+                  <CatalogAutocomplete
+                    disabled={!form.brandId}
+                    getDescription={(item) => `${item.brandName} | ${item.assetType}`}
+                    getLabel={(item) => item.name}
+                    items={availableModels}
+                    onChange={(nextValue) =>
+                      setForm((current) => ({
+                        ...current,
+                        model: nextValue,
+                        modelId: "",
+                      }))
+                    }
+                    onSelect={(item) =>
+                      setForm((current) => ({
+                        ...current,
+                        modelId: item.id,
+                        model: item.name,
+                      }))
+                    }
+                    placeholder={form.brandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
+                    value={form.model}
+                  />
                 </label>
                 <label className="field-block field-full">
                   <span>Nome</span>

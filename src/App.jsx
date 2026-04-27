@@ -8,6 +8,7 @@ import TicketsPage from "./pages/TicketsPage";
 import UsersPage from "./pages/UsersPage";
 import AssetsPage from "./pages/AssetsPage";
 import InventoryPage from "./pages/InventoryPage";
+import BrandsModelsPage from "./pages/BrandsModelsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
 
@@ -33,6 +34,7 @@ function App() {
         <Route element={<TicketsPage />} path="tickets" />
         <Route element={<AssetsPage />} path="assets" />
         <Route element={<InventoryPage />} path="inventory" />
+        <Route element={<BrandsModelsPage />} path="brands-models" />
         <Route element={<ProjectsPage />} path="projects" />
         <Route element={<ApiConfigPage />} path="api-rest" />
         <Route element={<UsersPage />} path="users" />
