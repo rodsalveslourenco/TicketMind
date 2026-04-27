@@ -4,24 +4,16 @@ import { seedData } from "./seedData";
 const STORAGE_KEY = "ticketmind-data";
 const AppDataContext = createContext(null);
 
-function normalizeAdminUser(users) {
-  return (users || []).map((candidate) =>
-    candidate.email === "admin@ticketmind.local" ? { ...candidate, password: "admin0123" } : candidate,
-  );
+function buildDefaultUsers() {
+  return seedData.users.map((candidate) => ({ ...candidate, password: "admin0123" }));
 }
 
 function mergeCollections(stored) {
   return {
     ...seedData,
     ...stored,
-    currentUser:
-      stored?.currentUser?.email === "admin@ticketmind.local"
-        ? { ...stored.currentUser, password: "admin0123" }
-        : stored?.currentUser || seedData.currentUser,
-    users:
-      Array.isArray(stored?.users) && stored.users.length
-        ? normalizeAdminUser(stored.users)
-        : normalizeAdminUser(seedData.users),
+    currentUser: { ...seedData.currentUser, password: "admin0123" },
+    users: buildDefaultUsers(),
     queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
     tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,

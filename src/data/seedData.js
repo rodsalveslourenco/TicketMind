@@ -59,7 +59,7 @@ export const seedData = {
       role: "Analista",
       team: "Service Desk",
       department: "TI",
-      password: "Amanda@2026",
+      password: "admin0123",
       permissions: analystPermissions,
     },
     {
@@ -69,7 +69,7 @@ export const seedData = {
       role: "Analista",
       team: "Infraestrutura",
       department: "TI",
-      password: "Bruno@2026",
+      password: "admin0123",
       permissions: analystPermissions,
     },
     {
@@ -79,7 +79,7 @@ export const seedData = {
       role: "Especialista",
       team: "Aplicacoes",
       department: "TI",
-      password: "Carla@2026",
+      password: "admin0123",
       permissions: analystPermissions,
     },
     {
@@ -89,7 +89,7 @@ export const seedData = {
       role: "Analista",
       team: "Seguranca",
       department: "TI",
-      password: "Daniel@2026",
+      password: "admin0123",
       permissions: analystPermissions,
     },
     {
@@ -99,7 +99,7 @@ export const seedData = {
       role: "Coordenadora",
       team: "Recursos Humanos",
       department: "RH",
-      password: "Marina@2026",
+      password: "admin0123",
       permissions: {
         dashboard: true,
         tickets_view: true,

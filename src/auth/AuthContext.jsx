@@ -5,22 +5,12 @@ const AuthContext = createContext(null);
 const SESSION_STORAGE_KEY = "ticketmind-session";
 const DATA_STORAGE_KEY = "ticketmind-data";
 
-function normalizeAdminPassword(users) {
-  return (users || []).map((candidate) =>
-    candidate.email === "admin@ticketmind.local" ? { ...candidate, password: "admin0123" } : candidate,
-  );
+function buildDefaultUsers() {
+  return seedData.users.map((candidate) => ({ ...candidate, password: "admin0123" }));
 }
 
 function readUsers() {
-  const rawData = window.localStorage.getItem(DATA_STORAGE_KEY);
-  if (!rawData) return normalizeAdminPassword(seedData.users);
-
-  try {
-    const parsed = JSON.parse(rawData);
-    return parsed.users?.length ? normalizeAdminPassword(parsed.users) : normalizeAdminPassword(seedData.users);
-  } catch {
-    return normalizeAdminPassword(seedData.users);
-  }
+  return buildDefaultUsers();
 }
 
 function readDefaultUser() {
@@ -32,6 +22,30 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const rawData = window.localStorage.getItem(DATA_STORAGE_KEY);
+    if (rawData) {
+      try {
+        const parsed = JSON.parse(rawData);
+        window.localStorage.setItem(
+          DATA_STORAGE_KEY,
+          JSON.stringify({
+            ...parsed,
+            currentUser: { ...seedData.currentUser, password: "admin0123" },
+            users: buildDefaultUsers(),
+          }),
+        );
+      } catch {
+        window.localStorage.setItem(
+          DATA_STORAGE_KEY,
+          JSON.stringify({
+            ...seedData,
+            currentUser: { ...seedData.currentUser, password: "admin0123" },
+            users: buildDefaultUsers(),
+          }),
+        );
+      }
+    }
+
     const rawSession = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (rawSession) {
       const storedSession = JSON.parse(rawSession);
