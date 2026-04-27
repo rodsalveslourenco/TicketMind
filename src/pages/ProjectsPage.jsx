@@ -12,10 +12,9 @@ const defaultForm = {
 };
 
 function ProjectsPage() {
-  const { addProject, deleteProject, projects, updateProject } = useAppData();
+  const { addProject, deleteProject, projects, pushToast, updateProject } = useAppData();
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
-  const [notice, setNotice] = useState("");
 
   const orderedProjects = useMemo(
     () => projects.slice().sort((left, right) => left.name.localeCompare(right.name)),
@@ -31,11 +30,6 @@ function ProjectsPage() {
     setEditingId(null);
   };
 
-  const flashNotice = (message) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 1800);
-  };
-
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!form.name || !form.manager || !form.dueDate) return;
@@ -43,103 +37,139 @@ function ProjectsPage() {
     const payload = { ...form, progress: Number(form.progress) };
     if (editingId) {
       updateProject(editingId, payload);
-      flashNotice("Projeto atualizado.");
+      pushToast("Projeto atualizado", form.name);
     } else {
       addProject(payload);
-      flashNotice("Projeto cadastrado.");
+      pushToast("Projeto cadastrado", form.name);
     }
     resetForm();
   };
 
   return (
     <div className="users-page">
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>{editingId ? "Editar projeto" : "Projetos"}</h2>
-            <span>Pipeline de implantacoes, melhorias internas e entregas estrategicas.</span>
-          </div>
-          {notice ? <span className="status-pill status-pill-success">{notice}</span> : null}
+      <section className="module-hero board-card">
+        <div>
+          <span className="eyebrow">Projetos</span>
+          <h2>Pipeline visual para iniciativas em andamento, com leitura rapida de progresso e entrega.</h2>
         </div>
-
-        <form className="glpi-ticket-form user-form" onSubmit={handleSubmit}>
-          <div className="glpi-form-grid">
-            <label className="field-block field-span-2">
-              <span>Projeto</span>
-              <input onChange={updateField("name")} value={form.name} />
-            </label>
-            <label className="field-block">
-              <span>Patrocinador</span>
-              <input onChange={updateField("sponsor")} value={form.sponsor} />
-            </label>
-            <label className="field-block">
-              <span>Responsavel</span>
-              <input onChange={updateField("manager")} value={form.manager} />
-            </label>
-            <label className="field-block">
-              <span>Status</span>
-              <select onChange={updateField("status")} value={form.status}>
-                <option>Planejado</option>
-                <option>Em andamento</option>
-                <option>Em risco</option>
-                <option>Concluido</option>
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Progresso (%)</span>
-              <input max="100" min="0" onChange={updateField("progress")} type="number" value={form.progress} />
-            </label>
-            <label className="field-block">
-              <span>Entrega</span>
-              <input onChange={updateField("dueDate")} type="date" value={form.dueDate} />
-            </label>
-            <label className="field-block field-full">
-              <span>Resumo</span>
-              <textarea onChange={updateField("summary")} value={form.summary} />
-            </label>
+        <div className="insight-strip">
+          <div className="insight-chip">
+            <strong>{orderedProjects.length}</strong>
+            <span>frentes cadastradas</span>
           </div>
-
-          <div className="ticket-create-actions">
-            <button className="primary-button interactive-button" type="submit">
-              {editingId ? "Salvar projeto" : "Cadastrar projeto"}
-            </button>
-            {editingId ? (
-              <button className="ghost-button interactive-button" onClick={resetForm} type="button">
-                Cancelar
-              </button>
-            ) : null}
+          <div className="insight-chip">
+            <strong>{orderedProjects.filter((project) => project.status === "Em andamento").length}</strong>
+            <span>em andamento</span>
           </div>
-        </form>
+          <div className="insight-chip">
+            <strong>{orderedProjects.filter((project) => Number(project.progress) >= 70).length}</strong>
+            <span>fase final</span>
+          </div>
+        </div>
       </section>
 
-      <section className="dashboard-column">
-        {orderedProjects.map((project) => (
-          <article className="board-card project-card" key={project.id}>
-            <div className="card-heading">
-              <div>
-                <h2>{project.name}</h2>
-                <span>{project.manager} • {project.status}</span>
-              </div>
-              <span className="badge badge-neutral">{project.progress}%</span>
+      <section className="module-grid">
+        <section className="board-card glpi-panel">
+          <div className="glpi-toolbar">
+            <div>
+              <h2>{editingId ? "Editar projeto" : "Projetos"}</h2>
+              <span>Pipeline de implantacoes, melhorias internas e entregas estrategicas.</span>
             </div>
-            <p className="project-summary">{project.summary}</p>
-            <div className="progress-shell progress-shell-spaced">
-              <div className="progress-bar" style={{ width: `${project.progress}%` }} />
+          </div>
+
+          <form className="glpi-ticket-form user-form" onSubmit={handleSubmit}>
+            <div className="glpi-form-grid">
+              <label className="field-block field-span-2">
+                <span>Projeto</span>
+                <input onChange={updateField("name")} value={form.name} />
+              </label>
+              <label className="field-block">
+                <span>Patrocinador</span>
+                <input onChange={updateField("sponsor")} value={form.sponsor} />
+              </label>
+              <label className="field-block">
+                <span>Responsavel</span>
+                <input onChange={updateField("manager")} value={form.manager} />
+              </label>
+              <label className="field-block">
+                <span>Status</span>
+                <select onChange={updateField("status")} value={form.status}>
+                  <option>Planejado</option>
+                  <option>Em andamento</option>
+                  <option>Em risco</option>
+                  <option>Concluido</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Progresso (%)</span>
+                <input max="100" min="0" onChange={updateField("progress")} type="number" value={form.progress} />
+              </label>
+              <label className="field-block">
+                <span>Entrega</span>
+                <input onChange={updateField("dueDate")} type="date" value={form.dueDate} />
+              </label>
+              <label className="field-block field-full">
+                <span>Resumo</span>
+                <textarea onChange={updateField("summary")} value={form.summary} />
+              </label>
             </div>
-            <div className="row-stats row-stats-wrap">
-              <span>{project.sponsor}</span>
-              <span>Entrega {project.dueDate}</span>
-            </div>
+
             <div className="ticket-create-actions">
-              <button className="ghost-button interactive-button" onClick={() => { setEditingId(project.id); setForm(project); }} type="button">
-                Editar
+              <button className="primary-button interactive-button" type="submit">
+                {editingId ? "Salvar projeto" : "Cadastrar projeto"}
               </button>
-              <button className="danger-button interactive-button" onClick={() => { deleteProject(project.id); flashNotice("Projeto removido."); }} type="button">
-                Excluir
-              </button>
+              {editingId ? (
+                <button className="ghost-button interactive-button" onClick={resetForm} type="button">
+                  Cancelar
+                </button>
+              ) : null}
             </div>
-          </article>
-        ))}
+          </form>
+        </section>
+
+        <section className="dashboard-column">
+          {orderedProjects.map((project) => (
+            <article className="board-card project-card" key={project.id}>
+              <div className="card-heading">
+                <div>
+                  <h2>{project.name}</h2>
+                  <span>{project.manager} | {project.status}</span>
+                </div>
+                <span className="badge badge-neutral">{project.progress}%</span>
+              </div>
+              <p className="project-summary">{project.summary}</p>
+              <div className="progress-shell progress-shell-spaced">
+                <div className="progress-bar" style={{ width: `${project.progress}%` }} />
+              </div>
+              <div className="row-stats row-stats-wrap">
+                <span>{project.sponsor}</span>
+                <span>Entrega {project.dueDate}</span>
+              </div>
+              <div className="ticket-create-actions">
+                <button
+                  className="ghost-button interactive-button"
+                  onClick={() => {
+                    setEditingId(project.id);
+                    setForm(project);
+                  }}
+                  type="button"
+                >
+                  Editar
+                </button>
+                <button
+                  className="danger-button interactive-button"
+                  onClick={() => {
+                    deleteProject(project.id);
+                    pushToast("Projeto removido", project.name);
+                  }}
+                  type="button"
+                >
+                  Excluir
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
       </section>
     </div>
   );

@@ -47,38 +47,27 @@ function DashboardPage() {
 
   return (
     <div className="page-grid dashboard-grid">
-      <section className="dashboard-hero board-card">
-        <div>
-          <span className="eyebrow">Visao executiva</span>
-          <h2>Operacao organizada por fila, capacidade tecnica e entregas em andamento.</h2>
-          <p>
-            O painel concentra o que exige acao, o que sustenta a operacao e o que esta em evolucao,
-            sem misturar indicadores de perfis diferentes no mesmo bloco.
-          </p>
-        </div>
-
-        <div className="metric-grid metric-grid-hero">
-          <article className="metric-card metric-card-highlight">
-            <span>Fila operacional</span>
-            <strong>{summary.openTickets}</strong>
-            <small>{summary.backlogTrend}% no backlog recente</small>
-          </article>
-          <article className="metric-card">
-            <span>Chamados criticos</span>
-            <strong>{summary.criticalOpen}</strong>
-            <small>Itens com maior risco para a operacao</small>
-          </article>
-          <article className="metric-card">
-            <span>SLA</span>
-            <strong>{summary.slaCompliance}%</strong>
-            <small>Conformidade da fila ativa</small>
-          </article>
-          <article className="metric-card">
-            <span>CSAT</span>
-            <strong>{summary.csat}/5</strong>
-            <small>Percepcao media do atendimento</small>
-          </article>
-        </div>
+      <section className="metric-grid metric-grid-hero">
+        <article className="metric-card metric-card-highlight">
+          <span>Fila operacional</span>
+          <strong>{summary.openTickets}</strong>
+          <small>{summary.backlogTrend}% no backlog recente</small>
+        </article>
+        <article className="metric-card">
+          <span>Chamados criticos</span>
+          <strong>{summary.criticalOpen}</strong>
+          <small>Itens com maior risco para a operacao</small>
+        </article>
+        <article className="metric-card">
+          <span>SLA</span>
+          <strong>{summary.slaCompliance}%</strong>
+          <small>Conformidade da fila ativa</small>
+        </article>
+        <article className="metric-card">
+          <span>CSAT</span>
+          <strong>{summary.csat}/5</strong>
+          <small>Percepcao media do atendimento</small>
+        </article>
       </section>
 
       <section className="split-grid split-grid-wide">
@@ -128,7 +117,7 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Chamados que exigem acao</h2>
-              <span>Priorizacao simples da fila ativa</span>
+              <span>Priorizacao da fila com foco no que impacta a operacao</span>
             </div>
           </div>
           <div className="ticket-stack">
@@ -160,7 +149,7 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Projetos e integracoes</h2>
-              <span>Entregas em andamento e saude das conexoes externas</span>
+              <span>Entrega, evolucao tecnica e conexoes externas no mesmo panorama</span>
             </div>
           </div>
           <div className="dashboard-column">
@@ -210,7 +199,7 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Ativos monitorados</h2>
-              <span>Itens essenciais para sustentar a operacao</span>
+              <span>Base critica para sustentar atendimento e projetos</span>
             </div>
           </div>
           <div className="table-list">
@@ -234,7 +223,7 @@ function DashboardPage() {
         <div className="card-heading">
           <div>
             <h2>Indicadores executivos</h2>
-            <span>Leitura simples e acionavel para a gestao</span>
+            <span>Visao compacta para decisao sem poluir o painel</span>
           </div>
         </div>
         <div className="kpi-list kpi-list-wide">

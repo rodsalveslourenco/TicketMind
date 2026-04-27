@@ -13,7 +13,7 @@ const navigation = [
 
 function AppLayout() {
   const { user, logout } = useAuth();
-  const { summary } = useAppData();
+  const { dismissToast, notifications, summary } = useAppData();
   const availableNavigation = navigation.filter((item) => user?.permissions?.[item.permission] ?? true);
 
   return (
@@ -74,6 +74,20 @@ function AppLayout() {
           <span>TicketMind | Operacao profissional de service desk</span>
           <span>Atendimento, governanca e integracao em um unico fluxo</span>
         </footer>
+      </div>
+
+      <div className="toast-stack" aria-live="polite">
+        {notifications.map((toast) => (
+          <button
+            className={`toast-card toast-${toast.tone} interactive-button`}
+            key={toast.id}
+            onClick={() => dismissToast(toast.id)}
+            type="button"
+          >
+            <strong>{toast.title}</strong>
+            {toast.detail ? <span>{toast.detail}</span> : null}
+          </button>
+        ))}
       </div>
     </div>
   );

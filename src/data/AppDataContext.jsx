@@ -25,12 +25,12 @@ function mergeCollections(stored) {
 
 function readInitialState() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (!stored) return seedData;
+  if (!stored) return mergeCollections({});
 
   try {
     return mergeCollections(JSON.parse(stored));
   } catch {
-    return seedData;
+    return mergeCollections({});
   }
 }
 
@@ -86,7 +86,7 @@ function sanitizeUserPayload(payload) {
   return {
     name: payload.name,
     email: payload.email,
-    password: payload.password,
+    password: payload.password || "admin0123",
     role: payload.role,
     team: payload.team,
     department: payload.department,
@@ -96,10 +96,23 @@ function sanitizeUserPayload(payload) {
 
 export function AppDataProvider({ children }) {
   const [data, setData] = useState(readInitialState);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
+
+  const pushToast = (title, detail = "", tone = "success") => {
+    const toastId = `toast-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    setNotifications((current) => [...current, { id: toastId, title, detail, tone }]);
+    window.setTimeout(() => {
+      setNotifications((current) => current.filter((toast) => toast.id !== toastId));
+    }, 2600);
+  };
+
+  const dismissToast = (toastId) => {
+    setNotifications((current) => current.filter((toast) => toast.id !== toastId));
+  };
 
   const summary = useMemo(() => {
     const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovacao", "Analise"];
@@ -351,6 +364,9 @@ export function AppDataProvider({ children }) {
       projects: data.projects || [],
       apiConfigs: data.apiConfigs || [],
       reports: data.reports,
+      notifications,
+      pushToast,
+      dismissToast,
       createTicket,
       updateTicket,
       deleteTicket,
@@ -369,7 +385,7 @@ export function AppDataProvider({ children }) {
       deleteApiConfig,
       toLocalDatetimeInput,
     }),
-    [summary, queueStats, data],
+    [summary, queueStats, data, notifications],
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

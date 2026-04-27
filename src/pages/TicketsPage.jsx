@@ -86,6 +86,7 @@ function TicketsPage() {
     addTicketAttachments,
     createTicket,
     deleteTicket,
+    pushToast,
     removeTicketAttachment,
     tickets,
     toLocalDatetimeInput,
@@ -99,7 +100,6 @@ function TicketsPage() {
   const [watcherQuery, setWatcherQuery] = useState("");
   const [detailTicketId, setDetailTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
-  const [notice, setNotice] = useState("");
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
@@ -138,11 +138,6 @@ function TicketsPage() {
       )
       .slice(0, 6);
   }, [createForm.watchers, user?.id, users, watcherQuery]);
-
-  const flashNotice = (message) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 1800);
-  };
 
   useEffect(() => {
     if (!detailTicket) {
@@ -268,7 +263,7 @@ function TicketsPage() {
       dueDate: createForm.dueDate || "",
     });
 
-    flashNotice("Chamado criado.");
+    pushToast("Chamado aberto", createForm.title);
     handleCloseCreateModal();
   };
 
@@ -281,14 +276,14 @@ function TicketsPage() {
       openedAt: toIsoOrEmpty(detailForm.openedAt),
       dueDate: detailForm.dueDate || "",
     });
-    flashNotice("Chamado atualizado.");
+    pushToast("Chamado atualizado", detailForm.title);
   };
 
   const handleDeleteTicket = () => {
     if (!detailTicket) return;
     deleteTicket(detailTicket.id);
     setDetailTicketId(null);
-    flashNotice("Chamado removido.");
+    pushToast("Chamado removido", detailTicket.title);
   };
 
   const handleDetailAttachments = async (event) => {
@@ -297,24 +292,42 @@ function TicketsPage() {
 
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
     addTicketAttachments(detailTicket.id, attachments);
-    flashNotice("Anexos adicionados.");
+    pushToast("Anexos adicionados", `${attachments.length} arquivo(s) vinculados`);
     event.target.value = "";
   };
 
   return (
     <div className="ticket-page">
+      <section className="module-hero board-card">
+        <div>
+          <span className="eyebrow">Chamados</span>
+          <h2>Operacao de incidentes, requisicoes e problemas com abertura rapida e tratativa completa.</h2>
+        </div>
+        <div className="insight-strip">
+          <div className="insight-chip">
+            <strong>{tickets.length}</strong>
+            <span>tickets registrados</span>
+          </div>
+          <div className="insight-chip">
+            <strong>{tiUsers.length}</strong>
+            <span>tecnicos de TI</span>
+          </div>
+          <div className="insight-chip">
+            <strong>{filteredTickets.length}</strong>
+            <span>itens no filtro atual</span>
+          </div>
+        </div>
+      </section>
+
       <section className="ticket-list-panel board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
             <h2>Fila de chamados</h2>
             <span>Duplo clique para abrir o registro completo.</span>
           </div>
-          <div className="ticket-create-actions">
-            {notice ? <span className="status-pill status-pill-success">{notice}</span> : null}
-            <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
-              + Criar chamado
-            </button>
-          </div>
+          <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
+            + Criar chamado
+          </button>
         </div>
 
         <div className="toolbar glpi-filter-bar">
@@ -673,7 +686,7 @@ function TicketsPage() {
                             className="ghost-link danger-link interactive-button"
                             onClick={() => {
                               removeTicketAttachment(detailTicket.id, attachment.id);
-                              flashNotice("Anexo removido.");
+                              pushToast("Anexo removido", attachment.name);
                             }}
                             type="button"
                           >
