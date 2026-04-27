@@ -47,6 +47,47 @@ function resolveAssetType(type) {
   return assetTypeOptions.find((item) => normalizeText(item) === normalized) || "Outros";
 }
 
+function findBrandByTypeAndName(brands, assetType, brandId, manufacturer) {
+  if (brandId) {
+    const brandById = brands.find(
+      (brand) => brand.id === brandId && brand.status === "Ativo" && brand.assetType === assetType,
+    );
+    if (brandById) return brandById;
+  }
+
+  return (
+    brands.find(
+      (brand) =>
+        brand.status === "Ativo" &&
+        brand.assetType === assetType &&
+        normalizeText(brand.name) === normalizeText(manufacturer),
+    ) || null
+  );
+}
+
+function findModelByTypeBrandAndName(models, assetType, brandId, modelId, modelName) {
+  if (modelId) {
+    const modelById = models.find(
+      (model) =>
+        model.id === modelId &&
+        model.status === "Ativo" &&
+        model.assetType === assetType &&
+        model.brandId === brandId,
+    );
+    if (modelById) return modelById;
+  }
+
+  return (
+    models.find(
+      (model) =>
+        model.status === "Ativo" &&
+        model.assetType === assetType &&
+        model.brandId === brandId &&
+        normalizeText(model.name) === normalizeText(modelName),
+    ) || null
+  );
+}
+
 function isComputerType(type) {
   const normalized = normalizeText(type);
   return normalized === "notebook" || normalized === "desktop";
@@ -158,15 +199,20 @@ function AssetsPage() {
     [brands, catalogAssetType],
   );
 
+  const resolvedBrandId =
+    form.brandId ||
+    findBrandByTypeAndName(brands, catalogAssetType, "", form.manufacturer)?.id ||
+    "";
+
   const availableModels = useMemo(
     () =>
       models.filter(
         (model) =>
           model.status === "Ativo" &&
           model.assetType === catalogAssetType &&
-          model.brandId === form.brandId,
+          model.brandId === resolvedBrandId,
       ),
-    [catalogAssetType, form.brandId, models],
+    [catalogAssetType, models, resolvedBrandId],
   );
 
   const filteredAssets = useMemo(() => {
@@ -288,28 +334,34 @@ function AssetsPage() {
     }
 
     const payload = buildPayload();
-    const selectedBrand = brands.find(
-      (brand) =>
-        brand.id === payload.brandId &&
-        brand.status === "Ativo" &&
-        brand.assetType === resolveAssetType(payload.type),
+    const assetType = resolveAssetType(payload.type);
+    const selectedBrand = findBrandByTypeAndName(
+      brands,
+      assetType,
+      payload.brandId,
+      payload.manufacturer,
     );
     if (!selectedBrand || selectedBrand.name !== payload.manufacturer) {
       pushToast("Marca invalida", "Selecione uma marca existente e compativel com o tipo do ativo.", "warning");
       return;
     }
 
-    const selectedModel = models.find(
-      (model) =>
-        model.id === payload.modelId &&
-        model.status === "Ativo" &&
-        model.assetType === resolveAssetType(payload.type) &&
-        model.brandId === payload.brandId,
+    const selectedModel = findModelByTypeBrandAndName(
+      models,
+      assetType,
+      selectedBrand.id,
+      payload.modelId,
+      payload.model,
     );
     if (!selectedModel || selectedModel.name !== payload.model) {
       pushToast("Modelo invalido", "Selecione um modelo existente e vinculado a marca escolhida.", "warning");
       return;
     }
+
+    payload.brandId = selectedBrand.id;
+    payload.manufacturer = selectedBrand.name;
+    payload.modelId = selectedModel.id;
+    payload.model = selectedModel.name;
 
     const serialConflict = normalizedAssets.find(
       (asset) => normalizeText(asset.serial) === normalizeText(payload.serial) && asset.id !== editingId,
@@ -627,7 +679,7 @@ function AssetsPage() {
                   <span>Modelo</span>
                   <div className="inline-field-actions">
                     <CatalogAutocomplete
-                      disabled={!form.brandId}
+                      disabled={!resolvedBrandId}
                       getDescription={(item) => `${item.brandName} | ${item.assetType}`}
                       getLabel={(item) => item.name}
                       items={availableModels}
@@ -645,7 +697,7 @@ function AssetsPage() {
                           model: item.name,
                         }))
                       }
-                      placeholder={form.brandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
+                      placeholder={resolvedBrandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
                       value={form.model}
                     />
                     <button
