@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 
@@ -30,6 +31,8 @@ const detailFields = [
   { key: "watchers", label: "Observadores", kind: "input" },
   { key: "assignee", label: "Tecnico responsavel", kind: "assignee" },
 ];
+
+const kanbanStatuses = ["Aberto", "Em atendimento", "Aguardando aprovacao", "Analise", "Resolvido"];
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -72,6 +75,14 @@ function getPriorityBadgeClass(priority) {
   return "badge-neutral";
 }
 
+function getPriorityRowClass(priority) {
+  const normalized = normalizeText(priority);
+  if (normalized === "critica") return "priority-line-critica";
+  if (normalized === "alta") return "priority-line-alta";
+  if (normalized === "baixa") return "priority-line-baixa";
+  return "priority-line-media";
+}
+
 function getFreshCreateForm() {
   return {
     ...defaultCreateForm,
@@ -94,7 +105,9 @@ function TicketsPage() {
     users,
   } = useAppData();
   const { user } = useAuth();
+  const [viewMode, setViewMode] = useState("list");
   const [filter, setFilter] = useState("Todos");
+  const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
@@ -110,17 +123,45 @@ function TicketsPage() {
   );
 
   const filteredTickets = useMemo(() => {
-    if (filter === "Todos") return tickets;
-    if (filter === "Proximos do SLA") {
-      return tickets.filter((ticket) => ticket.sla.toLowerCase().includes("min"));
+    let currentTickets = tickets;
+
+    if (filter !== "Todos") {
+      if (filter === "Proximos do SLA") {
+        currentTickets = currentTickets.filter((ticket) => ticket.sla.toLowerCase().includes("min"));
+      } else {
+        const normalizedFilter = normalizeText(filter);
+        currentTickets = currentTickets.filter(
+          (ticket) =>
+            normalizeText(ticket.type) === normalizedFilter ||
+            normalizeText(ticket.status) === normalizedFilter,
+        );
+      }
     }
 
-    const normalizedFilter = normalizeText(filter);
-    return tickets.filter(
-      (ticket) =>
-        normalizeText(ticket.type) === normalizedFilter || normalizeText(ticket.status) === normalizedFilter,
+    const normalizedSearch = normalizeText(search);
+    if (!normalizedSearch) return currentTickets;
+
+    return currentTickets.filter((ticket) =>
+      [
+        ticket.id,
+        ticket.title,
+        ticket.requester,
+        ticket.assignee,
+        ticket.queue,
+        ticket.status,
+        ticket.priority,
+      ].some((field) => normalizeText(field).includes(normalizedSearch)),
     );
-  }, [filter, tickets]);
+  }, [filter, search, tickets]);
+
+  const kanbanColumns = useMemo(
+    () =>
+      kanbanStatuses.map((status) => ({
+        status,
+        tickets: filteredTickets.filter((ticket) => ticket.status === status),
+      })),
+    [filteredTickets],
+  );
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
 
@@ -301,7 +342,7 @@ function TicketsPage() {
       <section className="module-hero board-card">
         <div>
           <span className="eyebrow">Chamados</span>
-          <h2>Operacao de incidentes, requisicoes e problemas com abertura rapida e tratativa completa.</h2>
+          <h2>Fila completa com visao em lista ou kanban, prioridade visual e tratativa em popup.</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -314,23 +355,41 @@ function TicketsPage() {
           </div>
           <div className="insight-chip">
             <strong>{filteredTickets.length}</strong>
-            <span>itens no filtro atual</span>
+            <span>itens no recorte atual</span>
           </div>
         </div>
       </section>
 
-      <section className="ticket-list-panel board-card glpi-panel">
+      <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
             <h2>Fila de chamados</h2>
-            <span>Duplo clique para abrir o registro completo.</span>
+            <span>Duplo clique abre o registro completo.</span>
           </div>
-          <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
-            + Criar chamado
-          </button>
+          <div className="toolbar">
+            <div className="view-toggle">
+              <button
+                className={`filter-pill interactive-button${viewMode === "list" ? " is-active" : ""}`}
+                onClick={() => setViewMode("list")}
+                type="button"
+              >
+                Lista
+              </button>
+              <button
+                className={`filter-pill interactive-button${viewMode === "kanban" ? " is-active" : ""}`}
+                onClick={() => setViewMode("kanban")}
+                type="button"
+              >
+                Kanban
+              </button>
+            </div>
+            <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
+              + Criar chamado
+            </button>
+          </div>
         </div>
 
-        <div className="toolbar glpi-filter-bar">
+        <div className="toolbar glpi-filter-bar glpi-toolbar-stack">
           {["Todos", "Incidente", "Requisicao", "Aguardando aprovacao", "Proximos do SLA"].map((item) => (
             <button
               key={item}
@@ -341,35 +400,75 @@ function TicketsPage() {
               {item}
             </button>
           ))}
+          <input
+            className="toolbar-search"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por titulo, fila, solicitante ou tecnico"
+            value={search}
+          />
         </div>
 
-        <div className="ticket-rows ticket-rows-wide">
-          {filteredTickets.map((ticket) => (
-            <button
-              className="ticket-row-card interactive-button"
-              key={ticket.id}
-              onDoubleClick={() => setDetailTicketId(ticket.id)}
-              type="button"
-            >
-              <div className="ticket-row-main">
-                <div className="ticket-row-title">
-                  <strong>{ticket.id}</strong>
-                  <h3>{ticket.title}</h3>
+        {viewMode === "list" ? (
+          <div className="ticket-rows ticket-rows-wide">
+            {filteredTickets.map((ticket) => (
+              <button
+                className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}`}
+                key={ticket.id}
+                onDoubleClick={() => setDetailTicketId(ticket.id)}
+                type="button"
+              >
+                <div className="ticket-row-main">
+                  <div className="ticket-row-title">
+                    <strong>{ticket.id}</strong>
+                    <h3>{ticket.title}</h3>
+                  </div>
+                  <div className="ticket-row-badges">
+                    <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
+                    <span className="badge badge-neutral">{ticket.status}</span>
+                  </div>
                 </div>
-                <div className="ticket-row-badges">
-                  <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                  <span className="badge badge-neutral">{ticket.status}</span>
+                <div className="ticket-row-meta">
+                  <span>{ticket.requester}</span>
+                  <span>{ticket.queue}</span>
+                  <span>{ticket.assignee}</span>
+                  <span>{ticket.openedAtLabel}</span>
                 </div>
-              </div>
-              <div className="ticket-row-meta">
-                <span>{ticket.requester}</span>
-                <span>{ticket.queue}</span>
-                <span>{ticket.assignee}</span>
-                <span>{ticket.openedAtLabel}</span>
-              </div>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="kanban-grid">
+            {kanbanColumns.map((column) => (
+              <section className="kanban-column" key={column.status}>
+                <div className="kanban-column-header">
+                  <strong>{column.status}</strong>
+                  <span>{column.tickets.length}</span>
+                </div>
+                <div className="kanban-column-body">
+                  {column.tickets.map((ticket) => (
+                    <button
+                      className={`kanban-card interactive-button ${getPriorityRowClass(ticket.priority)}`}
+                      key={ticket.id}
+                      onDoubleClick={() => setDetailTicketId(ticket.id)}
+                      type="button"
+                    >
+                      <div className="ticket-top">
+                        <strong>{ticket.id}</strong>
+                        <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
+                      </div>
+                      <h3>{ticket.title}</h3>
+                      <div className="ticket-meta">
+                        <span>{ticket.requester}</span>
+                        <span>{ticket.assignee}</span>
+                        <span>{ticket.sla}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </section>
 
       {showCreateForm ? (
@@ -603,14 +702,13 @@ function TicketsPage() {
                       </select>
                     ) : null}
                     {field.kind === "assignee" ? (
-                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""}>
-                        <option value="">Selecione um tecnico de TI</option>
-                        {tiUsers.map((candidate) => (
-                          <option key={candidate.id} value={candidate.name}>
-                            {candidate.name} | {candidate.team}
-                          </option>
-                        ))}
-                      </select>
+                      <UserAutocomplete
+                        filterFn={(candidate) => normalizeText(candidate.department) === "ti"}
+                        onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
+                        placeholder="Comece a digitar um tecnico de TI"
+                        users={tiUsers}
+                        value={detailForm.assignee || ""}
+                      />
                     ) : null}
                     {field.kind === "input" ? (
                       <input onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""} />

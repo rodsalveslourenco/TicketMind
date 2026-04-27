@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import UserAutocomplete from "../components/UserAutocomplete";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultForm = {
@@ -12,7 +13,7 @@ const defaultForm = {
 };
 
 function ProjectsPage() {
-  const { addProject, deleteProject, projects, pushToast, updateProject } = useAppData();
+  const { addProject, deleteProject, projects, pushToast, updateProject, users } = useAppData();
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
 
@@ -89,7 +90,12 @@ function ProjectsPage() {
               </label>
               <label className="field-block">
                 <span>Responsavel</span>
-                <input onChange={updateField("manager")} value={form.manager} />
+                <UserAutocomplete
+                  onChange={(nextValue) => setForm((current) => ({ ...current, manager: nextValue }))}
+                  placeholder="Comece a digitar um usuario"
+                  users={users}
+                  value={form.manager}
+                />
               </label>
               <label className="field-block">
                 <span>Status</span>
