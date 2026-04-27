@@ -13,7 +13,8 @@ export const assetTypeOptions = [
   "Cabo de rede",
   "Suporte para notebook",
   "Aplicacao",
-  "Com fio",
-  "Sem fio",
+  "Mouse",
+  "Teclado",
+  "Kit Mouse/Teclado",
   "Outros",
 ];
