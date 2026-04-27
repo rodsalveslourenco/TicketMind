@@ -1601,11 +1601,11 @@ textarea:focus {
 }
 
 :root {
-  --bg: #ccd2d8;
-  --bg-strong: #aeb6bf;
-  --panel: rgba(82, 89, 96, 0.92);
-  --panel-soft: rgba(239, 243, 247, 0.18);
-  --panel-alt: rgba(225, 231, 237, 0.22);
+  --bg: #d8dde3;
+  --bg-strong: #bec6cf;
+  --panel: rgba(105, 113, 121, 0.9);
+  --panel-soft: rgba(244, 247, 250, 0.22);
+  --panel-alt: rgba(233, 238, 243, 0.26);
   --line: rgba(255, 255, 255, 0.14);
   --line-strong: rgba(161, 220, 247, 0.32);
   --text: #f4f8fb;
@@ -1616,7 +1616,7 @@ textarea:focus {
   --success: #82d9aa;
   --danger: #ef8f8f;
   --warning: #e7bc75;
-  --shadow: 0 18px 42px rgba(21, 25, 29, 0.18);
+  --shadow: 0 16px 34px rgba(31, 38, 44, 0.12);
   --font-display: "Segoe UI Variable Display", "Segoe UI", "Tahoma", sans-serif;
   --font-body: "Segoe UI Variable Text", "Segoe UI", "Verdana", sans-serif;
 }
@@ -1624,9 +1624,9 @@ textarea:focus {
 body {
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(133, 217, 255, 0.32), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(63, 189, 233, 0.18), transparent 26%),
-    linear-gradient(180deg, #d7dce1 0%, #bec6ce 30%, #a7b0ba 100%);
+    radial-gradient(circle at top left, rgba(133, 217, 255, 0.24), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(63, 189, 233, 0.12), transparent 26%),
+    linear-gradient(180deg, #e4e8ed 0%, #d4dae1 32%, #c2cad3 100%);
 }
 
 body::before {
@@ -1649,10 +1649,10 @@ input,
 select,
 textarea {
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 0.82rem 0.9rem;
   color: var(--text);
-  background: rgba(43, 49, 55, 0.34);
+  background: rgba(71, 78, 85, 0.26);
 }
 
 input::placeholder,
@@ -1673,9 +1673,9 @@ textarea:focus {
 .app-footer {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04)),
-    linear-gradient(145deg, rgba(89, 96, 104, 0.95), rgba(57, 63, 70, 0.98));
+    linear-gradient(145deg, rgba(113, 121, 129, 0.92), rgba(81, 88, 96, 0.96));
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 22px 50px rgba(21, 25, 29, 0.16);
+  box-shadow: 0 18px 38px rgba(31, 38, 44, 0.12);
   backdrop-filter: blur(18px);
 }
 
@@ -1702,7 +1702,7 @@ textarea:focus {
 .kpi-item,
 .feature-card,
 .sidebar-card {
-  border-radius: 24px;
+  border-radius: 10px;
 }
 
 .login-copy h1,
@@ -1739,19 +1739,19 @@ textarea:focus {
 }
 
 .sidebar {
-  border-radius: 32px;
+  border-radius: 14px;
   padding: 1.2rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background:
-    radial-gradient(circle at top left, rgba(133, 217, 255, 0.2), transparent 34%),
-    linear-gradient(180deg, rgba(78, 86, 94, 0.98) 0%, rgba(50, 56, 62, 0.99) 100%);
-  box-shadow: 0 22px 52px rgba(19, 22, 26, 0.18);
+    radial-gradient(circle at top left, rgba(133, 217, 255, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(103, 111, 119, 0.96) 0%, rgba(74, 81, 88, 0.98) 100%);
+  box-shadow: 0 18px 42px rgba(31, 38, 44, 0.13);
 }
 
 .brand-mark {
   width: 58px;
   height: 58px;
-  border-radius: 20px;
+  border-radius: 10px;
   color: #1c262d;
   background: linear-gradient(145deg, #c5efff, #85d9ff 58%, #4abfe9);
   border: none;
@@ -1782,7 +1782,7 @@ textarea:focus {
 .nav-link {
   display: block;
   padding: 0.95rem 1rem;
-  border-radius: 16px;
+  border-radius: 8px;
   color: #e8f1f7;
   border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.02);
@@ -1804,15 +1804,15 @@ textarea:focus {
 .topbar,
 .app-footer,
 .board-card {
-  border-radius: 28px;
+  border-radius: 12px;
 }
 
 .module-hero,
 .dashboard-hero {
   background:
-    radial-gradient(circle at top right, rgba(133, 217, 255, 0.16), transparent 30%),
+    radial-gradient(circle at top right, rgba(133, 217, 255, 0.12), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%),
-    linear-gradient(145deg, rgba(92, 100, 109, 0.94), rgba(58, 64, 71, 0.96));
+    linear-gradient(145deg, rgba(118, 126, 134, 0.9), rgba(87, 94, 102, 0.94));
 }
 
 .module-hero p,
@@ -1822,8 +1822,8 @@ textarea:focus {
 
 .metric-card-highlight {
   background:
-    radial-gradient(circle at top right, rgba(133, 217, 255, 0.24), transparent 36%),
-    linear-gradient(145deg, rgba(74, 83, 91, 0.98), rgba(46, 52, 58, 1));
+    radial-gradient(circle at top right, rgba(133, 217, 255, 0.18), transparent 36%),
+    linear-gradient(145deg, rgba(90, 99, 107, 0.98), rgba(63, 70, 77, 1));
   border-color: rgba(133, 217, 255, 0.2);
 }
 
@@ -1917,8 +1917,8 @@ textarea:focus {
 .autocomplete-list,
 .watcher-suggestions {
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 18px;
-  background: rgba(63, 70, 77, 0.98);
+  border-radius: 10px;
+  background: rgba(85, 92, 100, 0.98);
   box-shadow: 0 20px 36px rgba(19, 23, 27, 0.18);
 }
 
