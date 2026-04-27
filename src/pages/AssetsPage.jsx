@@ -42,11 +42,9 @@ function normalizeText(value) {
     .trim();
 }
 
-function getAssetPriorityClass(criticality) {
-  const normalized = normalizeText(criticality);
-  if (normalized === "alta") return "priority-line-critica";
-  if (normalized === "baixa") return "priority-line-baixa";
-  return "priority-line-media";
+function resolveAssetType(type) {
+  const normalized = normalizeText(type);
+  return assetTypeOptions.find((item) => normalizeText(item) === normalized) || "Outros";
 }
 
 function isComputerType(type) {
@@ -56,14 +54,6 @@ function isComputerType(type) {
 
 function isPhoneType(type) {
   return normalizeText(type) === "celular";
-}
-
-function mapAssetTypeToCatalog(type) {
-  const normalized = normalizeText(type);
-  if (normalized === "notebook") return "Notebook";
-  if (normalized === "desktop") return "Desktop";
-  if (normalized === "celular") return "Celular";
-  return "Outros";
 }
 
 function getAssetConfiguration(asset) {
@@ -82,7 +72,14 @@ function getAssetConfiguration(asset) {
   return asset.technicalSpec || asset.type || "Configuracao nao informada";
 }
 
-function buildHierarchyGroups(assets, level) {
+function getAssetPriorityClass(criticality) {
+  const normalized = normalizeText(criticality);
+  if (normalized === "alta") return "priority-line-critica";
+  if (normalized === "baixa") return "priority-line-baixa";
+  return "priority-line-media";
+}
+
+function buildHierarchyRows(assets, level) {
   const buckets = new Map();
 
   assets.forEach((asset) => {
@@ -124,8 +121,8 @@ function AssetsPage() {
   const [detailAssetId, setDetailAssetId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(defaultForm);
-  const [path, setPath] = useState({ manufacturer: "", model: "", configuration: "" });
   const [quickCatalogForm, setQuickCatalogForm] = useState(defaultQuickCatalogForm);
+  const [path, setPath] = useState({ manufacturer: "", model: "", configuration: "" });
 
   const normalizedAssets = useMemo(
     () =>
@@ -137,7 +134,7 @@ function AssetsPage() {
           brands.find(
             (brand) =>
               brand.name === asset.manufacturer &&
-              brand.assetType === mapAssetTypeToCatalog(asset.type),
+              brand.assetType === resolveAssetType(asset.type),
           )?.id ||
           "",
         modelId:
@@ -146,20 +143,15 @@ function AssetsPage() {
             (model) =>
               model.name === asset.model &&
               model.brandName === asset.manufacturer &&
-              model.assetType === mapAssetTypeToCatalog(asset.type),
+              model.assetType === resolveAssetType(asset.type),
           )?.id ||
           "",
-        manufacturer: asset.manufacturer || "",
-        model: asset.model || "",
-        ram: asset.ram || "",
-        storage: asset.storage || "",
-        processor: asset.processor || "",
-        technicalSpec: asset.technicalSpec || "",
       })),
     [assets, brands, models],
   );
 
-  const catalogAssetType = mapAssetTypeToCatalog(form.type);
+  const catalogAssetType = resolveAssetType(form.type);
+
   const availableBrands = useMemo(
     () =>
       brands.filter((brand) => brand.status === "Ativo" && brand.assetType === catalogAssetType),
@@ -212,17 +204,9 @@ function AssetsPage() {
 
   const currentAssets = useMemo(() => {
     let current = filteredAssets;
-    if (path.manufacturer) {
-      current = current.filter(
-        (asset) => (asset.manufacturer || "Nao informado") === path.manufacturer,
-      );
-    }
-    if (path.model) {
-      current = current.filter((asset) => (asset.model || "Nao informado") === path.model);
-    }
-    if (path.configuration) {
-      current = current.filter((asset) => getAssetConfiguration(asset) === path.configuration);
-    }
+    if (path.manufacturer) current = current.filter((asset) => asset.manufacturer === path.manufacturer);
+    if (path.model) current = current.filter((asset) => asset.model === path.model);
+    if (path.configuration) current = current.filter((asset) => getAssetConfiguration(asset) === path.configuration);
     return current;
   }, [filteredAssets, path]);
 
@@ -234,9 +218,9 @@ function AssetsPage() {
         ? "configuration"
         : "serial";
 
-  const hierarchyGroups = useMemo(() => {
+  const hierarchyRows = useMemo(() => {
     if (hierarchyLevel === "serial") return [];
-    return buildHierarchyGroups(currentAssets, hierarchyLevel);
+    return buildHierarchyRows(currentAssets, hierarchyLevel);
   }, [currentAssets, hierarchyLevel]);
 
   const updateField = (field) => (event) => {
@@ -308,7 +292,7 @@ function AssetsPage() {
       (brand) =>
         brand.id === payload.brandId &&
         brand.status === "Ativo" &&
-        brand.assetType === mapAssetTypeToCatalog(payload.type),
+        brand.assetType === resolveAssetType(payload.type),
     );
     if (!selectedBrand || selectedBrand.name !== payload.manufacturer) {
       pushToast("Marca invalida", "Selecione uma marca existente e compativel com o tipo do ativo.", "warning");
@@ -319,7 +303,7 @@ function AssetsPage() {
       (model) =>
         model.id === payload.modelId &&
         model.status === "Ativo" &&
-        model.assetType === mapAssetTypeToCatalog(payload.type) &&
+        model.assetType === resolveAssetType(payload.type) &&
         model.brandId === payload.brandId,
     );
     if (!selectedModel || selectedModel.name !== payload.model) {
@@ -348,69 +332,17 @@ function AssetsPage() {
     resetForm();
   };
 
-  const openCreateModal = () => {
-    resetForm();
-    setShowCreateModal(true);
-  };
-
-  const openDetailModal = (asset) => {
-    setDetailAssetId(asset.id);
-  };
-
-  const openQuickCatalogModal = () => {
-    resetQuickCatalogForm(catalogAssetType);
-    setShowQuickCatalogModal(true);
-  };
-
   const handleQuickCatalogField = (field) => (event) => {
-    const nextValue = event.target.value;
-    setQuickCatalogForm((current) => ({
-      ...current,
-      [field]: nextValue,
-    }));
+    setQuickCatalogForm((current) => ({ ...current, [field]: event.target.value }));
   };
 
-  const handleQuickBrandSave = () => {
-    const brandName = quickCatalogForm.brandName.trim();
-    if (!brandName) {
-      pushToast("Marca obrigatoria", "Informe a marca para salvar.", "warning");
-      return;
-    }
-
-    const existingBrand = brands.find(
-      (brand) =>
-        normalizeText(brand.name) === normalizeText(brandName) &&
-        brand.assetType === quickCatalogForm.assetType,
-    );
-
-    const nextBrand = existingBrand || addBrand({
-      name: brandName,
-      assetType: quickCatalogForm.assetType,
-      status: quickCatalogForm.status,
-    });
-
-    if (!existingBrand) {
-      pushToast("Marca cadastrada", brandName);
-    } else {
-      pushToast("Marca localizada", brandName);
-    }
-
-    setForm((current) => ({
-      ...current,
-      type: quickCatalogForm.assetType,
-        brandId: nextBrand.id,
-        manufacturer: brandName,
-        modelId: "",
-        model: "",
-    }));
-    setShowQuickCatalogModal(false);
-  };
-
-  const handleQuickModelSave = () => {
+  const handleQuickCatalogSubmit = (event) => {
+    event.preventDefault();
     const brandName = quickCatalogForm.brandName.trim();
     const modelName = quickCatalogForm.modelName.trim();
+
     if (!brandName || !modelName) {
-      pushToast("Dados obrigatorios", "Informe marca e modelo para salvar.", "warning");
+      pushToast("Dados obrigatorios", "Informe tipo, marca e modelo.", "warning");
       return;
     }
 
@@ -428,27 +360,21 @@ function AssetsPage() {
       });
     }
 
-    const existingModel = models.find(
+    let resolvedModel = models.find(
       (model) =>
         model.brandId === resolvedBrand.id &&
         model.assetType === quickCatalogForm.assetType &&
         normalizeText(model.name) === normalizeText(modelName),
     );
 
-    const nextModel =
-      existingModel ||
-      addModel({
+    if (!resolvedModel) {
+      resolvedModel = addModel({
         brandId: resolvedBrand.id,
         brandName: resolvedBrand.name,
         name: modelName,
         assetType: quickCatalogForm.assetType,
         status: quickCatalogForm.status,
       });
-
-    if (!existingModel) {
-      pushToast("Modelo cadastrado", modelName);
-    } else {
-      pushToast("Modelo localizado", modelName);
     }
 
     setForm((current) => ({
@@ -456,22 +382,13 @@ function AssetsPage() {
       type: quickCatalogForm.assetType,
       brandId: resolvedBrand.id,
       manufacturer: resolvedBrand.name,
-      modelId: nextModel.id,
-      model: nextModel.name,
+      modelId: resolvedModel.id,
+      model: resolvedModel.name,
     }));
+
+    pushToast("Marca e modelo cadastrados", `${resolvedBrand.name} | ${resolvedModel.name}`);
     setShowQuickCatalogModal(false);
   };
-
-  const setManufacturer = (manufacturer) => setPath({ manufacturer, model: "", configuration: "" });
-  const setModel = (model) => setPath((current) => ({ ...current, model, configuration: "" }));
-  const setConfiguration = (configuration) => setPath((current) => ({ ...current, configuration }));
-
-  const breadcrumb = [
-    { label: "Fabricantes", action: () => setPath({ manufacturer: "", model: "", configuration: "" }), active: !path.manufacturer },
-    path.manufacturer ? { label: path.manufacturer, action: () => setPath((current) => ({ ...current, model: "", configuration: "" })) } : null,
-    path.model ? { label: path.model, action: () => setPath((current) => ({ ...current, configuration: "" })) } : null,
-    path.configuration ? { label: path.configuration, action: () => setPath((current) => ({ ...current })) } : null,
-  ].filter(Boolean);
 
   return (
     <div className="users-page">
@@ -486,12 +403,12 @@ function AssetsPage() {
             <span>ativos individuais</span>
           </div>
           <div className="insight-chip">
-            <strong>{new Set(filteredAssets.map((asset) => asset.manufacturer || "Nao informado")).size}</strong>
-            <span>fabricantes</span>
+            <strong>{currentAssets.length}</strong>
+            <span>itens no recorte</span>
           </div>
           <div className="insight-chip">
-            <strong>{currentAssets.length}</strong>
-            <span>itens no nivel atual</span>
+            <strong>{hierarchyLevel === "serial" ? currentAssets.length : hierarchyRows.length}</strong>
+            <span>linhas no nivel</span>
           </div>
         </div>
       </section>
@@ -506,70 +423,92 @@ function AssetsPage() {
               <input
                 className="toolbar-search"
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por fabricante, modelo, configuracao, patrimonio ou serie"
+                placeholder="Buscar por tipo, marca, modelo, patrimonio ou serie"
                 value={search}
               />
-              <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
+              <button
+                className="primary-button compact-button interactive-button"
+                onClick={() => {
+                  resetForm();
+                  setShowCreateModal(true);
+                }}
+                type="button"
+              >
                 + Novo ativo
               </button>
             </div>
           </div>
 
           <div className="hierarchy-breadcrumb">
-            {breadcrumb.map((item, index) => (
-              <button
-                className={`ghost-link hierarchy-link${item.active ? " is-active" : ""}`}
-                key={`${item.label}-${index}`}
-                onClick={item.action}
-                type="button"
-              >
-                {item.label}
+            <button className="ghost-link hierarchy-link" onClick={() => setPath({ manufacturer: "", model: "", configuration: "" })} type="button">
+              Fabricantes
+            </button>
+            {path.manufacturer ? (
+              <button className="ghost-link hierarchy-link" onClick={() => setPath((current) => ({ ...current, model: "", configuration: "" }))} type="button">
+                {path.manufacturer}
               </button>
-            ))}
+            ) : null}
+            {path.model ? (
+              <button className="ghost-link hierarchy-link" onClick={() => setPath((current) => ({ ...current, configuration: "" }))} type="button">
+                {path.model}
+              </button>
+            ) : null}
+            {path.configuration ? <span className="ghost-link hierarchy-link is-active">{path.configuration}</span> : null}
           </div>
 
-          {hierarchyLevel !== "serial" ? (
-            <div className="hierarchy-grid">
-              {hierarchyGroups.map((group) => (
-                <button
-                  className="record-card hierarchy-card interactive-button"
-                  key={group.key}
-                  onClick={() => {
-                    if (hierarchyLevel === "manufacturer") setManufacturer(group.key);
-                    if (hierarchyLevel === "model") setModel(group.key);
-                    if (hierarchyLevel === "configuration") setConfiguration(group.key);
-                  }}
-                  type="button"
-                >
-                  <strong>{group.key}</strong>
-                  <span>{group.quantity} item(ns)</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="user-list">
-              {currentAssets.map((asset) => (
-                <button
-                  className={`table-row asset-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
-                  key={asset.id}
-                  onDoubleClick={() => openDetailModal(asset)}
-                  type="button"
-                >
-                  <div className="user-row-main">
-                    <div>
-                      <strong>{asset.serial}</strong>
-                      <span>{asset.name} | {asset.location}</span>
-                    </div>
-                    <div className="row-stats row-stats-wrap">
-                      <span>{asset.owner}</span>
-                      <span>{asset.status}</span>
-                      <span>{asset.assetTag || "-"}</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="sheet-list">
+            {hierarchyLevel !== "serial" ? (
+              <>
+                <div className="sheet-row sheet-row-header">
+                  <strong>Nivel</strong>
+                  <strong>Quantidade</strong>
+                  <strong>Abrir</strong>
+                </div>
+                {hierarchyRows.map((row) => (
+                  <button
+                    className="sheet-row interactive-button"
+                    key={row.key}
+                    onClick={() => {
+                      if (hierarchyLevel === "manufacturer") setPath({ manufacturer: row.key, model: "", configuration: "" });
+                      if (hierarchyLevel === "model") setPath((current) => ({ ...current, model: row.key, configuration: "" }));
+                      if (hierarchyLevel === "configuration") setPath((current) => ({ ...current, configuration: row.key }));
+                    }}
+                    type="button"
+                  >
+                    <strong>{row.key}</strong>
+                    <span>{row.quantity} item(ns)</span>
+                    <span>Visualizar</span>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <div className="sheet-row sheet-row-header">
+                  <strong>Serie</strong>
+                  <strong>Nome</strong>
+                  <strong>Usuario</strong>
+                  <strong>Status</strong>
+                  <strong>Patrimonio</strong>
+                  <strong>Abrir</strong>
+                </div>
+                {currentAssets.map((asset) => (
+                  <button
+                    className={`sheet-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
+                    key={asset.id}
+                    onDoubleClick={() => setDetailAssetId(asset.id)}
+                    type="button"
+                  >
+                    <strong>{asset.serial}</strong>
+                    <span>{asset.name}</span>
+                    <span>{asset.owner}</span>
+                    <span>{asset.status}</span>
+                    <span>{asset.assetTag || "-"}</span>
+                    <span>Detalhar</span>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
         </section>
 
         <section className="board-card glpi-panel">
@@ -579,32 +518,28 @@ function AssetsPage() {
             </div>
           </div>
 
-          <div className="insight-strip insight-strip-single">
-            <div className="insight-chip">
-              <strong>{currentAssets.length}</strong>
-              <span>quantidade total do agrupamento</span>
+          <div className="sheet-list">
+            <div className="sheet-row sheet-row-header">
+              <strong>Tipo</strong>
+              <strong>Marca</strong>
+              <strong>Modelo</strong>
+              <strong>Configuracao</strong>
+              <strong>Serie</strong>
+              <strong>Usuario</strong>
             </div>
-          </div>
-
-          <div className="user-list">
             {currentAssets.map((asset) => (
               <button
-                className={`table-row asset-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
-                key={asset.id}
-                onDoubleClick={() => openDetailModal(asset)}
+                className={`sheet-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
+                key={`detail-${asset.id}`}
+                onDoubleClick={() => setDetailAssetId(asset.id)}
                 type="button"
               >
-                <div className="user-row-main">
-                  <div>
-                    <strong>{asset.manufacturer} | {asset.model}</strong>
-                    <span>{getAssetConfiguration(asset)}</span>
-                  </div>
-                  <div className="row-stats row-stats-wrap">
-                    <span>{asset.type}</span>
-                    <span>{asset.owner}</span>
-                    <span>{asset.serial}</span>
-                  </div>
-                </div>
+                <span>{asset.type}</span>
+                <span>{asset.manufacturer}</span>
+                <span>{asset.model}</span>
+                <span>{getAssetConfiguration(asset)}</span>
+                <span>{asset.serial}</span>
+                <span>{asset.owner}</span>
               </button>
             ))}
           </div>
@@ -612,39 +547,20 @@ function AssetsPage() {
       </section>
 
       {(showCreateModal || detailAsset) ? (
-        <div
-          className="ticket-modal-backdrop"
-          onClick={() => {
-            setShowCreateModal(false);
-            setDetailAssetId(null);
-          }}
-          role="presentation"
-        >
-          <div
-            className="ticket-modal ticket-modal-large board-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
+        <div className="ticket-modal-backdrop" onClick={() => { setShowCreateModal(false); setDetailAssetId(null); }} role="presentation">
+          <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-detail-form" onSubmit={handleSubmit}>
               <div className="ticket-modal-header">
                 <div>
                   <h2>{editingId ? form.name || "Editar ativo" : "Novo ativo"}</h2>
                 </div>
                 <div className="ticket-detail-actions">
-                  <button
-                    className="ghost-button interactive-button"
-                    onClick={() => {
-                      setShowCreateModal(false);
-                      setDetailAssetId(null);
-                    }}
-                    type="button"
-                  >
+                  <button className="ghost-button compact-button interactive-button" onClick={() => { setShowCreateModal(false); setDetailAssetId(null); }} type="button">
                     Fechar
                   </button>
                   {editingId ? (
                     <button
-                      className="danger-button interactive-button"
+                      className="danger-button compact-button interactive-button"
                       onClick={() => {
                         deleteAsset(editingId);
                         setDetailAssetId(null);
@@ -657,7 +573,8 @@ function AssetsPage() {
                   ) : null}
                 </div>
               </div>
-              <div className="glpi-form-grid">
+
+              <div className="glpi-form-grid compact-form-grid">
                 <label className="field-block">
                   <span>Tipo</span>
                   <select onChange={updateField("type")} value={form.type}>
@@ -694,7 +611,14 @@ function AssetsPage() {
                       placeholder="Digite para buscar a marca"
                       value={form.manufacturer}
                     />
-                    <button className="ghost-button compact-button interactive-button" onClick={openQuickCatalogModal} type="button">
+                    <button
+                      className="ghost-button compact-button interactive-button"
+                      onClick={() => {
+                        resetQuickCatalogForm(resolveAssetType(form.type));
+                        setShowQuickCatalogModal(true);
+                      }}
+                      type="button"
+                    >
                       +
                     </button>
                   </div>
@@ -724,7 +648,14 @@ function AssetsPage() {
                       placeholder={form.brandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
                       value={form.model}
                     />
-                    <button className="ghost-button compact-button interactive-button" onClick={openQuickCatalogModal} type="button">
+                    <button
+                      className="ghost-button compact-button interactive-button"
+                      onClick={() => {
+                        resetQuickCatalogForm(resolveAssetType(form.type));
+                        setShowQuickCatalogModal(true);
+                      }}
+                      type="button"
+                    >
                       +
                     </button>
                   </div>
@@ -816,8 +747,9 @@ function AssetsPage() {
                   </label>
                 ) : null}
               </div>
-              <div className="ticket-create-actions">
-                <button className="primary-button interactive-button" type="submit">
+
+              <div className="ticket-create-actions compact-actions">
+                <button className="primary-button compact-button interactive-button" type="submit">
                   {editingId ? "Salvar ativo" : "Cadastrar ativo"}
                 </button>
               </div>
@@ -829,47 +761,46 @@ function AssetsPage() {
       {showQuickCatalogModal ? (
         <div className="ticket-modal-backdrop" onClick={() => setShowQuickCatalogModal(false)} role="presentation">
           <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-            <div className="ticket-modal-header">
-              <div>
-                <h2>Cadastro rapido de Marca e Modelo</h2>
+            <form className="glpi-ticket-form compact-form" onSubmit={handleQuickCatalogSubmit}>
+              <div className="ticket-modal-header">
+                <div>
+                  <h2>Cadastro rapido de Marca e Modelo</h2>
+                </div>
+                <button className="ghost-button compact-button interactive-button" onClick={() => setShowQuickCatalogModal(false)} type="button">
+                  Fechar
+                </button>
               </div>
-              <button className="ghost-button compact-button interactive-button" onClick={() => setShowQuickCatalogModal(false)} type="button">
-                Fechar
-              </button>
-            </div>
-            <div className="glpi-form-grid compact-form-grid">
-              <label className="field-block">
-                <span>Tipo de ativo</span>
-                <select onChange={handleQuickCatalogField("assetType")} value={quickCatalogForm.assetType}>
-                  {assetTypeOptions.map((type) => (
-                    <option key={type}>{type}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-block">
-                <span>Marca</span>
-                <input onChange={handleQuickCatalogField("brandName")} value={quickCatalogForm.brandName} />
-              </label>
-              <label className="field-block">
-                <span>Modelo</span>
-                <input onChange={handleQuickCatalogField("modelName")} value={quickCatalogForm.modelName} />
-              </label>
-              <label className="field-block">
-                <span>Status</span>
-                <select onChange={handleQuickCatalogField("status")} value={quickCatalogForm.status}>
-                  <option>Ativo</option>
-                  <option>Inativo</option>
-                </select>
-              </label>
-            </div>
-            <div className="ticket-create-actions compact-actions">
-              <button className="primary-button compact-button interactive-button" onClick={handleQuickBrandSave} type="button">
-                Salvar marca
-              </button>
-              <button className="primary-button compact-button interactive-button" onClick={handleQuickModelSave} type="button">
-                Salvar modelo
-              </button>
-            </div>
+              <div className="glpi-form-grid compact-form-grid">
+                <label className="field-block">
+                  <span>Tipo de ativo</span>
+                  <select onChange={handleQuickCatalogField("assetType")} value={quickCatalogForm.assetType}>
+                    {assetTypeOptions.map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Marca</span>
+                  <input onChange={handleQuickCatalogField("brandName")} value={quickCatalogForm.brandName} />
+                </label>
+                <label className="field-block">
+                  <span>Modelo</span>
+                  <input onChange={handleQuickCatalogField("modelName")} value={quickCatalogForm.modelName} />
+                </label>
+                <label className="field-block">
+                  <span>Status</span>
+                  <select onChange={handleQuickCatalogField("status")} value={quickCatalogForm.status}>
+                    <option>Ativo</option>
+                    <option>Inativo</option>
+                  </select>
+                </label>
+              </div>
+              <div className="ticket-create-actions compact-actions">
+                <button className="primary-button compact-button interactive-button" type="submit">
+                  Salvar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
