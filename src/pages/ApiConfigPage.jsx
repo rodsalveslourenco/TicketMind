@@ -44,7 +44,7 @@ function ApiConfigPage() {
       <section className="module-hero board-card">
         <div>
           <span className="eyebrow">API REST</span>
-          <h2>Integracoes com leitura executiva, cadastro limpo e manutencao objetiva.</h2>
+          <h2>API REST</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -67,7 +67,6 @@ function ApiConfigPage() {
           <div className="glpi-toolbar">
             <div>
               <h2>{editingId ? "Editar integracao" : "Configuracao de API REST"}</h2>
-              <span>Padronize endpoints, metodo, autenticacao e estado operacional.</span>
             </div>
           </div>
 
@@ -135,7 +134,6 @@ function ApiConfigPage() {
           <div className="glpi-toolbar">
             <div>
               <h2>Integracoes registradas</h2>
-              <span>Conjunto ativo para sincronismo, leitura e automacao.</span>
             </div>
           </div>
           <div className="record-grid">

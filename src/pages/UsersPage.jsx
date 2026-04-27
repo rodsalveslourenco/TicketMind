@@ -157,7 +157,7 @@ function UsersPage() {
       <section className="module-hero board-card">
         <div>
           <span className="eyebrow">Usuarios</span>
-          <h2>Lista auditavel com abertura por duplo clique, busca rapida e manutencao completa do cadastro.</h2>
+          <h2>Usuarios</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -179,7 +179,6 @@ function UsersPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Usuarios cadastrados</h2>
-            <span>Duplo clique abre o cadastro completo.</span>
           </div>
           <div className="toolbar">
             <input
@@ -250,7 +249,6 @@ function UsersPage() {
               <div className="ticket-modal-header">
                 <div className="form-section-header">
                   <strong>Novo usuario</strong>
-                  <span>Cadastro padrao com senha inicial e permissoes por modulo.</span>
                 </div>
                 <button className="ghost-button interactive-button" onClick={() => setShowCreateModal(false)} type="button">
                   Fechar

@@ -342,7 +342,7 @@ function TicketsPage() {
       <section className="module-hero board-card">
         <div>
           <span className="eyebrow">Chamados</span>
-          <h2>Fila completa com visao em lista ou kanban, prioridade visual e tratativa em popup.</h2>
+          <h2>Chamados</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -364,7 +364,6 @@ function TicketsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Fila de chamados</h2>
-            <span>Duplo clique abre o registro completo.</span>
           </div>
           <div className="toolbar">
             <div className="view-toggle">
@@ -483,7 +482,6 @@ function TicketsPage() {
               <div className="ticket-modal-header">
                 <div className="form-section-header">
                   <strong>Abertura de chamado</strong>
-                  <span>Registro de incidente, requisicao ou problema.</span>
                 </div>
                 <button className="ghost-button interactive-button" onClick={handleCloseCreateModal} type="button">
                   Fechar

@@ -75,7 +75,6 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Capacidade por fila</h2>
-              <span>Distribuicao atual das equipes de atendimento</span>
             </div>
           </div>
           <div className="table-list">
@@ -98,7 +97,6 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Pulso da plataforma</h2>
-              <span>Cobertura tecnica de atendimento, ativos, projetos e integracoes</span>
             </div>
           </div>
           <div className="mini-grid">
@@ -117,7 +115,6 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Chamados que exigem acao</h2>
-              <span>Priorizacao da fila com foco no que impacta a operacao</span>
             </div>
           </div>
           <div className="ticket-stack">
@@ -149,7 +146,6 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Projetos e integracoes</h2>
-              <span>Entrega, evolucao tecnica e conexoes externas no mesmo panorama</span>
             </div>
           </div>
           <div className="dashboard-column">
@@ -182,7 +178,6 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Status operacional</h2>
-              <span>Leitura direta da carga atual do atendimento</span>
             </div>
           </div>
           <div className="mini-grid">
@@ -199,7 +194,6 @@ function DashboardPage() {
           <div className="card-heading">
             <div>
               <h2>Ativos monitorados</h2>
-              <span>Base critica para sustentar atendimento e projetos</span>
             </div>
           </div>
           <div className="table-list">
@@ -223,7 +217,6 @@ function DashboardPage() {
         <div className="card-heading">
           <div>
             <h2>Indicadores executivos</h2>
-            <span>Visao compacta para decisao sem poluir o painel</span>
           </div>
         </div>
         <div className="kpi-list kpi-list-wide">

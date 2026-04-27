@@ -23,7 +23,6 @@ function AppLayout() {
           <div className="brand-mark">TM</div>
           <div>
             <strong>TicketMind</strong>
-            <span>Operacao integrada de atendimento</span>
           </div>
         </div>
 
@@ -53,7 +52,6 @@ function AppLayout() {
         <header className="topbar">
           <div>
             <h1>Central de operacoes</h1>
-            <p>Atendimento, ativos, integracoes e projetos em uma unica trilha operacional.</p>
           </div>
           <div className="topbar-actions">
             <div className="user-badge">

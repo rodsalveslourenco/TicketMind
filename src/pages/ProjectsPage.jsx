@@ -51,7 +51,7 @@ function ProjectsPage() {
       <section className="module-hero board-card">
         <div>
           <span className="eyebrow">Projetos</span>
-          <h2>Pipeline visual para iniciativas em andamento, com leitura rapida de progresso e entrega.</h2>
+          <h2>Projetos</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -74,7 +74,6 @@ function ProjectsPage() {
           <div className="glpi-toolbar">
             <div>
               <h2>{editingId ? "Editar projeto" : "Projetos"}</h2>
-              <span>Pipeline de implantacoes, melhorias internas e entregas estrategicas.</span>
             </div>
           </div>
 
