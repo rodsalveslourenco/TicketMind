@@ -95,17 +95,20 @@ function InventoryPage() {
           </div>
         </div>
 
-        <div className="record-grid inventory-grid">
+        <div className="sheet-list">
+          <div className="sheet-row sheet-row-header">
+            <strong>Tipo</strong>
+            <strong>Marca</strong>
+            <strong>Modelo</strong>
+            <strong>Quantidade</strong>
+            <strong>Series</strong>
+          </div>
           {inventoryRows.map((item) => (
-            <article className="record-card inventory-card" key={item.id}>
-              <div>
-                <strong>{item.type}</strong>
-                <span>{item.manufacturer}</span>
-              </div>
-              <div>
-                <strong>{item.model}</strong>
-                <span>{item.quantity} unidade(s)</span>
-              </div>
+            <div className="sheet-row" key={item.id}>
+              <span>{item.type}</span>
+              <span>{item.manufacturer}</span>
+              <span>{item.model}</span>
+              <span>{item.quantity}</span>
               <div className="row-stats row-stats-wrap">
                 {item.serials.slice(0, 4).map((serial) => (
                   <span className="badge badge-neutral" key={serial}>
@@ -114,7 +117,7 @@ function InventoryPage() {
                 ))}
                 {item.serials.length > 4 ? <span className="badge badge-neutral">+{item.serials.length - 4}</span> : null}
               </div>
-            </article>
+            </div>
           ))}
         </div>
       </section>

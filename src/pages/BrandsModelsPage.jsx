@@ -2,17 +2,12 @@ import { useMemo, useState } from "react";
 import { useAppData } from "../data/AppDataContext";
 import { assetTypeOptions } from "../data/assetCatalog";
 
-const defaultBrandForm = {
-  name: "",
+const defaultForm = {
   assetType: "Notebook",
-  status: "Ativo",
-};
-
-const defaultModelForm = {
   brandId: "",
   brandName: "",
-  name: "",
-  assetType: "Notebook",
+  modelId: "",
+  modelName: "",
   status: "Ativo",
 };
 
@@ -37,151 +32,216 @@ function BrandsModelsPage() {
     updateBrand,
     updateModel,
   } = useAppData();
-  const [brandForm, setBrandForm] = useState(defaultBrandForm);
-  const [modelForm, setModelForm] = useState(defaultModelForm);
-  const [editingBrandId, setEditingBrandId] = useState(null);
-  const [editingModelId, setEditingModelId] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(defaultForm);
+  const [editingMode, setEditingMode] = useState("create");
 
-  const orderedBrands = useMemo(
-    () =>
-      brands
-        .slice()
-        .sort((left, right) => `${left.assetType} ${left.name}`.localeCompare(`${right.assetType} ${right.name}`)),
-    [brands],
+  const unifiedRows = useMemo(() => {
+    const brandRows = brands.map((brand) => ({
+      rowKey: `brand-${brand.id}`,
+      rowType: "Marca",
+      assetType: brand.assetType,
+      brandId: brand.id,
+      brandName: brand.name,
+      modelId: "",
+      modelName: "",
+      status: brand.status,
+    }));
+
+    const modelRows = models.map((model) => ({
+      rowKey: `model-${model.id}`,
+      rowType: "Modelo",
+      assetType: model.assetType,
+      brandId: model.brandId,
+      brandName: model.brandName,
+      modelId: model.id,
+      modelName: model.name,
+      status: model.status,
+    }));
+
+    return [...brandRows, ...modelRows].sort((left, right) =>
+      `${left.assetType} ${left.brandName} ${left.modelName || left.rowType}`.localeCompare(
+        `${right.assetType} ${right.brandName} ${right.modelName || right.rowType}`,
+      ),
+    );
+  }, [brands, models]);
+
+  const availableBrandsByType = useMemo(
+    () => brands.filter((brand) => brand.assetType === form.assetType && brand.status === "Ativo"),
+    [brands, form.assetType],
   );
 
-  const orderedModels = useMemo(
-    () =>
-      models
-        .slice()
-        .sort((left, right) =>
-          `${left.assetType} ${left.brandName} ${left.name}`.localeCompare(
-            `${right.assetType} ${right.brandName} ${right.name}`,
-          ),
-        ),
-    [models],
-  );
-
-  const activeBrandsByType = useMemo(
-    () => orderedBrands.filter((brand) => brand.status === "Ativo" && brand.assetType === modelForm.assetType),
-    [modelForm.assetType, orderedBrands],
-  );
-
-  const updateBrandField = (field) => (event) => {
-    setBrandForm((current) => ({ ...current, [field]: event.target.value }));
-  };
-
-  const updateModelField = (field) => (event) => {
+  const updateField = (field) => (event) => {
     const nextValue = event.target.value;
-    setModelForm((current) => {
-      const nextForm = { ...current, [field]: nextValue };
+    setForm((current) => {
       if (field === "assetType") {
-        nextForm.brandId = "";
-        nextForm.brandName = "";
+        return {
+          ...current,
+          assetType: nextValue,
+          brandId: "",
+          brandName: "",
+          modelId: "",
+          modelName: "",
+        };
       }
-      return nextForm;
+
+      if (field === "brandId") {
+        const selectedBrand = availableBrandsByType.find((brand) => brand.id === nextValue);
+        return {
+          ...current,
+          brandId: nextValue,
+          brandName: selectedBrand?.name || "",
+          modelId: "",
+          modelName: "",
+        };
+      }
+
+      return { ...current, [field]: nextValue };
     });
   };
 
-  const resetBrandForm = () => {
-    setBrandForm(defaultBrandForm);
-    setEditingBrandId(null);
+  const resetForm = () => {
+    setForm(defaultForm);
+    setEditingMode("create");
   };
 
-  const resetModelForm = () => {
-    setModelForm(defaultModelForm);
-    setEditingModelId(null);
+  const openCreateModal = () => {
+    resetForm();
+    setShowModal(true);
   };
 
-  const handleBrandSubmit = (event) => {
+  const openEditModal = (row) => {
+    setEditingMode(row.rowType === "Marca" ? "brand" : "model");
+    setForm({
+      assetType: row.assetType,
+      brandId: row.brandId,
+      brandName: row.brandName,
+      modelId: row.modelId,
+      modelName: row.modelName,
+      status: row.status,
+    });
+    setShowModal(true);
+  };
+
+  const handleSubmit = (event) => {
     event.preventDefault();
-    if (!brandForm.name) return;
+    if (!assetTypeOptions.includes(form.assetType)) {
+      pushToast("Tipo invalido", "Selecione um tipo de ativo existente.", "warning");
+      return;
+    }
 
-    const normalizedName = normalizeText(brandForm.name);
+    const brandName = form.brandName.trim();
+    const modelName = form.modelName.trim();
+    if (!brandName) {
+      pushToast("Marca obrigatoria", "Informe a marca.", "warning");
+      return;
+    }
+
     const duplicatedBrand = brands.find(
       (brand) =>
-        normalizeText(brand.name) === normalizedName &&
-        brand.assetType === brandForm.assetType &&
-        brand.id !== editingBrandId,
+        normalizeText(brand.name) === normalizeText(brandName) &&
+        brand.assetType === form.assetType &&
+        brand.id !== form.brandId,
     );
-    if (duplicatedBrand) {
-      pushToast("Marca duplicada", `${duplicatedBrand.name} ja existe para ${duplicatedBrand.assetType}.`, "warning");
+
+    let resolvedBrand = brands.find((brand) => brand.id === form.brandId);
+
+    if (editingMode === "brand") {
+      if (duplicatedBrand) {
+        pushToast("Marca duplicada", "Ja existe uma marca com esse nome para esse tipo.", "warning");
+        return;
+      }
+      const previousBrand = brands.find((brand) => brand.id === form.brandId);
+      updateBrand(form.brandId, {
+        name: brandName,
+        assetType: form.assetType,
+        status: form.status,
+        previousName: previousBrand?.name || brandName,
+      });
+      pushToast("Marca atualizada", brandName);
+      setShowModal(false);
+      resetForm();
       return;
     }
 
-    if (editingBrandId) {
-      const previousBrand = brands.find((brand) => brand.id === editingBrandId);
-      updateBrand(editingBrandId, { ...brandForm, previousName: previousBrand?.name || brandForm.name });
-      pushToast("Marca atualizada", brandForm.name);
-    } else {
-      addBrand(brandForm);
-      pushToast("Marca cadastrada", brandForm.name);
+    if (!resolvedBrand) {
+      if (duplicatedBrand) {
+        resolvedBrand = duplicatedBrand;
+      } else {
+        resolvedBrand = addBrand({
+          name: brandName,
+          assetType: form.assetType,
+          status: form.status,
+        });
+      }
     }
 
-    resetBrandForm();
-  };
-
-  const handleModelSubmit = (event) => {
-    event.preventDefault();
-    if (!modelForm.brandId || !modelForm.name) return;
-
-    const linkedBrand = brands.find((brand) => brand.id === modelForm.brandId);
-    if (!linkedBrand) {
-      pushToast("Marca obrigatoria", "Selecione uma marca valida.", "warning");
+    if (!modelName) {
+      pushToast("Modelo obrigatorio", "Informe o modelo no mesmo formulario.", "warning");
       return;
     }
 
-    const normalizedModel = normalizeText(modelForm.name);
     const duplicatedModel = models.find(
       (model) =>
-        model.brandId === modelForm.brandId &&
-        model.assetType === modelForm.assetType &&
-        normalizeText(model.name) === normalizedModel &&
-        model.id !== editingModelId,
+        model.brandId === resolvedBrand.id &&
+        model.assetType === form.assetType &&
+        normalizeText(model.name) === normalizeText(modelName) &&
+        model.id !== form.modelId,
     );
+
     if (duplicatedModel) {
-      pushToast("Modelo duplicado", `${duplicatedModel.name} ja existe para essa marca e tipo.`, "warning");
+      pushToast("Modelo duplicado", "Ja existe esse modelo para a mesma marca e tipo.", "warning");
       return;
     }
 
-    const payload = { ...modelForm, brandName: linkedBrand.name };
-    if (editingModelId) {
-      const previousModel = models.find((model) => model.id === editingModelId);
-      updateModel(editingModelId, { ...payload, previousName: previousModel?.name || payload.name });
-      pushToast("Modelo atualizado", payload.name);
+    if (editingMode === "model") {
+      const previousModel = models.find((model) => model.id === form.modelId);
+      updateModel(form.modelId, {
+        brandId: resolvedBrand.id,
+        brandName: resolvedBrand.name,
+        name: modelName,
+        assetType: form.assetType,
+        status: form.status,
+        previousName: previousModel?.name || modelName,
+      });
+      pushToast("Modelo atualizado", modelName);
     } else {
-      addModel(payload);
-      pushToast("Modelo cadastrado", payload.name);
+      addModel({
+        brandId: resolvedBrand.id,
+        brandName: resolvedBrand.name,
+        name: modelName,
+        assetType: form.assetType,
+        status: form.status,
+      });
+      pushToast("Marca e modelo cadastrados", `${brandName} | ${modelName}`);
     }
 
-    resetModelForm();
+    setShowModal(false);
+    resetForm();
   };
 
-  const handleDeleteBrand = (brand) => {
-    const hasModels = models.some((model) => model.brandId === brand.id);
-    const hasAssets = assets.some((asset) => asset.manufacturer === brand.name);
-    if (hasModels || hasAssets) {
-      pushToast("Exclusao bloqueada", "A marca possui modelos ou ativos vinculados.", "warning");
+  const handleDelete = (row) => {
+    if (row.rowType === "Marca") {
+      const hasModels = models.some((model) => model.brandId === row.brandId);
+      const hasAssets = assets.some((asset) => asset.manufacturer === row.brandName);
+      if (hasModels || hasAssets) {
+        pushToast("Exclusao bloqueada", "A marca possui modelos ou ativos vinculados.", "warning");
+        return;
+      }
+      deleteBrand(row.brandId);
+      pushToast("Marca removida", row.brandName);
       return;
     }
 
-    deleteBrand(brand.id);
-    if (editingBrandId === brand.id) resetBrandForm();
-    pushToast("Marca removida", brand.name);
-  };
-
-  const handleDeleteModel = (model) => {
     const hasAssets = assets.some(
-      (asset) => asset.manufacturer === model.brandName && asset.model === model.name,
+      (asset) => asset.manufacturer === row.brandName && asset.model === row.modelName,
     );
     if (hasAssets) {
       pushToast("Exclusao bloqueada", "O modelo possui ativos vinculados.", "warning");
       return;
     }
-
-    deleteModel(model.id);
-    if (editingModelId === model.id) resetModelForm();
-    pushToast("Modelo removido", model.name);
+    deleteModel(row.modelId);
+    pushToast("Modelo removido", row.modelName);
   };
 
   return (
@@ -194,15 +254,15 @@ function BrandsModelsPage() {
         <div className="insight-strip">
           <div className="insight-chip">
             <strong>{brands.length}</strong>
-            <span>marcas cadastradas</span>
+            <span>marcas</span>
           </div>
           <div className="insight-chip">
             <strong>{models.length}</strong>
-            <span>modelos cadastrados</span>
+            <span>modelos</span>
           </div>
           <div className="insight-chip">
-            <strong>{assetTypeOptions.length}</strong>
-            <span>tipos disponiveis</span>
+            <strong>{unifiedRows.length}</strong>
+            <span>registros na lista</span>
           </div>
         </div>
       </section>
@@ -210,67 +270,61 @@ function BrandsModelsPage() {
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
-            <h2>Cadastro unificado</h2>
+            <h2>Lista de Marcas e Modelos</h2>
+          </div>
+          <div className="toolbar">
+            <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
+              + Novo
+            </button>
           </div>
         </div>
 
-        <div className="module-grid compact-module-grid">
-          <section className="compact-panel">
-            <div className="compact-panel-heading">
-              <strong>{editingBrandId ? "Editar marca" : "Nova marca"}</strong>
-            </div>
-            <form className="glpi-ticket-form compact-form" onSubmit={handleBrandSubmit}>
-              <div className="glpi-form-grid compact-form-grid">
-                <label className="field-block">
-                  <span>ID</span>
-                  <input disabled value={editingBrandId || "Automatico"} />
-                </label>
-                <label className="field-block field-span-2">
-                  <span>Marca</span>
-                  <input onChange={updateBrandField("name")} value={brandForm.name} />
-                </label>
-                <label className="field-block">
-                  <span>Tipo de ativo</span>
-                  <select onChange={updateBrandField("assetType")} value={brandForm.assetType}>
-                    {assetTypeOptions.map((assetType) => (
-                      <option key={assetType}>{assetType}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Status</span>
-                  <select onChange={updateBrandField("status")} value={brandForm.status}>
-                    <option>Ativo</option>
-                    <option>Inativo</option>
-                  </select>
-                </label>
-              </div>
-              <div className="ticket-create-actions compact-actions">
-                <button className="primary-button compact-button interactive-button" type="submit">
-                  {editingBrandId ? "Salvar marca" : "Cadastrar marca"}
+        <div className="sheet-list">
+          <div className="sheet-row sheet-row-header">
+            <strong>Tipo</strong>
+            <strong>Marca</strong>
+            <strong>Modelo</strong>
+            <strong>Status</strong>
+            <strong>Registro</strong>
+            <strong>Acoes</strong>
+          </div>
+          {unifiedRows.map((row) => (
+            <div className="sheet-row" key={row.rowKey}>
+              <span>{row.assetType}</span>
+              <span>{row.brandName}</span>
+              <span>{row.modelName || "-"}</span>
+              <span>{row.status}</span>
+              <span>{row.rowType}</span>
+              <div className="compact-row-actions">
+                <button className="ghost-button compact-button interactive-button" onClick={() => openEditModal(row)} type="button">
+                  Editar
                 </button>
-                {editingBrandId ? (
-                  <button className="ghost-button compact-button interactive-button" onClick={resetBrandForm} type="button">
-                    Cancelar
-                  </button>
-                ) : null}
+                <button className="danger-button compact-button interactive-button" onClick={() => handleDelete(row)} type="button">
+                  Excluir
+                </button>
               </div>
-            </form>
-          </section>
-
-          <section className="compact-panel">
-            <div className="compact-panel-heading">
-              <strong>{editingModelId ? "Editar modelo" : "Novo modelo"}</strong>
             </div>
-            <form className="glpi-ticket-form compact-form" onSubmit={handleModelSubmit}>
+          ))}
+        </div>
+      </section>
+
+      {showModal ? (
+        <div className="ticket-modal-backdrop" onClick={() => setShowModal(false)} role="presentation">
+          <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <form className="glpi-ticket-form compact-form" onSubmit={handleSubmit}>
+              <div className="ticket-modal-header">
+                <div>
+                  <h2>Cadastro unificado</h2>
+                </div>
+                <button className="ghost-button compact-button interactive-button" onClick={() => setShowModal(false)} type="button">
+                  Fechar
+                </button>
+              </div>
+
               <div className="glpi-form-grid compact-form-grid">
                 <label className="field-block">
-                  <span>ID</span>
-                  <input disabled value={editingModelId || "Automatico"} />
-                </label>
-                <label className="field-block">
                   <span>Tipo de ativo</span>
-                  <select onChange={updateModelField("assetType")} value={modelForm.assetType}>
+                  <select onChange={updateField("assetType")} value={form.assetType}>
                     {assetTypeOptions.map((assetType) => (
                       <option key={assetType}>{assetType}</option>
                     ))}
@@ -278,131 +332,43 @@ function BrandsModelsPage() {
                 </label>
                 <label className="field-block">
                   <span>Marca</span>
-                  <select
-                    onChange={(event) => {
-                      const selectedBrand = activeBrandsByType.find((brand) => brand.id === event.target.value);
-                      setModelForm((current) => ({
-                        ...current,
-                        brandId: event.target.value,
-                        brandName: selectedBrand?.name || "",
-                      }));
-                    }}
-                    value={modelForm.brandId}
-                  >
-                    <option value="">Selecione</option>
-                    {activeBrandsByType.map((brand) => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </option>
-                    ))}
-                  </select>
+                  <input onChange={updateField("brandName")} value={form.brandName} />
                 </label>
-                <label className="field-block field-span-2">
+                <label className="field-block">
                   <span>Modelo</span>
-                  <input onChange={updateModelField("name")} value={modelForm.name} />
+                  <input onChange={updateField("modelName")} value={form.modelName} />
                 </label>
                 <label className="field-block">
                   <span>Status</span>
-                  <select onChange={updateModelField("status")} value={modelForm.status}>
+                  <select onChange={updateField("status")} value={form.status}>
                     <option>Ativo</option>
                     <option>Inativo</option>
                   </select>
                 </label>
-              </div>
-              <div className="ticket-create-actions compact-actions">
-                <button className="primary-button compact-button interactive-button" type="submit">
-                  {editingModelId ? "Salvar modelo" : "Cadastrar modelo"}
-                </button>
-                {editingModelId ? (
-                  <button className="ghost-button compact-button interactive-button" onClick={resetModelForm} type="button">
-                    Cancelar
-                  </button>
+                {editingMode === "model" ? (
+                  <label className="field-block">
+                    <span>Marca vinculada</span>
+                    <select onChange={updateField("brandId")} value={form.brandId}>
+                      <option value="">Selecione</option>
+                      {availableBrandsByType.map((brand) => (
+                        <option key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 ) : null}
               </div>
+
+              <div className="ticket-create-actions compact-actions">
+                <button className="primary-button compact-button interactive-button" type="submit">
+                  Salvar
+                </button>
+              </div>
             </form>
-          </section>
-        </div>
-      </section>
-
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Tabela unificada</h2>
           </div>
         </div>
-        <div className="record-grid compact-record-grid">
-          {orderedModels.map((model) => (
-            <article className="record-card compact-record-card" key={model.id}>
-              <div>
-                <strong>{model.assetType}</strong>
-                <span>{model.brandName}</span>
-              </div>
-              <div>
-                <strong>{model.name}</strong>
-                <span>{model.status}</span>
-              </div>
-              <div className="compact-row-actions">
-                <button
-                  className="ghost-button compact-button interactive-button"
-                  onClick={() => {
-                    setEditingModelId(model.id);
-                    setModelForm({
-                      brandId: model.brandId,
-                      brandName: model.brandName,
-                      name: model.name,
-                      assetType: model.assetType,
-                      status: model.status,
-                    });
-                  }}
-                  type="button"
-                >
-                  Editar modelo
-                </button>
-                <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteModel(model)} type="button">
-                  Excluir modelo
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Marcas por tipo</h2>
-          </div>
-        </div>
-        <div className="record-grid compact-record-grid">
-          {orderedBrands.map((brand) => (
-            <article className="record-card compact-record-card" key={brand.id}>
-              <div>
-                <strong>{brand.assetType}</strong>
-                <span>{brand.name}</span>
-              </div>
-              <div>
-                <strong>{brand.status}</strong>
-                <span>{brand.id}</span>
-              </div>
-              <div className="compact-row-actions">
-                <button
-                  className="ghost-button compact-button interactive-button"
-                  onClick={() => {
-                    setEditingBrandId(brand.id);
-                    setBrandForm({ name: brand.name, assetType: brand.assetType, status: brand.status });
-                  }}
-                  type="button"
-                >
-                  Editar marca
-                </button>
-                <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteBrand(brand)} type="button">
-                  Excluir marca
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      ) : null}
     </div>
   );
 }
