@@ -19,6 +19,10 @@ function normalizeText(value) {
     .trim();
 }
 
+function matchesAssetType(asset, assetType) {
+  return normalizeText(asset.type) === normalizeText(assetType);
+}
+
 function BrandsModelsPage() {
   const {
     addBrand,
@@ -223,7 +227,9 @@ function BrandsModelsPage() {
   const handleDelete = (row) => {
     if (row.rowType === "Marca") {
       const hasModels = models.some((model) => model.brandId === row.brandId);
-      const hasAssets = assets.some((asset) => asset.manufacturer === row.brandName);
+      const hasAssets = assets.some(
+        (asset) => asset.manufacturer === row.brandName && matchesAssetType(asset, row.assetType),
+      );
       if (hasModels || hasAssets) {
         pushToast("Exclusao bloqueada", "A marca possui modelos ou ativos vinculados.", "warning");
         return;
@@ -234,7 +240,10 @@ function BrandsModelsPage() {
     }
 
     const hasAssets = assets.some(
-      (asset) => asset.manufacturer === row.brandName && asset.model === row.modelName,
+      (asset) =>
+        asset.manufacturer === row.brandName &&
+        asset.model === row.modelName &&
+        matchesAssetType(asset, row.assetType),
     );
     if (hasAssets) {
       pushToast("Exclusao bloqueada", "O modelo possui ativos vinculados.", "warning");

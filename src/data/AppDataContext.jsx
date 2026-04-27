@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { seedData } from "./seedData";
+import { assetTypeOptions } from "./assetCatalog";
 
 const STORAGE_KEY = "ticketmind-data";
 const AppDataContext = createContext(null);
@@ -97,6 +98,11 @@ function normalizeText(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function resolveAssetType(type) {
+  const normalized = normalizeText(type).trim();
+  return assetTypeOptions.find((item) => normalizeText(item).trim() === normalized) || "Outros";
 }
 
 function computePriority(urgency, impact) {
@@ -388,8 +394,8 @@ export function AppDataProvider({ children }) {
           : model,
       ),
       assets: current.assets.map((asset) =>
-        asset.manufacturer === payload.previousName
-          ? { ...asset, manufacturer: payload.name }
+        asset.manufacturer === payload.previousName && resolveAssetType(asset.type) === payload.assetType
+          ? { ...asset, manufacturer: payload.name, brandId }
           : asset,
       ),
     }));
@@ -422,8 +428,10 @@ export function AppDataProvider({ children }) {
         model.id === modelId ? { ...model, ...sanitizeModelPayload(payload) } : model,
       ),
       assets: current.assets.map((asset) =>
-        asset.manufacturer === payload.brandName && asset.model === payload.previousName
-          ? { ...asset, model: payload.name }
+        asset.manufacturer === payload.brandName &&
+        asset.model === payload.previousName &&
+        resolveAssetType(asset.type) === payload.assetType
+          ? { ...asset, model: payload.name, modelId, brandId: payload.brandId }
           : asset,
       ),
     }));
