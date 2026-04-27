@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import TicketsPage from "./pages/TicketsPage";
 import UsersPage from "./pages/UsersPage";
 import AssetsPage from "./pages/AssetsPage";
+import InventoryPage from "./pages/InventoryPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
 
@@ -31,6 +32,7 @@ function App() {
         <Route element={<DashboardPage />} path="dashboard" />
         <Route element={<TicketsPage />} path="tickets" />
         <Route element={<AssetsPage />} path="assets" />
+        <Route element={<InventoryPage />} path="inventory" />
         <Route element={<ProjectsPage />} path="projects" />
         <Route element={<ApiConfigPage />} path="api-rest" />
         <Route element={<UsersPage />} path="users" />

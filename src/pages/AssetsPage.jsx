@@ -3,45 +3,50 @@ import UserAutocomplete from "../components/UserAutocomplete";
 import { useAppData } from "../data/AppDataContext";
 
 const assetTypes = [
+  "Notebook",
+  "Desktop",
+  "Celular",
   "Servidor",
   "Firewall",
   "Switch",
-  "Aplicacao",
-  "Notebook",
-  "Celular",
   "DVR",
   "NVR",
   "Camera",
-  "Cabo de rede",
   "Monitor",
+  "Cabo de rede",
   "Suporte para notebook",
+  "Aplicacao",
   "Com fio",
   "Sem fio",
 ];
 
+const assetStatuses = ["Ativo", "Monitorado", "Manutencao", "Baixado"];
+
 const defaultForm = {
   name: "",
-  type: "Servidor",
+  type: "Notebook",
+  manufacturer: "",
+  model: "",
   owner: "",
   status: "Ativo",
   criticality: "Media",
   location: "",
   serial: "",
   assetTag: "",
-  stockQuantity: 1,
-  availableQuantity: 1,
-  movementStatus: "Em estoque",
+  ram: "",
+  storage: "",
+  processor: "",
   imei: "",
   phoneLine: "",
+  technicalSpec: "",
 };
-
-const assetStatuses = ["Ativo", "Monitorado", "Manutencao", "Baixado"];
 
 function normalizeText(value) {
   return String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .trim();
 }
 
 function getAssetPriorityClass(criticality) {
@@ -51,22 +56,81 @@ function getAssetPriorityClass(criticality) {
   return "priority-line-media";
 }
 
-function clampNonNegative(value) {
-  return Math.max(Number(value) || 0, 0);
+function isComputerType(type) {
+  const normalized = normalizeText(type);
+  return normalized === "notebook" || normalized === "desktop";
+}
+
+function isPhoneType(type) {
+  return normalizeText(type) === "celular";
+}
+
+function getAssetConfiguration(asset) {
+  const ram = asset.ram ? `${asset.ram} RAM` : "";
+  const storage = asset.storage || "";
+  const processor = asset.processor || "";
+
+  if (isComputerType(asset.type)) {
+    return [ram, storage, processor].filter(Boolean).join(" / ") || "Configuracao nao informada";
+  }
+
+  if (isPhoneType(asset.type)) {
+    return [asset.storage || "", ram].filter(Boolean).join(" / ") || "Configuracao nao informada";
+  }
+
+  return asset.technicalSpec || asset.type || "Configuracao nao informada";
+}
+
+function buildHierarchyGroups(assets, level) {
+  const buckets = new Map();
+
+  assets.forEach((asset) => {
+    const key =
+      level === "manufacturer"
+        ? asset.manufacturer || "Nao informado"
+        : level === "model"
+          ? asset.model || "Nao informado"
+          : getAssetConfiguration(asset);
+
+    if (!buckets.has(key)) {
+      buckets.set(key, { key, quantity: 0, assets: [] });
+    }
+
+    const bucket = buckets.get(key);
+    bucket.quantity += 1;
+    bucket.assets.push(asset);
+  });
+
+  return Array.from(buckets.values()).sort((left, right) => left.key.localeCompare(right.key));
 }
 
 function AssetsPage() {
   const { addAsset, assets, deleteAsset, pushToast, updateAsset, users } = useAppData();
-  const [viewMode, setViewMode] = useState("list");
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailAssetId, setDetailAssetId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(defaultForm);
+  const [path, setPath] = useState({ manufacturer: "", model: "", configuration: "" });
+
+  const normalizedAssets = useMemo(
+    () =>
+      assets.map((asset) => ({
+        ...defaultForm,
+        ...asset,
+        manufacturer: asset.manufacturer || "",
+        model: asset.model || "",
+        ram: asset.ram || "",
+        storage: asset.storage || "",
+        processor: asset.processor || "",
+        technicalSpec: asset.technicalSpec || "",
+      })),
+    [assets],
+  );
 
   const filteredAssets = useMemo(() => {
     const normalizedSearch = normalizeText(search);
-    return assets
+    return normalizedAssets
       .slice()
       .sort((left, right) => left.name.localeCompare(right.name))
       .filter((asset) =>
@@ -75,48 +139,62 @@ function AssetsPage() {
           : [
               asset.name,
               asset.type,
+              asset.manufacturer,
+              asset.model,
               asset.owner,
               asset.status,
               asset.location,
               asset.serial,
+              asset.assetTag,
               asset.imei,
               asset.phoneLine,
+              getAssetConfiguration(asset),
             ].some((field) => normalizeText(field).includes(normalizedSearch)),
       );
-  }, [assets, search]);
+  }, [normalizedAssets, search]);
 
-  const kanbanColumns = useMemo(
-    () =>
-      assetStatuses.map((status) => ({
-        status,
-        assets: filteredAssets.filter((asset) => asset.status === status),
-      })),
-    [filteredAssets],
-  );
-
-  const detailAsset = assets.find((asset) => asset.id === detailAssetId) ?? null;
-  const isPhoneType = form.type === "Celular";
+  const detailAsset = filteredAssets.find((asset) => asset.id === detailAssetId) ?? null;
 
   useEffect(() => {
     if (!detailAsset) return;
     setEditingId(detailAsset.id);
-    setForm({
-      ...defaultForm,
-      ...detailAsset,
-      stockQuantity: detailAsset.stockQuantity ?? 1,
-      availableQuantity: detailAsset.availableQuantity ?? 1,
-      movementStatus: detailAsset.movementStatus || "Em estoque",
-      imei: detailAsset.imei || "",
-      phoneLine: detailAsset.phoneLine || "",
-    });
+    setForm({ ...defaultForm, ...detailAsset });
   }, [detailAsset]);
+
+  const currentAssets = useMemo(() => {
+    let current = filteredAssets;
+    if (path.manufacturer) {
+      current = current.filter(
+        (asset) => (asset.manufacturer || "Nao informado") === path.manufacturer,
+      );
+    }
+    if (path.model) {
+      current = current.filter((asset) => (asset.model || "Nao informado") === path.model);
+    }
+    if (path.configuration) {
+      current = current.filter((asset) => getAssetConfiguration(asset) === path.configuration);
+    }
+    return current;
+  }, [filteredAssets, path]);
+
+  const hierarchyLevel = !path.manufacturer
+    ? "manufacturer"
+    : !path.model
+      ? "model"
+      : !path.configuration
+        ? "configuration"
+        : "serial";
+
+  const hierarchyGroups = useMemo(() => {
+    if (hierarchyLevel === "serial") return [];
+    return buildHierarchyGroups(currentAssets, hierarchyLevel);
+  }, [currentAssets, hierarchyLevel]);
 
   const updateField = (field) => (event) => {
     const nextValue = event.target.value;
     setForm((current) => ({
       ...current,
-      [field]:
-        field === "stockQuantity" || field === "availableQuantity" ? clampNonNegative(nextValue) : nextValue,
+      [field]: nextValue,
     }));
   };
 
@@ -125,56 +203,53 @@ function AssetsPage() {
     setEditingId(null);
   };
 
-  const buildPayload = () => ({
-    ...form,
-    stockQuantity: clampNonNegative(form.stockQuantity),
-    availableQuantity: clampNonNegative(form.availableQuantity),
-    imei: isPhoneType ? form.imei : "",
-    phoneLine: isPhoneType ? form.phoneLine : "",
-  });
-
-  const handleReceiveAsset = () => {
-    if (!editingId) return;
-    const nextStock = Number(form.stockQuantity || 0) + 1;
-    const nextAvailable = Number(form.availableQuantity || 0) + 1;
-    const nextPayload = {
-      ...buildPayload(),
-      stockQuantity: nextStock,
-      availableQuantity: nextAvailable,
-      movementStatus: "Em estoque",
-      status: form.status === "Baixado" ? "Monitorado" : form.status,
+  const buildPayload = () => {
+    const payload = {
+      ...form,
+      name: form.name.trim(),
+      manufacturer: form.manufacturer.trim(),
+      model: form.model.trim(),
+      owner: form.owner.trim(),
+      location: form.location.trim(),
+      serial: form.serial.trim(),
+      assetTag: form.assetTag.trim(),
+      ram: form.ram.trim(),
+      storage: form.storage.trim(),
+      processor: form.processor.trim(),
+      imei: form.imei.trim(),
+      phoneLine: form.phoneLine.trim(),
+      technicalSpec: form.technicalSpec.trim(),
     };
-    updateAsset(editingId, nextPayload);
-    setForm(nextPayload);
-    pushToast("Entrada registrada", form.name);
-  };
 
-  const handleDeliverAsset = () => {
-    if (!editingId) return;
-    const currentAvailable = Number(form.availableQuantity || 0);
-    if (currentAvailable <= 0) {
-      pushToast("Sem estoque disponivel", form.name, "warning");
-      return;
+    if (isComputerType(payload.type)) {
+      payload.imei = "";
+      payload.phoneLine = "";
+    } else if (isPhoneType(payload.type)) {
+      payload.processor = "";
+    } else {
+      payload.ram = "";
+      payload.storage = "";
+      payload.processor = "";
+      payload.imei = "";
+      payload.phoneLine = "";
     }
 
-    const nextPayload = {
-      ...buildPayload(),
-      availableQuantity: currentAvailable - 1,
-      movementStatus: "Entregue",
-      status: "Ativo",
-    };
-    updateAsset(editingId, nextPayload);
-    setForm(nextPayload);
-    pushToast("Entrega registrada", form.name);
+    return payload;
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!form.name || !form.owner || !form.location) return;
+    if (!form.name || !form.type || !form.manufacturer || !form.model || !form.owner || !form.serial) {
+      pushToast("Campos obrigatorios", "Preencha nome, tipo, fabricante, modelo, usuario e numero de serie.", "warning");
+      return;
+    }
 
     const payload = buildPayload();
-    if (payload.availableQuantity > payload.stockQuantity) {
-      pushToast("Estoque inconsistente", "Disponivel nao pode ser maior que o estoque total.", "warning");
+    const serialConflict = normalizedAssets.find(
+      (asset) => normalizeText(asset.serial) === normalizeText(payload.serial) && asset.id !== editingId,
+    );
+    if (serialConflict) {
+      pushToast("Numero de serie duplicado", serialConflict.serial, "warning");
       return;
     }
 
@@ -200,6 +275,17 @@ function AssetsPage() {
     setDetailAssetId(asset.id);
   };
 
+  const setManufacturer = (manufacturer) => setPath({ manufacturer, model: "", configuration: "" });
+  const setModel = (model) => setPath((current) => ({ ...current, model, configuration: "" }));
+  const setConfiguration = (configuration) => setPath((current) => ({ ...current, configuration }));
+
+  const breadcrumb = [
+    { label: "Fabricantes", action: () => setPath({ manufacturer: "", model: "", configuration: "" }), active: !path.manufacturer },
+    path.manufacturer ? { label: path.manufacturer, action: () => setPath((current) => ({ ...current, model: "", configuration: "" })) } : null,
+    path.model ? { label: path.model, action: () => setPath((current) => ({ ...current, configuration: "" })) } : null,
+    path.configuration ? { label: path.configuration, action: () => setPath((current) => ({ ...current })) } : null,
+  ].filter(Boolean);
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -210,59 +296,111 @@ function AssetsPage() {
         <div className="insight-strip">
           <div className="insight-chip">
             <strong>{filteredAssets.length}</strong>
-            <span>ativos</span>
+            <span>ativos individuais</span>
           </div>
           <div className="insight-chip">
-            <strong>{filteredAssets.filter((asset) => asset.status === "Ativo").length}</strong>
-            <span>em operacao</span>
+            <strong>{new Set(filteredAssets.map((asset) => asset.manufacturer || "Nao informado")).size}</strong>
+            <span>fabricantes</span>
           </div>
           <div className="insight-chip">
-            <strong>{filteredAssets.reduce((total, asset) => total + Number(asset.availableQuantity || 0), 0)}</strong>
-            <span>em estoque</span>
+            <strong>{currentAssets.length}</strong>
+            <span>itens no nivel atual</span>
           </div>
         </div>
       </section>
 
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Cadastro de ativos</h2>
-          </div>
-          <div className="toolbar">
-            <div className="view-toggle">
-              <button
-                className={`filter-pill interactive-button${viewMode === "list" ? " is-active" : ""}`}
-                onClick={() => setViewMode("list")}
-                type="button"
-              >
-                Lista
-              </button>
-              <button
-                className={`filter-pill interactive-button${viewMode === "kanban" ? " is-active" : ""}`}
-                onClick={() => setViewMode("kanban")}
-                type="button"
-              >
-                Kanban
+      <section className="module-grid">
+        <section className="board-card glpi-panel">
+          <div className="glpi-toolbar">
+            <div>
+              <h2>Navegacao de ativos</h2>
+            </div>
+            <div className="toolbar">
+              <input
+                className="toolbar-search"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por fabricante, modelo, configuracao, patrimonio ou serie"
+                value={search}
+              />
+              <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
+                + Novo ativo
               </button>
             </div>
-            <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
-              + Novo ativo
-            </button>
           </div>
-        </div>
 
-        <div className="toolbar glpi-filter-bar glpi-toolbar-stack">
-          <input
-            className="toolbar-search"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nome, usuario, localizacao, serial, IMEI ou linha"
-            value={search}
-          />
-        </div>
+          <div className="hierarchy-breadcrumb">
+            {breadcrumb.map((item, index) => (
+              <button
+                className={`ghost-link hierarchy-link${item.active ? " is-active" : ""}`}
+                key={`${item.label}-${index}`}
+                onClick={item.action}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
-        {viewMode === "list" ? (
+          {hierarchyLevel !== "serial" ? (
+            <div className="hierarchy-grid">
+              {hierarchyGroups.map((group) => (
+                <button
+                  className="record-card hierarchy-card interactive-button"
+                  key={group.key}
+                  onClick={() => {
+                    if (hierarchyLevel === "manufacturer") setManufacturer(group.key);
+                    if (hierarchyLevel === "model") setModel(group.key);
+                    if (hierarchyLevel === "configuration") setConfiguration(group.key);
+                  }}
+                  type="button"
+                >
+                  <strong>{group.key}</strong>
+                  <span>{group.quantity} item(ns)</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="user-list">
+              {currentAssets.map((asset) => (
+                <button
+                  className={`table-row asset-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
+                  key={asset.id}
+                  onDoubleClick={() => openDetailModal(asset)}
+                  type="button"
+                >
+                  <div className="user-row-main">
+                    <div>
+                      <strong>{asset.serial}</strong>
+                      <span>{asset.name} | {asset.location}</span>
+                    </div>
+                    <div className="row-stats row-stats-wrap">
+                      <span>{asset.owner}</span>
+                      <span>{asset.status}</span>
+                      <span>{asset.assetTag || "-"}</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="board-card glpi-panel">
+          <div className="glpi-toolbar">
+            <div>
+              <h2>Detalhamento do nivel</h2>
+            </div>
+          </div>
+
+          <div className="insight-strip insight-strip-single">
+            <div className="insight-chip">
+              <strong>{currentAssets.length}</strong>
+              <span>quantidade total do agrupamento</span>
+            </div>
+          </div>
+
           <div className="user-list">
-            {filteredAssets.map((asset) => (
+            {currentAssets.map((asset) => (
               <button
                 className={`table-row asset-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
                 key={asset.id}
@@ -271,67 +409,19 @@ function AssetsPage() {
               >
                 <div className="user-row-main">
                   <div>
-                    <strong>{asset.name}</strong>
-                    <span>
-                      {asset.type} | {asset.location}
-                    </span>
+                    <strong>{asset.manufacturer} | {asset.model}</strong>
+                    <span>{getAssetConfiguration(asset)}</span>
                   </div>
                   <div className="row-stats row-stats-wrap">
+                    <span>{asset.type}</span>
                     <span>{asset.owner}</span>
-                    <span>{asset.status}</span>
-                    <span>{asset.criticality}</span>
-                    <span>{asset.assetTag || "-"}</span>
                     <span>{asset.serial}</span>
-                  </div>
-                </div>
-                <div className="user-row-footer">
-                  <div className="row-stats row-stats-wrap">
-                    <span>Estoque {asset.stockQuantity || 0}</span>
-                    <span>Disponivel {asset.availableQuantity || 0}</span>
-                    <span>{asset.movementStatus || "Em estoque"}</span>
-                  </div>
-                  <div className="row-stats row-stats-wrap">
-                    {asset.imei ? <span>IMEI {asset.imei}</span> : null}
-                    {asset.phoneLine ? <span>Linha {asset.phoneLine}</span> : null}
                   </div>
                 </div>
               </button>
             ))}
           </div>
-        ) : (
-          <div className="kanban-grid">
-            {kanbanColumns.map((column) => (
-              <section className="kanban-column" key={column.status}>
-                <div className="kanban-column-header">
-                  <strong>{column.status}</strong>
-                  <span>{column.assets.length}</span>
-                </div>
-                <div className="kanban-column-body">
-                  {column.assets.map((asset) => (
-                    <button
-                      className={`kanban-card interactive-button ${getAssetPriorityClass(asset.criticality)}`}
-                      key={asset.id}
-                      onDoubleClick={() => openDetailModal(asset)}
-                      type="button"
-                    >
-                      <div className="ticket-top">
-                        <strong>{asset.name}</strong>
-                        <span className="badge badge-neutral">{asset.criticality}</span>
-                      </div>
-                      <h3>{asset.type}</h3>
-                      <div className="ticket-meta">
-                        <span>{asset.owner}</span>
-                        <span>{asset.assetTag || "-"}</span>
-                        <span>{asset.availableQuantity || 0} disp.</span>
-                        <span>{asset.movementStatus || "Em estoque"}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
+        </section>
       </section>
 
       {(showCreateModal || detailAsset) ? (
@@ -389,7 +479,15 @@ function AssetsPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block field-span-2">
+                <label className="field-block">
+                  <span>Fabricante</span>
+                  <input onChange={updateField("manufacturer")} value={form.manufacturer} />
+                </label>
+                <label className="field-block">
+                  <span>Modelo</span>
+                  <input onChange={updateField("model")} value={form.model} />
+                </label>
+                <label className="field-block field-full">
                   <span>Nome</span>
                   <input onChange={updateField("name")} value={form.name} />
                 </label>
@@ -405,10 +503,9 @@ function AssetsPage() {
                 <label className="field-block">
                   <span>Status</span>
                   <select onChange={updateField("status")} value={form.status}>
-                    <option>Ativo</option>
-                    <option>Monitorado</option>
-                    <option>Manutencao</option>
-                    <option>Baixado</option>
+                    {assetStatuses.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="field-block">
@@ -424,37 +521,41 @@ function AssetsPage() {
                   <input onChange={updateField("location")} value={form.location} />
                 </label>
                 <label className="field-block">
-                  <span>Serial</span>
+                  <span>Numero de serie</span>
                   <input onChange={updateField("serial")} value={form.serial} />
                 </label>
                 <label className="field-block">
                   <span>Patrimonio</span>
                   <input onChange={updateField("assetTag")} value={form.assetTag} />
                 </label>
-                <label className="field-block">
-                  <span>Estoque total</span>
-                  <input min="0" onChange={updateField("stockQuantity")} type="number" value={form.stockQuantity} />
-                </label>
-                <label className="field-block">
-                  <span>Disponivel</span>
-                  <input
-                    min="0"
-                    onChange={updateField("availableQuantity")}
-                    type="number"
-                    value={form.availableQuantity}
-                  />
-                </label>
-                <label className="field-block">
-                  <span>Movimentacao</span>
-                  <select onChange={updateField("movementStatus")} value={form.movementStatus}>
-                    <option>Em estoque</option>
-                    <option>Entregue</option>
-                    <option>Em manutencao</option>
-                    <option>Retornado</option>
-                  </select>
-                </label>
-                {isPhoneType ? (
+
+                {isComputerType(form.type) ? (
                   <>
+                    <label className="field-block">
+                      <span>Memoria RAM</span>
+                      <input onChange={updateField("ram")} value={form.ram} />
+                    </label>
+                    <label className="field-block">
+                      <span>Armazenamento</span>
+                      <input onChange={updateField("storage")} value={form.storage} />
+                    </label>
+                    <label className="field-block">
+                      <span>Processador</span>
+                      <input onChange={updateField("processor")} value={form.processor} />
+                    </label>
+                  </>
+                ) : null}
+
+                {isPhoneType(form.type) ? (
+                  <>
+                    <label className="field-block">
+                      <span>Memoria RAM</span>
+                      <input onChange={updateField("ram")} value={form.ram} />
+                    </label>
+                    <label className="field-block">
+                      <span>Armazenamento</span>
+                      <input onChange={updateField("storage")} value={form.storage} />
+                    </label>
                     <label className="field-block">
                       <span>IMEI</span>
                       <input onChange={updateField("imei")} value={form.imei} />
@@ -465,17 +566,14 @@ function AssetsPage() {
                     </label>
                   </>
                 ) : null}
+
+                {!isComputerType(form.type) && !isPhoneType(form.type) ? (
+                  <label className="field-block field-span-2">
+                    <span>Especificacao tecnica</span>
+                    <input onChange={updateField("technicalSpec")} value={form.technicalSpec} />
+                  </label>
+                ) : null}
               </div>
-              {editingId ? (
-                <div className="ticket-create-actions">
-                  <button className="ghost-button interactive-button" onClick={handleReceiveAsset} type="button">
-                    Dar entrada
-                  </button>
-                  <button className="ghost-button interactive-button" onClick={handleDeliverAsset} type="button">
-                    Fazer entrega
-                  </button>
-                </div>
-              ) : null}
               <div className="ticket-create-actions">
                 <button className="primary-button interactive-button" type="submit">
                   {editingId ? "Salvar ativo" : "Cadastrar ativo"}
