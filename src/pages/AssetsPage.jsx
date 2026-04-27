@@ -33,8 +33,6 @@ const defaultForm = {
   stockQuantity: 1,
   availableQuantity: 1,
   movementStatus: "Em estoque",
-  entryDate: "",
-  deliveryDate: "",
   imei: "",
   phoneLine: "",
 };
@@ -106,8 +104,6 @@ function AssetsPage() {
       stockQuantity: detailAsset.stockQuantity ?? 1,
       availableQuantity: detailAsset.availableQuantity ?? 1,
       movementStatus: detailAsset.movementStatus || "Em estoque",
-      entryDate: detailAsset.entryDate || "",
-      deliveryDate: detailAsset.deliveryDate || "",
       imei: detailAsset.imei || "",
       phoneLine: detailAsset.phoneLine || "",
     });
@@ -132,6 +128,41 @@ function AssetsPage() {
     imei: isPhoneType ? form.imei : "",
     phoneLine: isPhoneType ? form.phoneLine : "",
   });
+
+  const handleReceiveAsset = () => {
+    if (!editingId) return;
+    const nextStock = Number(form.stockQuantity || 0) + 1;
+    const nextAvailable = Number(form.availableQuantity || 0) + 1;
+    const nextPayload = {
+      ...buildPayload(),
+      stockQuantity: nextStock,
+      availableQuantity: nextAvailable,
+      movementStatus: "Em estoque",
+      status: form.status === "Baixado" ? "Monitorado" : form.status,
+    };
+    updateAsset(editingId, nextPayload);
+    setForm(nextPayload);
+    pushToast("Entrada registrada", form.name);
+  };
+
+  const handleDeliverAsset = () => {
+    if (!editingId) return;
+    const currentAvailable = Number(form.availableQuantity || 0);
+    if (currentAvailable <= 0) {
+      pushToast("Sem estoque disponivel", form.name, "warning");
+      return;
+    }
+
+    const nextPayload = {
+      ...buildPayload(),
+      availableQuantity: currentAvailable - 1,
+      movementStatus: "Entregue",
+      status: "Ativo",
+    };
+    updateAsset(editingId, nextPayload);
+    setForm(nextPayload);
+    pushToast("Entrega registrada", form.name);
+  };
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -251,8 +282,6 @@ function AssetsPage() {
                     <span>{asset.movementStatus || "Em estoque"}</span>
                   </div>
                   <div className="row-stats row-stats-wrap">
-                    <span>Entrada {asset.entryDate || "-"}</span>
-                    <span>Entrega {asset.deliveryDate || "-"}</span>
                     {asset.imei ? <span>IMEI {asset.imei}</span> : null}
                     {asset.phoneLine ? <span>Linha {asset.phoneLine}</span> : null}
                   </div>
@@ -415,14 +444,6 @@ function AssetsPage() {
                     <option>Retornado</option>
                   </select>
                 </label>
-                <label className="field-block">
-                  <span>Data de entrada</span>
-                  <input onChange={updateField("entryDate")} type="date" value={form.entryDate} />
-                </label>
-                <label className="field-block">
-                  <span>Data de entrega</span>
-                  <input onChange={updateField("deliveryDate")} type="date" value={form.deliveryDate} />
-                </label>
                 {isPhoneType ? (
                   <>
                     <label className="field-block">
@@ -436,6 +457,16 @@ function AssetsPage() {
                   </>
                 ) : null}
               </div>
+              {editingId ? (
+                <div className="ticket-create-actions">
+                  <button className="ghost-button interactive-button" onClick={handleReceiveAsset} type="button">
+                    Dar entrada
+                  </button>
+                  <button className="ghost-button interactive-button" onClick={handleDeliverAsset} type="button">
+                    Fazer entrega
+                  </button>
+                </div>
+              ) : null}
               <div className="ticket-create-actions">
                 <button className="primary-button interactive-button" type="submit">
                   {editingId ? "Salvar ativo" : "Cadastrar ativo"}
