@@ -29,6 +29,7 @@ const defaultForm = {
   criticality: "Media",
   location: "",
   serial: "",
+  assetTag: "",
   stockQuantity: 1,
   availableQuantity: 1,
   movementStatus: "Em estoque",
@@ -239,6 +240,7 @@ function AssetsPage() {
                     <span>{asset.owner}</span>
                     <span>{asset.status}</span>
                     <span>{asset.criticality}</span>
+                    <span>{asset.assetTag || "-"}</span>
                     <span>{asset.serial}</span>
                   </div>
                 </div>
@@ -281,6 +283,7 @@ function AssetsPage() {
                       <h3>{asset.type}</h3>
                       <div className="ticket-meta">
                         <span>{asset.owner}</span>
+                        <span>{asset.assetTag || "-"}</span>
                         <span>{asset.availableQuantity || 0} disp.</span>
                         <span>{asset.movementStatus || "Em estoque"}</span>
                       </div>
@@ -385,6 +388,10 @@ function AssetsPage() {
                 <label className="field-block">
                   <span>Serial</span>
                   <input onChange={updateField("serial")} value={form.serial} />
+                </label>
+                <label className="field-block">
+                  <span>Patrimonio</span>
+                  <input onChange={updateField("assetTag")} value={form.assetTag} />
                 </label>
                 <label className="field-block">
                   <span>Estoque total</span>
