@@ -1,3 +1,13 @@
+async function readJsonSafely(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Resposta invalida do servidor.");
+  }
+}
+
 export async function requestJson(path, options = {}) {
   const response = await fetch(path, {
     headers: {
@@ -10,8 +20,8 @@ export async function requestJson(path, options = {}) {
   if (!response.ok) {
     let detail = "Falha na comunicacao com o servidor.";
     try {
-      const payload = await response.json();
-      detail = payload.error || detail;
+      const payload = await readJsonSafely(response);
+      detail = payload?.error || detail;
     } catch {
       // Keep fallback error message when no JSON body is returned.
     }
@@ -19,5 +29,5 @@ export async function requestJson(path, options = {}) {
   }
 
   if (response.status === 204) return null;
-  return response.json();
+  return readJsonSafely(response);
 }

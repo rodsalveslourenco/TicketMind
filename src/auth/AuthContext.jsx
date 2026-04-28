@@ -4,6 +4,15 @@ import { requestJson } from "../lib/api";
 const AuthContext = createContext(null);
 const SESSION_STORAGE_KEY = "ticketmind-session";
 
+function parseStoredSession(rawSession) {
+  if (!rawSession) return null;
+  try {
+    return JSON.parse(rawSession);
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,7 +28,7 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const storedSession = JSON.parse(rawSession);
+        const storedSession = parseStoredSession(rawSession);
         if (!storedSession?.userId) {
           window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
           if (!cancelled) setLoading(false);
