@@ -62,7 +62,12 @@ function AppLayout() {
         </main>
 
         <footer className="app-footer">
-          <span>TicketMind</span>
+          <span>
+            TicketMind e uma ferramenta desenvolvida por{" "}
+            <a href="https://www.systemind.com.br" rel="noreferrer" target="_blank">
+              SysteMind
+            </a>
+          </span>
           <span>{summary.openTickets} chamados abertos</span>
         </footer>
       </div>
