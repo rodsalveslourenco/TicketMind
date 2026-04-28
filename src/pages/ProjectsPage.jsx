@@ -65,6 +65,7 @@ function ProjectsPage() {
   const { addProject, deleteProject, projects, pushToast, updateProject, users } = useAppData();
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
+  const [detailProjectId, setDetailProjectId] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const canCreateProject = hasAnyPermission(user, ["projects_create", "projects_admin"]);
@@ -90,6 +91,7 @@ function ProjectsPage() {
     () => orderedProjects.filter((project) => getDeadlineState(project).days !== null && getDeadlineState(project).days < 0),
     [orderedProjects],
   );
+  const detailProject = projects.find((project) => project.id === detailProjectId) ?? null;
 
   const updateField = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
@@ -98,6 +100,12 @@ function ProjectsPage() {
   const resetForm = () => {
     setForm(defaultForm);
     setEditingId(null);
+  };
+
+  const openProjectEditor = (project) => {
+    setEditingId(project.id);
+    setForm(project);
+    setDetailProjectId(null);
   };
 
   const handleSubmit = (event) => {
@@ -256,7 +264,12 @@ function ProjectsPage() {
               orderedProjects.map((project) => {
                 const deadline = getDeadlineState(project);
                 return (
-                  <div className="sheet-row projects-sheet-row" key={project.id}>
+                  <button
+                    className="sheet-row projects-sheet-row interactive-button"
+                    key={project.id}
+                    onClick={() => setDetailProjectId(project.id)}
+                    type="button"
+                  >
                     <div className="project-row-main">
                       <strong>{project.name}</strong>
                       <span>{project.summary || "Resumo nao informado."}</span>
@@ -283,9 +296,9 @@ function ProjectsPage() {
                       {canEditProject ? (
                         <button
                           className="ghost-button compact-button interactive-button"
-                          onClick={() => {
-                            setEditingId(project.id);
-                            setForm(project);
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openProjectEditor(project);
                           }}
                           type="button"
                         >
@@ -295,7 +308,8 @@ function ProjectsPage() {
                       {canDeleteProject ? (
                         <button
                           className="danger-button compact-button interactive-button"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             deleteProject(project.id);
                             pushToast("Projeto removido", project.name);
                           }}
@@ -305,7 +319,7 @@ function ProjectsPage() {
                         </button>
                       ) : null}
                     </div>
-                  </div>
+                  </button>
                 );
               })
             ) : (
@@ -317,6 +331,78 @@ function ProjectsPage() {
           </div>
         </section>
       </section>
+
+      {detailProject ? (
+        <div className="ticket-modal-backdrop" onClick={() => setDetailProjectId(null)} role="presentation">
+          <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="ticket-modal-header">
+              <div>
+                <h2>{detailProject.name}</h2>
+                <span className="modal-subtitle">
+                  {detailProject.manager || "-"} | {detailProject.status} | entrega {formatDate(detailProject.dueDate)}
+                </span>
+              </div>
+              <div className="ticket-detail-actions">
+                <button className="ghost-button compact-button interactive-button" onClick={() => setDetailProjectId(null)} type="button">
+                  Fechar
+                </button>
+                {canEditProject ? (
+                  <button className="primary-button compact-button interactive-button" onClick={() => openProjectEditor(detailProject)} type="button">
+                    Editar
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="glpi-ticket-form compact-form projects-detail-modal">
+              <div className="glpi-info-strip">
+                <div>
+                  <span>Status</span>
+                  <strong>{detailProject.status}</strong>
+                </div>
+                <div>
+                  <span>Progresso</span>
+                  <strong>{detailProject.progress}%</strong>
+                </div>
+                <div>
+                  <span>Prazo</span>
+                  <strong>{getDeadlineState(detailProject).label}</strong>
+                </div>
+              </div>
+
+              <div className="detail-grid compact-form-grid">
+                <div className="field-block">
+                  <span>Responsavel</span>
+                  <strong>{detailProject.manager || "-"}</strong>
+                </div>
+                <div className="field-block">
+                  <span>Patrocinador</span>
+                  <strong>{detailProject.sponsor || "-"}</strong>
+                </div>
+                <div className="field-block">
+                  <span>Entrega prevista</span>
+                  <strong>{formatDate(detailProject.dueDate)}</strong>
+                </div>
+              </div>
+
+              <div className="project-row-progress">
+                <div className="project-progress-top">
+                  <strong>Andamento operacional</strong>
+                  <span className={`badge ${getProgressTone(Number(detailProject.progress))}`}>{detailProject.progress}%</span>
+                </div>
+                <div className="progress-shell project-progress-shell">
+                  <div className="progress-bar" style={{ width: `${detailProject.progress}%` }} />
+                </div>
+              </div>
+
+              <div className="field-block field-full">
+                <span>Resumo</span>
+                <p className="project-summary">{detailProject.summary || "Resumo nao informado."}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
