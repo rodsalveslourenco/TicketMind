@@ -34,26 +34,7 @@ function LoginPage() {
     <div className="login-shell">
       <section className="login-panel login-copy">
         <span className="eyebrow">TicketMind</span>
-        <h1>Plataforma profissional para operacao de chamados.</h1>
-        <p>
-          Registre solicitacoes, trate incidentes, acompanhe SLA e mantenha cada atendimento
-          documentado com historico, responsaveis e anexos.
-        </p>
-
-        <div className="feature-grid">
-          <article className="feature-card">
-            <strong>Fila operacional</strong>
-            <span>Lista de chamados com selecao rapida, prioridade, status e responsavel.</span>
-          </article>
-          <article className="feature-card">
-            <strong>Tratativa completa</strong>
-            <span>Atualize o ticket com descricao tecnica, notas de resolucao e evidencias.</span>
-          </article>
-          <article className="feature-card">
-            <strong>Operacao integrada</strong>
-            <span>Conecte atendimento, ativos, projetos e integracoes em uma unica rotina.</span>
-          </article>
-        </div>
+        <h1>TicketMind e uma ferramenta criada pela SysteMind.</h1>
       </section>
 
       <section className="login-panel login-form-panel">
