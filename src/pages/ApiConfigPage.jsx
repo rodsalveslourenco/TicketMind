@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultForm = {
@@ -18,9 +20,11 @@ function normalizeResource(resource) {
 }
 
 function ApiConfigPage() {
+  const { user } = useAuth();
   const { apiConfigs, deleteApiConfig, pushToast, saveApiConfig } = useAppData();
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
+  const canConfigureApi = hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin"]);
 
   const orderedConfigs = useMemo(
     () => apiConfigs.slice().sort((left, right) => left.name.localeCompare(right.name)),
@@ -38,6 +42,7 @@ function ApiConfigPage() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (!canConfigureApi) return;
     if (!form.name || !form.baseUrl || !form.resource) return;
 
     saveApiConfig(
@@ -89,15 +94,15 @@ function ApiConfigPage() {
             <div className="glpi-form-grid">
               <label className="field-block">
                 <span>Nome</span>
-                <input onChange={updateField("name")} value={form.name} />
+                <input disabled={!canConfigureApi} onChange={updateField("name")} value={form.name} />
               </label>
               <label className="field-block field-span-2">
                 <span>Base URL</span>
-                <input onChange={updateField("baseUrl")} value={form.baseUrl} />
+                <input disabled={!canConfigureApi} onChange={updateField("baseUrl")} value={form.baseUrl} />
               </label>
               <label className="field-block">
                 <span>Metodo</span>
-                <select onChange={updateField("method")} value={form.method}>
+                <select disabled={!canConfigureApi} onChange={updateField("method")} value={form.method}>
                   <option>GET</option>
                   <option>POST</option>
                   <option>PUT</option>
@@ -107,7 +112,7 @@ function ApiConfigPage() {
               </label>
               <label className="field-block">
                 <span>Autenticacao</span>
-                <select onChange={updateField("authType")} value={form.authType}>
+                <select disabled={!canConfigureApi} onChange={updateField("authType")} value={form.authType}>
                   <option>Bearer</option>
                   <option>Basic</option>
                   <option>API Key</option>
@@ -116,7 +121,7 @@ function ApiConfigPage() {
               </label>
               <label className="field-block">
                 <span>Status</span>
-                <select onChange={updateField("status")} value={form.status}>
+                <select disabled={!canConfigureApi} onChange={updateField("status")} value={form.status}>
                   <option>Ativa</option>
                   <option>Em homologacao</option>
                   <option>Pausada</option>
@@ -124,18 +129,20 @@ function ApiConfigPage() {
               </label>
               <label className="field-block">
                 <span>Timeout (s)</span>
-                <input min="1" onChange={updateField("timeout")} type="number" value={form.timeout} />
+                <input disabled={!canConfigureApi} min="1" onChange={updateField("timeout")} type="number" value={form.timeout} />
               </label>
               <label className="field-block field-span-2">
                 <span>Recurso</span>
-                <input onChange={updateField("resource")} value={form.resource} />
+                <input disabled={!canConfigureApi} onChange={updateField("resource")} value={form.resource} />
               </label>
             </div>
 
             <div className="ticket-create-actions">
-              <button className="primary-button interactive-button" type="submit">
-                {editingId ? "Salvar configuracao" : "Cadastrar configuracao"}
-              </button>
+              {canConfigureApi ? (
+                <button className="primary-button interactive-button" type="submit">
+                  {editingId ? "Salvar configuracao" : "Cadastrar configuracao"}
+                </button>
+              ) : null}
               {editingId ? (
                 <button className="ghost-button interactive-button" onClick={resetForm} type="button">
                   Cancelar
@@ -168,26 +175,30 @@ function ApiConfigPage() {
                   <span>{config.status}</span>
                 </div>
                 <div className="ticket-create-actions">
-                  <button
-                    className="ghost-button interactive-button"
-                    onClick={() => {
-                      setEditingId(config.id);
-                      setForm(config);
-                    }}
-                    type="button"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="danger-button interactive-button"
-                    onClick={() => {
-                      deleteApiConfig(config.id);
-                      pushToast("Configuracao removida", config.name);
-                    }}
-                    type="button"
-                  >
-                    Excluir
-                  </button>
+                  {canConfigureApi ? (
+                    <>
+                      <button
+                        className="ghost-button interactive-button"
+                        onClick={() => {
+                          setEditingId(config.id);
+                          setForm(config);
+                        }}
+                        type="button"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="danger-button interactive-button"
+                        onClick={() => {
+                          deleteApiConfig(config.id);
+                          pushToast("Configuracao removida", config.name);
+                        }}
+                        type="button"
+                      >
+                        Excluir
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </article>
             ))}

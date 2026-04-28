@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 import { assetTypeOptions } from "../data/assetCatalog";
 
@@ -24,6 +26,7 @@ function matchesAssetType(asset, assetType) {
 }
 
 function BrandsModelsPage() {
+  const { user } = useAuth();
   const {
     addBrand,
     addModel,
@@ -39,6 +42,9 @@ function BrandsModelsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [editingMode, setEditingMode] = useState("create");
+  const canCreate = hasAnyPermission(user, ["brands_models_create", "brands_models_admin"]);
+  const canEdit = hasAnyPermission(user, ["brands_models_edit", "brands_models_admin"]);
+  const canDelete = hasAnyPermission(user, ["brands_models_delete", "brands_models_admin"]);
 
   const unifiedRows = useMemo(() => {
     const brandRows = brands.map((brand) => ({
@@ -110,11 +116,13 @@ function BrandsModelsPage() {
   };
 
   const openCreateModal = () => {
+    if (!canCreate) return;
     resetForm();
     setShowModal(true);
   };
 
   const openEditModal = (row) => {
+    if (!canEdit) return;
     setEditingMode(row.rowType === "Marca" ? "brand" : "model");
     setForm({
       assetType: row.assetType,
@@ -225,6 +233,7 @@ function BrandsModelsPage() {
   };
 
   const handleDelete = (row) => {
+    if (!canDelete) return;
     if (row.rowType === "Marca") {
       const hasModels = models.some((model) => model.brandId === row.brandId);
       const hasAssets = assets.some(
@@ -282,9 +291,11 @@ function BrandsModelsPage() {
             <h2>Lista de Marcas e Modelos</h2>
           </div>
           <div className="toolbar">
-            <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
-              + Novo
-            </button>
+            {canCreate ? (
+              <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
+                + Novo
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -305,12 +316,16 @@ function BrandsModelsPage() {
               <span>{row.status}</span>
               <span>{row.rowType}</span>
               <div className="compact-row-actions">
-                <button className="ghost-button compact-button interactive-button" onClick={() => openEditModal(row)} type="button">
-                  Editar
-                </button>
-                <button className="danger-button compact-button interactive-button" onClick={() => handleDelete(row)} type="button">
-                  Excluir
-                </button>
+                {canEdit ? (
+                  <button className="ghost-button compact-button interactive-button" onClick={() => openEditModal(row)} type="button">
+                    Editar
+                  </button>
+                ) : null}
+                {canDelete ? (
+                  <button className="danger-button compact-button interactive-button" onClick={() => handleDelete(row)} type="button">
+                    Excluir
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}
@@ -333,7 +348,7 @@ function BrandsModelsPage() {
               <div className="glpi-form-grid compact-form-grid">
                 <label className="field-block">
                   <span>Tipo de ativo</span>
-                  <select onChange={updateField("assetType")} value={form.assetType}>
+                  <select disabled={!canEdit && editingMode !== "create"} onChange={updateField("assetType")} value={form.assetType}>
                     {assetTypeOptions.map((assetType) => (
                       <option key={assetType}>{assetType}</option>
                     ))}
@@ -341,15 +356,15 @@ function BrandsModelsPage() {
                 </label>
                 <label className="field-block">
                   <span>Marca</span>
-                  <input onChange={updateField("brandName")} value={form.brandName} />
+                  <input disabled={!canEdit && editingMode !== "create"} onChange={updateField("brandName")} value={form.brandName} />
                 </label>
                 <label className="field-block">
                   <span>Modelo</span>
-                  <input onChange={updateField("modelName")} value={form.modelName} />
+                  <input disabled={!canEdit && editingMode !== "create"} onChange={updateField("modelName")} value={form.modelName} />
                 </label>
                 <label className="field-block">
                   <span>Status</span>
-                  <select onChange={updateField("status")} value={form.status}>
+                  <select disabled={!canEdit && editingMode !== "create"} onChange={updateField("status")} value={form.status}>
                     <option>Ativo</option>
                     <option>Inativo</option>
                   </select>
@@ -357,7 +372,7 @@ function BrandsModelsPage() {
                 {editingMode === "model" ? (
                   <label className="field-block">
                     <span>Marca vinculada</span>
-                    <select onChange={updateField("brandId")} value={form.brandId}>
+                    <select disabled={!canEdit} onChange={updateField("brandId")} value={form.brandId}>
                       <option value="">Selecione</option>
                       {availableBrandsByType.map((brand) => (
                         <option key={brand.id} value={brand.id}>
@@ -370,9 +385,11 @@ function BrandsModelsPage() {
               </div>
 
               <div className="ticket-create-actions compact-actions">
-                <button className="primary-button compact-button interactive-button" type="submit">
-                  Salvar
-                </button>
+                {(editingMode === "create" ? canCreate : canEdit) ? (
+                  <button className="primary-button compact-button interactive-button" type="submit">
+                    Salvar
+                  </button>
+                ) : null}
               </div>
             </form>
           </div>

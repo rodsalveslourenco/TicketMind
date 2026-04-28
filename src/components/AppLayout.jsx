@@ -1,22 +1,12 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { canAccessModule, moduleNavigation } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-
-const navigation = [
-  { to: "/app/dashboard", label: "Dashboard", permission: "dashboard" },
-  { to: "/app/tickets", label: "Chamados", permission: "tickets_view" },
-  { to: "/app/assets", label: "Ativos", permission: "assets_view" },
-  { to: "/app/inventory", label: "Inventario", permission: "assets_view" },
-  { to: "/app/brands-models", label: "Marcas e Modelos", permission: "assets_manage" },
-  { to: "/app/projects", label: "Projetos", permission: "projects_view" },
-  { to: "/app/api-rest", label: "API REST", permission: "api_view" },
-  { to: "/app/users", label: "Usuarios", permission: "users_view" },
-];
 
 function AppLayout() {
   const { user, logout } = useAuth();
   const { dismissToast, notifications, summary } = useAppData();
-  const availableNavigation = navigation.filter((item) => user?.permissions?.[item.permission] ?? true);
+  const availableNavigation = moduleNavigation.filter((item) => canAccessModule(user, item.module));
 
   return (
     <div className="app-shell">

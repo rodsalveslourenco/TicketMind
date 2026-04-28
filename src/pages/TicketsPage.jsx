@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
+import { canViewAllTickets as hasGlobalTicketView, hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultCreateForm = {
@@ -104,7 +105,6 @@ function TicketsPage() {
     toLocalDatetimeInput,
     updateTicket,
     users,
-    canViewAllTickets,
   } = useAppData();
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState("list");
@@ -182,7 +182,16 @@ function TicketsPage() {
       .slice(0, 6);
   }, [createForm.watchers, user?.id, users, watcherQuery]);
 
-  if (!user?.permissions?.tickets_view) {
+  const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
+  const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
+  const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);
+  const canAssignTicket = hasAnyPermission(user, ["tickets_assign", "tickets_admin"]);
+  const canChangePriority = hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"]);
+  const canChangeStatus = hasAnyPermission(user, ["tickets_change_status", "tickets_admin"]);
+  const canManageAttachments = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
+  const canSeeAllTickets = hasGlobalTicketView(user);
+
+  if (!hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"])) {
     return <Navigate replace to="/app/dashboard" />;
   }
 
@@ -366,7 +375,7 @@ function TicketsPage() {
             <span>itens no recorte atual</span>
           </div>
         </div>
-        {!canViewAllTickets ? <p className="module-caption">Visualizacao restrita aos seus proprios chamados.</p> : null}
+        {!canSeeAllTickets ? <p className="module-caption">Visualizacao restrita aos seus proprios chamados.</p> : null}
       </section>
 
       <section className="board-card glpi-panel">
@@ -391,9 +400,11 @@ function TicketsPage() {
                 Kanban
               </button>
             </div>
-            <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
-              + Criar chamado
-            </button>
+            {canCreateTicket ? (
+              <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
+                + Criar chamado
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -660,15 +671,17 @@ function TicketsPage() {
                   >
                     Fechar
                   </button>
-                  <button className="danger-button interactive-button" onClick={handleDeleteTicket} type="button">
-                    Excluir
-                  </button>
+                  {canDeleteTicket ? (
+                    <button className="danger-button interactive-button" onClick={handleDeleteTicket} type="button">
+                      Excluir
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
               <label className="field-block field-full">
                 <span>Titulo</span>
-                <input onChange={updateDetailField("title")} value={detailForm.title} />
+                <input disabled={!canEditTicket} onChange={updateDetailField("title")} value={detailForm.title} />
               </label>
 
               <div className="detail-grid">
@@ -676,14 +689,14 @@ function TicketsPage() {
                   <label className="field-block" key={field.key}>
                     <span>{field.label}</span>
                     {field.kind === "select" && field.key === "type" ? (
-                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                      <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Incidente</option>
                         <option>Requisicao</option>
                         <option>Problema</option>
                       </select>
                     ) : null}
                     {field.kind === "select" && field.key === "status" ? (
-                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                      <select disabled={!canChangeStatus} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Aberto</option>
                         <option>Em atendimento</option>
                         <option>Aguardando aprovacao</option>
@@ -692,7 +705,7 @@ function TicketsPage() {
                       </select>
                     ) : null}
                     {field.kind === "select" && field.key === "queue" ? (
-                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                      <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Service Desk</option>
                         <option>Infraestrutura</option>
                         <option>Aplicacoes</option>
@@ -700,7 +713,7 @@ function TicketsPage() {
                       </select>
                     ) : null}
                     {field.kind === "select" && field.key === "source" ? (
-                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                      <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Portal</option>
                         <option>E-mail</option>
                         <option>Telefone</option>
@@ -708,7 +721,7 @@ function TicketsPage() {
                       </select>
                     ) : null}
                     {field.kind === "select" && (field.key === "urgency" || field.key === "impact") ? (
-                      <select onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
+                      <select disabled={!canChangePriority} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Baixa</option>
                         <option>Media</option>
                         <option>Alta</option>
@@ -718,6 +731,7 @@ function TicketsPage() {
                     {field.kind === "assignee" ? (
                       <UserAutocomplete
                         filterFn={(candidate) => normalizeText(candidate.department) === "ti"}
+                        disabled={!canAssignTicket}
                         onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
                         placeholder="Comece a digitar um tecnico de TI"
                         users={tiUsers}
@@ -725,13 +739,18 @@ function TicketsPage() {
                       />
                     ) : null}
                     {field.kind === "input" ? (
-                      <input onChange={updateDetailField(field.key)} value={detailForm[field.key] || ""} />
+                      <input
+                        disabled={field.key === "assignee" ? !canAssignTicket : !canEditTicket}
+                        onChange={updateDetailField(field.key)}
+                        value={detailForm[field.key] || ""}
+                      />
                     ) : null}
                     {field.kind === "date" ? (
-                      <input onChange={updateDetailField(field.key)} type="date" value={detailForm[field.key] || ""} />
+                      <input disabled={!canEditTicket} onChange={updateDetailField(field.key)} type="date" value={detailForm[field.key] || ""} />
                     ) : null}
                     {field.kind === "datetime" ? (
                       <input
+                        disabled={!canEditTicket}
                         onChange={updateDetailField(field.key)}
                         type="datetime-local"
                         value={detailForm[field.key] || ""}
@@ -758,12 +777,12 @@ function TicketsPage() {
 
               <label className="field-block field-full">
                 <span>Descricao</span>
-                <textarea onChange={updateDetailField("description")} value={detailForm.description} />
+                <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} value={detailForm.description} />
               </label>
 
               <label className="field-block field-full">
                 <span>Solucao / acompanhamento tecnico</span>
-                <textarea onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
+                <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
 
               <div className="ticket-attachment-panel">
@@ -772,6 +791,7 @@ function TicketsPage() {
                     <strong>Anexos</strong>
                     <span>Prints, documentos e evidencias vinculadas ao chamado.</span>
                   </div>
+                {canManageAttachments ? (
                   <button
                     className="ghost-button interactive-button"
                     onClick={() => detailInputRef.current?.click()}
@@ -779,6 +799,7 @@ function TicketsPage() {
                   >
                     Adicionar anexos
                   </button>
+                ) : null}
                   <input hidden multiple onChange={handleDetailAttachments} ref={detailInputRef} type="file" />
                 </div>
 
@@ -794,16 +815,18 @@ function TicketsPage() {
                           <a className="ghost-link" download={attachment.name} href={attachment.url}>
                             Baixar
                           </a>
-                          <button
-                            className="ghost-link danger-link interactive-button"
-                            onClick={() => {
-                              removeTicketAttachment(detailTicket.id, attachment.id);
-                              pushToast("Anexo removido", attachment.name);
-                            }}
-                            type="button"
-                          >
-                            Remover
-                          </button>
+                          {canManageAttachments ? (
+                            <button
+                              className="ghost-link danger-link interactive-button"
+                              onClick={() => {
+                                removeTicketAttachment(detailTicket.id, attachment.id);
+                                pushToast("Anexo removido", attachment.name);
+                              }}
+                              type="button"
+                            >
+                              Remover
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -817,9 +840,11 @@ function TicketsPage() {
               </div>
 
               <div className="ticket-create-actions">
-                <button className="primary-button interactive-button" type="submit">
-                  Salvar alteracoes
-                </button>
+                {canEditTicket ? (
+                  <button className="primary-button interactive-button" type="submit">
+                    Salvar alteracoes
+                  </button>
+                ) : null}
               </div>
             </form>
           </div>

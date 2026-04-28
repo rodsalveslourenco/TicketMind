@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { normalizeUserPermissions } from "../data/permissions";
 import { seedData } from "../data/seedData";
 
 const AuthContext = createContext(null);
@@ -19,7 +20,7 @@ function readUsers() {
     return parsedUsers.map((candidate) => ({
       ...candidate,
       password: candidate.password || "admin0123",
-      permissions: { ...(candidate.permissions || {}) },
+      permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
     }));
   } catch {
     return buildDefaultUsers();

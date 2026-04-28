@@ -2,38 +2,12 @@ import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
-
-const permissionFields = [
-  { key: "dashboard", label: "Dashboard", area: "Geral" },
-  { key: "tickets_view", label: "Ver chamados", area: "Chamados" },
-  { key: "tickets_manage", label: "Gerenciar chamados", area: "Chamados" },
-  { key: "users_view", label: "Ver usuarios", area: "Usuarios" },
-  { key: "users_manage", label: "Gerenciar usuarios", area: "Usuarios" },
-  { key: "assets_view", label: "Ver ativos", area: "Ativos" },
-  { key: "assets_manage", label: "Gerenciar ativos", area: "Ativos" },
-  { key: "projects_view", label: "Ver projetos", area: "Projetos" },
-  { key: "projects_manage", label: "Gerenciar projetos", area: "Projetos" },
-  { key: "api_view", label: "Ver API REST", area: "API" },
-  { key: "api_manage", label: "Gerenciar API REST", area: "API" },
-  { key: "reports_view", label: "Ver relatorios", area: "Relatorios" },
-  { key: "sla_manage", label: "Gerenciar SLA", area: "SLA" },
-];
-
-const defaultPermissions = {
-  dashboard: true,
-  tickets_view: true,
-  tickets_manage: false,
-  users_view: false,
-  users_manage: false,
-  assets_view: true,
-  assets_manage: false,
-  projects_view: true,
-  projects_manage: false,
-  api_view: false,
-  api_manage: false,
-  reports_view: false,
-  sla_manage: false,
-};
+import {
+  defaultPermissions,
+  hasAnyPermission,
+  normalizeUserPermissions,
+  permissionGroups,
+} from "../data/permissions";
 
 const defaultUserForm = {
   name: "",
@@ -68,18 +42,12 @@ function UsersPage() {
   const [revealedUserIds, setRevealedUserIds] = useState([]);
 
   const canRevealPasswords = user?.department === "TI";
-  const canViewUsers = Boolean(user?.permissions?.users_view);
-  const canManageUsers = Boolean(user?.permissions?.users_manage);
-
-  const permissionGroups = useMemo(() => {
-    const groups = new Map();
-    permissionFields.forEach((permission) => {
-      const current = groups.get(permission.area) || [];
-      current.push(permission);
-      groups.set(permission.area, current);
-    });
-    return Array.from(groups.entries());
-  }, []);
+  const canViewUsers = hasAnyPermission(user, ["users_view", "users_admin"]);
+  const canCreateUsers = hasAnyPermission(user, ["users_create", "users_admin"]);
+  const canEditUsers = hasAnyPermission(user, ["users_edit", "users_admin"]);
+  const canDeleteUsers = hasAnyPermission(user, ["users_delete", "users_admin"]);
+  const canResetPasswords = hasAnyPermission(user, ["users_reset_password", "users_admin"]);
+  const canManagePermissions = hasAnyPermission(user, ["users_manage_permissions", "users_admin"]);
 
   const orderedUsers = useMemo(() => {
     const normalizedSearch = search
@@ -132,16 +100,17 @@ function UsersPage() {
       role: candidate.role,
       team: candidate.team,
       department: candidate.department,
-      permissions: {
-        ...defaultPermissions,
-        ...(candidate.permissions || {}),
-      },
+      permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
     });
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!canManageUsers) return;
+    if (editingUserId) {
+      if (!(canEditUsers || canResetPasswords || canManagePermissions)) return;
+    } else if (!canCreateUsers) {
+      return;
+    }
     if (!form.name || !form.email || !form.team || !form.password) return;
 
     const normalizedEmail = normalizeText(form.email);
@@ -167,7 +136,7 @@ function UsersPage() {
   };
 
   const openCreateModal = () => {
-    if (!canManageUsers) return;
+    if (!canCreateUsers) return;
     resetForm();
     setShowCreateModal(true);
   };
@@ -185,7 +154,7 @@ function UsersPage() {
   };
 
   const handleDeleteUser = (candidate) => {
-    if (!canManageUsers) return;
+    if (!canDeleteUsers) return;
     if (!candidate) return;
     if (candidate.id === user?.id) {
       pushToast("Operacao bloqueada", "Nao e permitido excluir o usuario logado.", "warning");
@@ -220,7 +189,7 @@ function UsersPage() {
             <span>usuarios TI</span>
           </div>
           <div className="insight-chip">
-            <strong>{orderedUsers.filter((candidate) => candidate.permissions?.users_manage).length}</strong>
+            <strong>{orderedUsers.filter((candidate) => candidate.permissions?.users_admin).length}</strong>
             <span>gestores de acesso</span>
           </div>
         </div>
@@ -238,7 +207,7 @@ function UsersPage() {
               placeholder="Buscar por nome, email, equipe ou perfil"
               value={search}
             />
-            {canManageUsers ? (
+            {canCreateUsers ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
                 + Novo usuario
               </button>
@@ -288,7 +257,8 @@ function UsersPage() {
                   ) : null}
                 </div>
                 <div className="permissions-inline">
-                  {permissionFields
+                  {permissionGroups
+                    .flatMap((group) => group.permissions)
                     .filter((permission) => candidate.permissions?.[permission.key])
                     .slice(0, 4)
                     .map((permission) => (
@@ -354,15 +324,15 @@ function UsersPage() {
                 </label>
               </div>
               <div className="permissions-panel">
-                {permissionGroups.map(([area, permissions]) => (
-                  <section className="permission-group" key={area}>
-                    <strong>{area}</strong>
+                {permissionGroups.map((group) => (
+                  <section className="permission-group" key={group.module}>
+                    <strong>{group.label}</strong>
                     <div className="permissions-list">
-                      {permissions.map((permission) => (
+                      {group.permissions.map((permission) => (
                         <label className="permission-item" key={permission.key}>
                           <input
                             checked={Boolean(form.permissions[permission.key])}
-                            disabled={!canManageUsers}
+                            disabled={!canManagePermissions}
                             onChange={updatePermission(permission.key)}
                             type="checkbox"
                           />
@@ -373,7 +343,7 @@ function UsersPage() {
                   </section>
                 ))}
               </div>
-              {canManageUsers ? (
+              {canCreateUsers ? (
                 <div className="ticket-create-actions">
                   <button className="primary-button interactive-button" type="submit">
                     Cadastrar usuario
@@ -405,7 +375,7 @@ function UsersPage() {
                   <button className="ghost-button interactive-button" onClick={() => setDetailUserId(null)} type="button">
                     Fechar
                   </button>
-                  {canManageUsers ? (
+                  {canDeleteUsers ? (
                     <button
                       className="danger-button interactive-button"
                       onClick={() => handleDeleteUser(detailUser)}
@@ -419,19 +389,19 @@ function UsersPage() {
               <div className="glpi-form-grid">
                 <label className="field-block">
                   <span>Nome</span>
-                  <input disabled={!canManageUsers} onChange={updateField("name")} value={form.name} />
+                  <input disabled={!canEditUsers} onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
                   <span>Email</span>
-                  <input disabled={!canManageUsers} onChange={updateField("email")} type="email" value={form.email} />
+                  <input disabled={!canEditUsers} onChange={updateField("email")} type="email" value={form.email} />
                 </label>
                 <label className="field-block">
                   <span>Senha</span>
-                  <input disabled={!canManageUsers} onChange={updateField("password")} type="password" value={form.password} />
+                  <input disabled={!canResetPasswords} onChange={updateField("password")} type="password" value={form.password} />
                 </label>
                 <label className="field-block">
                   <span>Perfil</span>
-                  <select disabled={!canManageUsers} onChange={updateField("role")} value={form.role}>
+                  <select disabled={!canEditUsers} onChange={updateField("role")} value={form.role}>
                     <option>Administrador</option>
                     <option>Analista</option>
                     <option>Especialista</option>
@@ -441,11 +411,11 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Equipe</span>
-                  <input disabled={!canManageUsers} onChange={updateField("team")} value={form.team} />
+                  <input disabled={!canEditUsers} onChange={updateField("team")} value={form.team} />
                 </label>
                 <label className="field-block">
                   <span>Departamento</span>
-                  <select disabled={!canManageUsers} onChange={updateField("department")} value={form.department}>
+                  <select disabled={!canEditUsers} onChange={updateField("department")} value={form.department}>
                     <option>TI</option>
                     <option>RH</option>
                     <option>Financeiro</option>
@@ -455,15 +425,15 @@ function UsersPage() {
                 </label>
               </div>
               <div className="permissions-panel">
-                {permissionGroups.map(([area, permissions]) => (
-                  <section className="permission-group" key={area}>
-                    <strong>{area}</strong>
+                {permissionGroups.map((group) => (
+                  <section className="permission-group" key={group.module}>
+                    <strong>{group.label}</strong>
                     <div className="permissions-list">
-                      {permissions.map((permission) => (
+                      {group.permissions.map((permission) => (
                         <label className="permission-item" key={permission.key}>
                           <input
                             checked={Boolean(form.permissions[permission.key])}
-                            disabled={!canManageUsers}
+                            disabled={!canManagePermissions}
                             onChange={updatePermission(permission.key)}
                             type="checkbox"
                           />
@@ -474,7 +444,7 @@ function UsersPage() {
                   </section>
                 ))}
               </div>
-              {canManageUsers ? (
+              {canEditUsers || canResetPasswords || canManagePermissions ? (
                 <div className="ticket-create-actions">
                   <button className="primary-button interactive-button" type="submit">
                     Salvar usuario

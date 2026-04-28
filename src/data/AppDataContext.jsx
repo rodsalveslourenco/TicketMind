@@ -1,5 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import {
+  canViewAllTickets,
+  canViewOwnTickets,
+  defaultPermissions as defaultUserPermissions,
+  hasAnyPermission,
+  normalizeUserPermissions,
+} from "./permissions";
 import { seedData } from "./seedData";
 import { assetTypeOptions } from "./assetCatalog";
 
@@ -15,7 +22,7 @@ function hydrateUsers(users) {
   return baseUsers.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
-    permissions: { ...(candidate.permissions || {}) },
+    permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
   }));
 }
 
@@ -131,12 +138,8 @@ function sanitizeUserPayload(payload) {
     role: String(payload.role || "").trim(),
     team: String(payload.team || "").trim(),
     department: String(payload.department || "").trim(),
-    permissions: { ...(payload.permissions || {}) },
+    permissions: normalizeUserPermissions(payload.permissions || defaultUserPermissions, payload),
   };
-}
-
-function canViewAllTickets(user) {
-  return normalizeText(user?.department) === "ti";
 }
 
 function resolveTicketRequesterId(ticket, users) {
@@ -167,6 +170,7 @@ function prepareTickets(tickets, users) {
 function filterTicketsForUser(tickets, user) {
   if (!user) return [];
   if (canViewAllTickets(user)) return tickets;
+  if (!canViewOwnTickets(user)) return [];
   return tickets.filter((ticket) => ticket.requesterId === user.id);
 }
 
@@ -262,6 +266,7 @@ export function AppDataProvider({ children }) {
   );
 
   const createTicket = (payload) => {
+    if (!hasAnyPermission(user, ["tickets_create", "tickets_admin"])) return null;
     let createdTicket = null;
 
     setData((current) => {
@@ -310,11 +315,36 @@ export function AppDataProvider({ children }) {
   };
 
   const updateTicket = (ticketId, updates) => {
+    if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) => {
         if (ticket.id !== ticketId) return ticket;
         if (!canAccessTicket(ticket, user)) return ticket;
+        if (updates.assignee !== undefined && updates.assignee !== ticket.assignee && !hasAnyPermission(user, ["tickets_assign", "tickets_admin"])) {
+          return ticket;
+        }
+        if (
+          (updates.urgency !== undefined || updates.impact !== undefined) &&
+          !hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"])
+        ) {
+          return ticket;
+        }
+        if (updates.status !== undefined && updates.status !== ticket.status) {
+          if (!hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
+            return ticket;
+          }
+          if (normalizeText(updates.status) === "resolvido" && !hasAnyPermission(user, ["tickets_close", "tickets_admin"])) {
+            return ticket;
+          }
+          if (
+            normalizeText(ticket.status) === "resolvido" &&
+            normalizeText(updates.status) !== "resolvido" &&
+            !hasAnyPermission(user, ["tickets_reopen", "tickets_admin"])
+          ) {
+            return ticket;
+          }
+        }
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
         const priority = computePriority(nextUrgency, nextImpact);
@@ -348,6 +378,7 @@ export function AppDataProvider({ children }) {
   };
 
   const deleteTicket = (ticketId) => {
+    if (!hasAnyPermission(user, ["tickets_delete", "tickets_admin"])) return;
     setData((current) => ({
       ...current,
       tickets: current.tickets.filter((ticket) => ticket.id !== ticketId || !canAccessTicket(ticket, user)),
@@ -355,6 +386,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addTicketAttachments = (ticketId, attachments) => {
+    if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
@@ -366,6 +398,7 @@ export function AppDataProvider({ children }) {
   };
 
   const removeTicketAttachment = (ticketId, attachmentId) => {
+    if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
@@ -381,6 +414,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addUser = (payload) => {
+    if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
     let createdUser = null;
     setData((current) => {
       createdUser = { id: nextId("u", current.users || []), ...sanitizeUserPayload(payload) };
@@ -390,15 +424,39 @@ export function AppDataProvider({ children }) {
   };
 
   const updateUser = (userId, payload) => {
+    if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
     setData((current) => ({
       ...current,
-      users: current.users.map((candidate) =>
-        candidate.id === userId ? { ...candidate, ...sanitizeUserPayload(payload) } : candidate,
-      ),
+      users: current.users.map((candidate) => {
+        if (candidate.id !== userId) return candidate;
+        const sanitizedPayload = sanitizeUserPayload(payload);
+        const permissionsChanged =
+          JSON.stringify(candidate.permissions || {}) !== JSON.stringify(sanitizedPayload.permissions || {});
+        const passwordChanged = String(candidate.password || "") !== String(sanitizedPayload.password || "");
+        return {
+          ...candidate,
+          ...(hasAnyPermission(user, ["users_edit", "users_admin"])
+            ? {
+                name: sanitizedPayload.name,
+                email: sanitizedPayload.email,
+                role: sanitizedPayload.role,
+                team: sanitizedPayload.team,
+                department: sanitizedPayload.department,
+              }
+            : {}),
+          ...(passwordChanged && hasAnyPermission(user, ["users_reset_password", "users_admin"])
+            ? { password: sanitizedPayload.password }
+            : {}),
+          ...(permissionsChanged && hasAnyPermission(user, ["users_manage_permissions", "users_admin"])
+            ? { permissions: sanitizedPayload.permissions }
+            : {}),
+        };
+      }),
     }));
   };
 
   const deleteUser = (userId) => {
+    if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
     setData((current) => ({
       ...current,
       users: current.users.filter((candidate) => candidate.id !== userId),
@@ -406,6 +464,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addAsset = (payload) => {
+    if (!hasAnyPermission(user, ["assets_create", "assets_admin"])) return;
     setData((current) => ({
       ...current,
       assets: [{ id: nextId("asset", current.assets || []), ...payload }, ...(current.assets || [])],
@@ -413,13 +472,26 @@ export function AppDataProvider({ children }) {
   };
 
   const updateAsset = (assetId, payload) => {
+    if (!hasAnyPermission(user, ["assets_edit", "assets_admin"])) return;
     setData((current) => ({
       ...current,
-      assets: current.assets.map((asset) => (asset.id === assetId ? { ...asset, ...payload } : asset)),
+      assets: current.assets.map((asset) => {
+        if (asset.id !== assetId) return asset;
+        const nextOwner =
+          payload.owner !== asset.owner && !hasAnyPermission(user, ["assets_link_users", "assets_admin"])
+            ? asset.owner
+            : payload.owner;
+        const nextLocation =
+          payload.location !== asset.location && !hasAnyPermission(user, ["assets_move", "assets_admin"])
+            ? asset.location
+            : payload.location;
+        return { ...asset, ...payload, owner: nextOwner, location: nextLocation };
+      }),
     }));
   };
 
   const deleteAsset = (assetId) => {
+    if (!hasAnyPermission(user, ["assets_delete", "assets_admin"])) return;
     setData((current) => ({
       ...current,
       assets: current.assets.filter((asset) => asset.id !== assetId),
@@ -427,6 +499,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addBrand = (payload) => {
+    if (!hasAnyPermission(user, ["brands_models_create", "brands_models_admin"])) return null;
     let createdBrand = null;
     setData((current) => {
       createdBrand = { id: nextId("brand", current.brands || []), ...sanitizeBrandPayload(payload) };
@@ -439,6 +512,7 @@ export function AppDataProvider({ children }) {
   };
 
   const updateBrand = (brandId, payload) => {
+    if (!hasAnyPermission(user, ["brands_models_edit", "brands_models_admin"])) return;
     setData((current) => ({
       ...current,
       brands: current.brands.map((brand) =>
@@ -463,6 +537,7 @@ export function AppDataProvider({ children }) {
   };
 
   const deleteBrand = (brandId) => {
+    if (!hasAnyPermission(user, ["brands_models_delete", "brands_models_admin"])) return;
     setData((current) => ({
       ...current,
       brands: current.brands.filter((brand) => brand.id !== brandId),
@@ -471,6 +546,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addModel = (payload) => {
+    if (!hasAnyPermission(user, ["brands_models_create", "brands_models_admin"])) return null;
     let createdModel = null;
     setData((current) => {
       createdModel = { id: nextId("model", current.models || []), ...sanitizeModelPayload(payload) };
@@ -483,6 +559,7 @@ export function AppDataProvider({ children }) {
   };
 
   const updateModel = (modelId, payload) => {
+    if (!hasAnyPermission(user, ["brands_models_edit", "brands_models_admin"])) return;
     setData((current) => ({
       ...current,
       models: current.models.map((model) =>
@@ -499,6 +576,7 @@ export function AppDataProvider({ children }) {
   };
 
   const deleteModel = (modelId) => {
+    if (!hasAnyPermission(user, ["brands_models_delete", "brands_models_admin"])) return;
     setData((current) => ({
       ...current,
       models: current.models.filter((model) => model.id !== modelId),
@@ -506,6 +584,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addProject = (payload) => {
+    if (!hasAnyPermission(user, ["projects_create", "projects_admin"])) return;
     setData((current) => ({
       ...current,
       projects: [{ id: nextId("project", current.projects || []), ...payload }, ...(current.projects || [])],
@@ -513,6 +592,7 @@ export function AppDataProvider({ children }) {
   };
 
   const updateProject = (projectId, payload) => {
+    if (!hasAnyPermission(user, ["projects_edit", "projects_admin"])) return;
     setData((current) => ({
       ...current,
       projects: current.projects.map((project) =>
@@ -522,6 +602,7 @@ export function AppDataProvider({ children }) {
   };
 
   const deleteProject = (projectId) => {
+    if (!hasAnyPermission(user, ["projects_delete", "projects_admin"])) return;
     setData((current) => ({
       ...current,
       projects: current.projects.filter((project) => project.id !== projectId),
@@ -529,6 +610,7 @@ export function AppDataProvider({ children }) {
   };
 
   const saveApiConfig = (payload, configId) => {
+    if (!hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin"])) return;
     if (configId) {
       setData((current) => ({
         ...current,
@@ -546,6 +628,7 @@ export function AppDataProvider({ children }) {
   };
 
   const deleteApiConfig = (configId) => {
+    if (!hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin"])) return;
     setData((current) => ({
       ...current,
       apiConfigs: current.apiConfigs.filter((config) => config.id !== configId),

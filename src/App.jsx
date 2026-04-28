@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { getUserHomePath } from "./data/permissions";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import TicketsPage from "./pages/TicketsPage";
@@ -13,12 +14,13 @@ import ProjectsPage from "./pages/ProjectsPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
 
 function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const homePath = getUserHomePath(user);
 
   return (
     <Routes>
       <Route
-        element={isAuthenticated ? <Navigate replace to="/app/dashboard" /> : <LoginPage />}
+        element={isAuthenticated ? <Navigate replace to={homePath} /> : <LoginPage />}
         path="/login"
       />
       <Route
@@ -29,18 +31,18 @@ function App() {
         }
         path="/app"
       >
-        <Route element={<Navigate replace to="/app/dashboard" />} index />
-        <Route element={<DashboardPage />} path="dashboard" />
-        <Route element={<TicketsPage />} path="tickets" />
-        <Route element={<AssetsPage />} path="assets" />
-        <Route element={<InventoryPage />} path="inventory" />
-        <Route element={<BrandsModelsPage />} path="brands-models" />
-        <Route element={<ProjectsPage />} path="projects" />
-        <Route element={<ApiConfigPage />} path="api-rest" />
-        <Route element={<UsersPage />} path="users" />
+        <Route element={<Navigate replace to={homePath} />} index />
+        <Route element={<ProtectedRoute requiredPermissions={["dashboard_view"]}><DashboardPage /></ProtectedRoute>} path="dashboard" />
+        <Route element={<ProtectedRoute requiredPermissions={["tickets_view_own", "tickets_view_all", "tickets_admin"]}><TicketsPage /></ProtectedRoute>} path="tickets" />
+        <Route element={<ProtectedRoute requiredPermissions={["assets_view", "assets_admin"]}><AssetsPage /></ProtectedRoute>} path="assets" />
+        <Route element={<ProtectedRoute requiredPermissions={["inventory_view", "inventory_admin"]}><InventoryPage /></ProtectedRoute>} path="inventory" />
+        <Route element={<ProtectedRoute requiredPermissions={["brands_models_view", "brands_models_admin"]}><BrandsModelsPage /></ProtectedRoute>} path="brands-models" />
+        <Route element={<ProtectedRoute requiredPermissions={["projects_view", "projects_admin"]}><ProjectsPage /></ProtectedRoute>} path="projects" />
+        <Route element={<ProtectedRoute requiredPermissions={["api_rest_view", "api_rest_admin"]}><ApiConfigPage /></ProtectedRoute>} path="api-rest" />
+        <Route element={<ProtectedRoute requiredPermissions={["users_view", "users_admin"]}><UsersPage /></ProtectedRoute>} path="users" />
       </Route>
       <Route
-        element={<Navigate replace to={isAuthenticated ? "/app/dashboard" : "/login"} />}
+        element={<Navigate replace to={isAuthenticated ? homePath : "/login"} />}
         path="*"
       />
     </Routes>

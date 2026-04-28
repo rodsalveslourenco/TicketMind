@@ -1,34 +1,8 @@
-const adminPermissions = {
-  dashboard: true,
-  tickets_view: true,
-  tickets_manage: true,
-  users_view: true,
-  users_manage: true,
-  assets_view: true,
-  assets_manage: true,
-  projects_view: true,
-  projects_manage: true,
-  api_view: true,
-  api_manage: true,
-  reports_view: true,
-  sla_manage: true,
-};
-
-const analystPermissions = {
-  dashboard: true,
-  tickets_view: true,
-  tickets_manage: true,
-  users_view: false,
-  users_manage: false,
-  assets_view: true,
-  assets_manage: false,
-  projects_view: true,
-  projects_manage: false,
-  api_view: false,
-  api_manage: false,
-  reports_view: true,
-  sla_manage: false,
-};
+import {
+  adminPermissions,
+  analystPermissions,
+  defaultPermissions,
+} from "./permissions";
 
 export const seedData = {
   currentUser: {
@@ -101,19 +75,9 @@ export const seedData = {
       department: "RH",
       password: "admin0123",
       permissions: {
-        dashboard: true,
-        tickets_view: true,
-        tickets_manage: false,
-        users_view: false,
-        users_manage: false,
-        assets_view: false,
-        assets_manage: false,
+        ...defaultPermissions,
+        dashboard_view: true,
         projects_view: true,
-        projects_manage: false,
-        api_view: false,
-        api_manage: false,
-        reports_view: false,
-        sla_manage: false,
       },
     },
   ],

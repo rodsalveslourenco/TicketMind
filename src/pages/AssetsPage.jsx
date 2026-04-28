@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import CatalogAutocomplete from "../components/CatalogAutocomplete";
 import UserAutocomplete from "../components/UserAutocomplete";
+import { useAuth } from "../auth/AuthContext";
+import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 import { assetTypeOptions } from "../data/assetCatalog";
 
@@ -144,6 +146,7 @@ function buildHierarchyRows(assets, level) {
 }
 
 function AssetsPage() {
+  const { user } = useAuth();
   const {
     addAsset,
     addBrand,
@@ -164,6 +167,12 @@ function AssetsPage() {
   const [form, setForm] = useState(defaultForm);
   const [quickCatalogForm, setQuickCatalogForm] = useState(defaultQuickCatalogForm);
   const [path, setPath] = useState({ manufacturer: "", model: "", configuration: "" });
+  const canCreateAsset = hasAnyPermission(user, ["assets_create", "assets_admin"]);
+  const canEditAsset = hasAnyPermission(user, ["assets_edit", "assets_admin"]);
+  const canDeleteAsset = hasAnyPermission(user, ["assets_delete", "assets_admin"]);
+  const canMoveAsset = hasAnyPermission(user, ["assets_move", "assets_admin"]);
+  const canLinkAssetUsers = hasAnyPermission(user, ["assets_link_users", "assets_admin"]);
+  const canCreateBrandsModels = hasAnyPermission(user, ["brands_models_create", "brands_models_admin"]);
 
   const normalizedAssets = useMemo(
     () =>
@@ -478,16 +487,18 @@ function AssetsPage() {
                 placeholder="Buscar por tipo, marca, modelo, patrimonio ou serie"
                 value={search}
               />
-              <button
-                className="primary-button compact-button interactive-button"
-                onClick={() => {
-                  resetForm();
-                  setShowCreateModal(true);
-                }}
-                type="button"
-              >
-                + Novo ativo
-              </button>
+              {canCreateAsset ? (
+                <button
+                  className="primary-button compact-button interactive-button"
+                  onClick={() => {
+                    resetForm();
+                    setShowCreateModal(true);
+                  }}
+                  type="button"
+                >
+                  + Novo ativo
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -610,7 +621,7 @@ function AssetsPage() {
                   <button className="ghost-button compact-button interactive-button" onClick={() => { setShowCreateModal(false); setDetailAssetId(null); }} type="button">
                     Fechar
                   </button>
-                  {editingId ? (
+                  {editingId && canDeleteAsset ? (
                     <button
                       className="danger-button compact-button interactive-button"
                       onClick={() => {
@@ -629,7 +640,7 @@ function AssetsPage() {
               <div className="glpi-form-grid compact-form-grid">
                 <label className="field-block">
                   <span>Tipo</span>
-                  <select onChange={updateField("type")} value={form.type}>
+                  <select disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("type")} value={form.type}>
                     {assetTypeOptions.filter((type) => type !== "Outros").map((type) => (
                       <option key={type}>{type}</option>
                     ))}
@@ -639,6 +650,7 @@ function AssetsPage() {
                   <span>Marca</span>
                   <div className="inline-field-actions">
                     <CatalogAutocomplete
+                      disabled={!canEditAsset && Boolean(editingId)}
                       getDescription={(item) => item.assetType}
                       getLabel={(item) => item.name}
                       items={availableBrands}
@@ -663,23 +675,25 @@ function AssetsPage() {
                       placeholder="Digite para buscar a marca"
                       value={form.manufacturer}
                     />
-                    <button
-                      className="ghost-button compact-button interactive-button"
-                      onClick={() => {
-                        resetQuickCatalogForm(resolveAssetType(form.type));
-                        setShowQuickCatalogModal(true);
-                      }}
-                      type="button"
-                    >
-                      +
-                    </button>
+                    {canCreateBrandsModels ? (
+                      <button
+                        className="ghost-button compact-button interactive-button"
+                        onClick={() => {
+                          resetQuickCatalogForm(resolveAssetType(form.type));
+                          setShowQuickCatalogModal(true);
+                        }}
+                        type="button"
+                      >
+                        +
+                      </button>
+                    ) : null}
                   </div>
                 </label>
                 <label className="field-block">
                   <span>Modelo</span>
                   <div className="inline-field-actions">
                     <CatalogAutocomplete
-                      disabled={!resolvedBrandId}
+                      disabled={(!canEditAsset && Boolean(editingId)) || !resolvedBrandId}
                       getDescription={(item) => `${item.brandName} | ${item.assetType}`}
                       getLabel={(item) => item.name}
                       items={availableModels}
@@ -700,25 +714,28 @@ function AssetsPage() {
                       placeholder={resolvedBrandId ? "Digite para buscar o modelo" : "Selecione a marca primeiro"}
                       value={form.model}
                     />
-                    <button
-                      className="ghost-button compact-button interactive-button"
-                      onClick={() => {
-                        resetQuickCatalogForm(resolveAssetType(form.type));
-                        setShowQuickCatalogModal(true);
-                      }}
-                      type="button"
-                    >
-                      +
-                    </button>
+                    {canCreateBrandsModels ? (
+                      <button
+                        className="ghost-button compact-button interactive-button"
+                        onClick={() => {
+                          resetQuickCatalogForm(resolveAssetType(form.type));
+                          setShowQuickCatalogModal(true);
+                        }}
+                        type="button"
+                      >
+                        +
+                      </button>
+                    ) : null}
                   </div>
                 </label>
                 <label className="field-block field-full">
                   <span>Nome</span>
-                  <input onChange={updateField("name")} value={form.name} />
+                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
                   <span>Usuario</span>
                   <UserAutocomplete
+                    disabled={!canLinkAssetUsers && Boolean(editingId)}
                     onChange={(nextValue) => setForm((current) => ({ ...current, owner: nextValue }))}
                     placeholder="Comece a digitar um usuario"
                     users={users}
@@ -727,7 +744,7 @@ function AssetsPage() {
                 </label>
                 <label className="field-block">
                   <span>Status</span>
-                  <select onChange={updateField("status")} value={form.status}>
+                  <select disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("status")} value={form.status}>
                     {assetStatuses.map((status) => (
                       <option key={status}>{status}</option>
                     ))}
@@ -735,7 +752,7 @@ function AssetsPage() {
                 </label>
                 <label className="field-block">
                   <span>Criticidade</span>
-                  <select onChange={updateField("criticality")} value={form.criticality}>
+                  <select disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("criticality")} value={form.criticality}>
                     <option>Baixa</option>
                     <option>Media</option>
                     <option>Alta</option>
@@ -743,30 +760,30 @@ function AssetsPage() {
                 </label>
                 <label className="field-block">
                   <span>Localizacao</span>
-                  <input onChange={updateField("location")} value={form.location} />
+                  <input disabled={!canMoveAsset && Boolean(editingId)} onChange={updateField("location")} value={form.location} />
                 </label>
                 <label className="field-block">
                   <span>Numero de serie</span>
-                  <input onChange={updateField("serial")} value={form.serial} />
+                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("serial")} value={form.serial} />
                 </label>
                 <label className="field-block">
                   <span>Patrimonio</span>
-                  <input onChange={updateField("assetTag")} value={form.assetTag} />
+                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("assetTag")} value={form.assetTag} />
                 </label>
 
                 {isComputerType(form.type) ? (
                   <>
                     <label className="field-block">
                       <span>Memoria RAM</span>
-                      <input onChange={updateField("ram")} value={form.ram} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("ram")} value={form.ram} />
                     </label>
                     <label className="field-block">
                       <span>Armazenamento</span>
-                      <input onChange={updateField("storage")} value={form.storage} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("storage")} value={form.storage} />
                     </label>
                     <label className="field-block">
                       <span>Processador</span>
-                      <input onChange={updateField("processor")} value={form.processor} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("processor")} value={form.processor} />
                     </label>
                   </>
                 ) : null}
@@ -775,19 +792,19 @@ function AssetsPage() {
                   <>
                     <label className="field-block">
                       <span>Memoria RAM</span>
-                      <input onChange={updateField("ram")} value={form.ram} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("ram")} value={form.ram} />
                     </label>
                     <label className="field-block">
                       <span>Armazenamento</span>
-                      <input onChange={updateField("storage")} value={form.storage} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("storage")} value={form.storage} />
                     </label>
                     <label className="field-block">
                       <span>IMEI</span>
-                      <input onChange={updateField("imei")} value={form.imei} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("imei")} value={form.imei} />
                     </label>
                     <label className="field-block">
                       <span>N da Linha</span>
-                      <input onChange={updateField("phoneLine")} value={form.phoneLine} />
+                      <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("phoneLine")} value={form.phoneLine} />
                     </label>
                   </>
                 ) : null}
@@ -795,22 +812,24 @@ function AssetsPage() {
                 {!isComputerType(form.type) && !isPhoneType(form.type) ? (
                   <label className="field-block field-span-2">
                     <span>Especificacao tecnica</span>
-                    <input onChange={updateField("technicalSpec")} value={form.technicalSpec} />
+                    <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("technicalSpec")} value={form.technicalSpec} />
                   </label>
                 ) : null}
               </div>
 
               <div className="ticket-create-actions compact-actions">
-                <button className="primary-button compact-button interactive-button" type="submit">
-                  {editingId ? "Salvar ativo" : "Cadastrar ativo"}
-                </button>
+                {(editingId ? canEditAsset : canCreateAsset) ? (
+                  <button className="primary-button compact-button interactive-button" type="submit">
+                    {editingId ? "Salvar ativo" : "Cadastrar ativo"}
+                  </button>
+                ) : null}
               </div>
             </form>
           </div>
         </div>
       ) : null}
 
-      {showQuickCatalogModal ? (
+      {showQuickCatalogModal && canCreateBrandsModels ? (
         <div className="ticket-modal-backdrop" onClick={() => setShowQuickCatalogModal(false)} role="presentation">
           <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="glpi-ticket-form compact-form" onSubmit={handleQuickCatalogSubmit}>

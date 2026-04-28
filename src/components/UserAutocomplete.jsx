@@ -13,6 +13,7 @@ function UserAutocomplete({
   onChange,
   placeholder = "Comece a digitar um usuario",
   filterFn,
+  disabled = false,
 }) {
   const [query, setQuery] = useState(value || "");
   const [isOpen, setIsOpen] = useState(false);
@@ -50,17 +51,18 @@ function UserAutocomplete({
   return (
     <div className="autocomplete-shell" ref={shellRef}>
       <input
+        disabled={disabled}
         onChange={(event) => {
           const nextValue = event.target.value;
           setQuery(nextValue);
           onChange(nextValue);
           setIsOpen(true);
         }}
-        onFocus={() => setIsOpen(true)}
+        onFocus={() => !disabled && setIsOpen(true)}
         placeholder={placeholder}
         value={query}
       />
-      {isOpen && suggestions.length ? (
+      {isOpen && !disabled && suggestions.length ? (
         <div className="autocomplete-list">
           {suggestions.map((candidate) => (
             <button

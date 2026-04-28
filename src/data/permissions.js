@@ -1,0 +1,294 @@
+export const permissionGroups = [
+  {
+    module: "dashboard",
+    label: "Dashboard",
+    viewPermissions: ["dashboard_view"],
+    permissions: [{ key: "dashboard_view", label: "Visualizar" }],
+  },
+  {
+    module: "tickets",
+    label: "Chamados",
+    viewPermissions: ["tickets_view_own", "tickets_view_all", "tickets_admin"],
+    permissions: [
+      { key: "tickets_view_own", label: "Visualizar proprios chamados" },
+      { key: "tickets_view_all", label: "Visualizar todos chamados" },
+      { key: "tickets_create", label: "Criar chamado" },
+      { key: "tickets_edit", label: "Editar chamado" },
+      { key: "tickets_delete", label: "Excluir chamado" },
+      { key: "tickets_close", label: "Encerrar chamado" },
+      { key: "tickets_reopen", label: "Reabrir chamado" },
+      { key: "tickets_change_priority", label: "Alterar prioridade" },
+      { key: "tickets_change_status", label: "Alterar status" },
+      { key: "tickets_assign", label: "Atribuir chamado" },
+      { key: "tickets_export", label: "Exportar chamados" },
+      { key: "tickets_admin", label: "Administrar chamados" },
+    ],
+  },
+  {
+    module: "assets",
+    label: "Ativos",
+    viewPermissions: ["assets_view", "assets_admin"],
+    permissions: [
+      { key: "assets_view", label: "Visualizar" },
+      { key: "assets_create", label: "Criar" },
+      { key: "assets_edit", label: "Editar" },
+      { key: "assets_delete", label: "Excluir" },
+      { key: "assets_move", label: "Movimentar ativos" },
+      { key: "assets_link_users", label: "Vincular usuarios" },
+      { key: "assets_export", label: "Exportar" },
+      { key: "assets_admin", label: "Administrar" },
+    ],
+  },
+  {
+    module: "inventory",
+    label: "Inventario",
+    viewPermissions: ["inventory_view", "inventory_admin"],
+    permissions: [
+      { key: "inventory_view", label: "Visualizar" },
+      { key: "inventory_create", label: "Criar inventario" },
+      { key: "inventory_edit", label: "Editar inventario" },
+      { key: "inventory_delete", label: "Excluir inventario" },
+      { key: "inventory_move_stock", label: "Movimentar estoque" },
+      { key: "inventory_export", label: "Exportar" },
+      { key: "inventory_admin", label: "Administrar" },
+    ],
+  },
+  {
+    module: "brands_models",
+    label: "Marcas e Modelos",
+    viewPermissions: ["brands_models_view", "brands_models_admin"],
+    permissions: [
+      { key: "brands_models_view", label: "Visualizar" },
+      { key: "brands_models_create", label: "Criar" },
+      { key: "brands_models_edit", label: "Editar" },
+      { key: "brands_models_delete", label: "Excluir" },
+      { key: "brands_models_admin", label: "Administrar" },
+    ],
+  },
+  {
+    module: "projects",
+    label: "Projetos",
+    viewPermissions: ["projects_view", "projects_admin"],
+    permissions: [
+      { key: "projects_view", label: "Visualizar" },
+      { key: "projects_create", label: "Criar" },
+      { key: "projects_edit", label: "Editar" },
+      { key: "projects_delete", label: "Excluir" },
+      { key: "projects_manage_tasks", label: "Gerenciar tarefas" },
+      { key: "projects_export", label: "Exportar" },
+      { key: "projects_admin", label: "Administrar" },
+    ],
+  },
+  {
+    module: "api_rest",
+    label: "API REST",
+    viewPermissions: ["api_rest_view", "api_rest_admin"],
+    permissions: [
+      { key: "api_rest_view", label: "Visualizar" },
+      { key: "api_rest_generate_tokens", label: "Gerar tokens" },
+      { key: "api_rest_revoke_tokens", label: "Revogar tokens" },
+      { key: "api_rest_configure_integrations", label: "Configurar integracoes" },
+      { key: "api_rest_admin", label: "Administrar API" },
+    ],
+  },
+  {
+    module: "users",
+    label: "Usuarios",
+    viewPermissions: ["users_view", "users_admin"],
+    permissions: [
+      { key: "users_view", label: "Visualizar" },
+      { key: "users_create", label: "Criar usuario" },
+      { key: "users_edit", label: "Editar usuario" },
+      { key: "users_delete", label: "Excluir usuario" },
+      { key: "users_reset_password", label: "Resetar senha" },
+      { key: "users_manage_permissions", label: "Gerenciar permissoes" },
+      { key: "users_admin", label: "Administrar usuarios" },
+    ],
+  },
+];
+
+export const moduleNavigation = [
+  { to: "/app/dashboard", label: "Dashboard", module: "dashboard" },
+  { to: "/app/tickets", label: "Chamados", module: "tickets" },
+  { to: "/app/assets", label: "Ativos", module: "assets" },
+  { to: "/app/inventory", label: "Inventario", module: "inventory" },
+  { to: "/app/brands-models", label: "Marcas e Modelos", module: "brands_models" },
+  { to: "/app/projects", label: "Projetos", module: "projects" },
+  { to: "/app/api-rest", label: "API REST", module: "api_rest" },
+  { to: "/app/users", label: "Usuarios", module: "users" },
+];
+
+const allPermissionKeys = permissionGroups.flatMap((group) => group.permissions.map((permission) => permission.key));
+
+function buildPermissionMap() {
+  return allPermissionKeys.reduce((accumulator, key) => ({ ...accumulator, [key]: false }), {});
+}
+
+export const emptyPermissions = buildPermissionMap();
+
+function setPermissions(keys) {
+  return keys.reduce((accumulator, key) => ({ ...accumulator, [key]: true }), { ...emptyPermissions });
+}
+
+export function hasPermission(user, permissionKey) {
+  return Boolean(user?.permissions?.[permissionKey]);
+}
+
+export function hasAnyPermission(user, permissionKeys) {
+  return permissionKeys.some((permissionKey) => hasPermission(user, permissionKey));
+}
+
+export function canAccessModule(user, moduleKey) {
+  const permissionGroup = permissionGroups.find((group) => group.module === moduleKey);
+  if (!permissionGroup) return false;
+  return hasAnyPermission(user, permissionGroup.viewPermissions);
+}
+
+export function canViewOwnTickets(user) {
+  return hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"]);
+}
+
+export function canViewAllTickets(user) {
+  return user?.department === "TI" && hasAnyPermission(user, ["tickets_view_all", "tickets_admin"]);
+}
+
+export function getUserHomePath(user) {
+  return moduleNavigation.find((item) => canAccessModule(user, item.module))?.to || "/app/dashboard";
+}
+
+export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
+  const nextPermissions = { ...emptyPermissions };
+
+  allPermissionKeys.forEach((key) => {
+    if (rawPermissions[key] !== undefined) {
+      nextPermissions[key] = Boolean(rawPermissions[key]);
+    }
+  });
+
+  if (rawPermissions.dashboard) nextPermissions.dashboard_view = true;
+
+  if (rawPermissions.tickets_view) {
+    nextPermissions.tickets_view_own = true;
+    if (user.department === "TI") {
+      nextPermissions.tickets_view_all = true;
+    }
+  }
+
+  if (rawPermissions.tickets_manage) {
+    [
+      "tickets_create",
+      "tickets_edit",
+      "tickets_delete",
+      "tickets_close",
+      "tickets_reopen",
+      "tickets_change_priority",
+      "tickets_change_status",
+      "tickets_assign",
+      "tickets_export",
+    ].forEach((key) => {
+      nextPermissions[key] = true;
+    });
+  }
+
+  if (rawPermissions.users_view) nextPermissions.users_view = true;
+
+  if (rawPermissions.users_manage) {
+    [
+      "users_view",
+      "users_create",
+      "users_edit",
+      "users_delete",
+      "users_reset_password",
+      "users_manage_permissions",
+      "users_admin",
+    ].forEach((key) => {
+      nextPermissions[key] = true;
+    });
+  }
+
+  if (rawPermissions.assets_view) {
+    nextPermissions.assets_view = true;
+    nextPermissions.inventory_view = true;
+  }
+
+  if (rawPermissions.assets_manage) {
+    [
+      "assets_view",
+      "assets_create",
+      "assets_edit",
+      "assets_delete",
+      "assets_move",
+      "assets_link_users",
+      "assets_export",
+      "assets_admin",
+      "inventory_view",
+      "inventory_create",
+      "inventory_edit",
+      "inventory_delete",
+      "inventory_move_stock",
+      "inventory_export",
+      "inventory_admin",
+      "brands_models_view",
+      "brands_models_create",
+      "brands_models_edit",
+      "brands_models_delete",
+      "brands_models_admin",
+    ].forEach((key) => {
+      nextPermissions[key] = true;
+    });
+  }
+
+  if (rawPermissions.projects_view) nextPermissions.projects_view = true;
+
+  if (rawPermissions.projects_manage) {
+    [
+      "projects_view",
+      "projects_create",
+      "projects_edit",
+      "projects_delete",
+      "projects_manage_tasks",
+      "projects_export",
+      "projects_admin",
+    ].forEach((key) => {
+      nextPermissions[key] = true;
+    });
+  }
+
+  if (rawPermissions.api_view) nextPermissions.api_rest_view = true;
+
+  if (rawPermissions.api_manage) {
+    [
+      "api_rest_view",
+      "api_rest_generate_tokens",
+      "api_rest_revoke_tokens",
+      "api_rest_configure_integrations",
+      "api_rest_admin",
+    ].forEach((key) => {
+      nextPermissions[key] = true;
+    });
+  }
+
+  return nextPermissions;
+}
+
+export const defaultPermissions = setPermissions(["dashboard_view", "tickets_view_own"]);
+
+export const analystPermissions = setPermissions([
+  "dashboard_view",
+  "tickets_view_own",
+  "tickets_view_all",
+  "tickets_create",
+  "tickets_edit",
+  "tickets_delete",
+  "tickets_close",
+  "tickets_reopen",
+  "tickets_change_priority",
+  "tickets_change_status",
+  "tickets_assign",
+  "tickets_export",
+  "assets_view",
+  "inventory_view",
+  "projects_view",
+]);
+
+export const adminPermissions = setPermissions(allPermissionKeys);

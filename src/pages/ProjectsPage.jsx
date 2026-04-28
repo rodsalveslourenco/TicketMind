@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import UserAutocomplete from "../components/UserAutocomplete";
+import { useAuth } from "../auth/AuthContext";
+import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultForm = {
@@ -17,9 +19,14 @@ function clampProgress(value) {
 }
 
 function ProjectsPage() {
+  const { user } = useAuth();
   const { addProject, deleteProject, projects, pushToast, updateProject, users } = useAppData();
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
+  const canCreateProject = hasAnyPermission(user, ["projects_create", "projects_admin"]);
+  const canEditProject = hasAnyPermission(user, ["projects_edit", "projects_admin"]);
+  const canDeleteProject = hasAnyPermission(user, ["projects_delete", "projects_admin"]);
+  const canManageTasks = hasAnyPermission(user, ["projects_manage_tasks", "projects_admin"]);
 
   const orderedProjects = useMemo(
     () => projects.slice().sort((left, right) => left.name.localeCompare(right.name)),
@@ -37,6 +44,7 @@ function ProjectsPage() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (editingId ? !canEditProject : !canCreateProject) return;
     if (!form.name || !form.manager || !form.dueDate) return;
 
     const payload = { ...form, progress: clampProgress(form.progress) };
@@ -85,15 +93,16 @@ function ProjectsPage() {
             <div className="glpi-form-grid">
               <label className="field-block field-span-2">
                 <span>Projeto</span>
-                <input onChange={updateField("name")} value={form.name} />
+                <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("name")} value={form.name} />
               </label>
               <label className="field-block">
                 <span>Patrocinador</span>
-                <input onChange={updateField("sponsor")} value={form.sponsor} />
+                <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("sponsor")} value={form.sponsor} />
               </label>
               <label className="field-block">
                 <span>Responsavel</span>
                 <UserAutocomplete
+                  disabled={!canManageTasks && editingId}
                   onChange={(nextValue) => setForm((current) => ({ ...current, manager: nextValue }))}
                   placeholder="Comece a digitar um usuario"
                   users={users}
@@ -102,7 +111,7 @@ function ProjectsPage() {
               </label>
               <label className="field-block">
                 <span>Status</span>
-                <select onChange={updateField("status")} value={form.status}>
+                <select disabled={!canManageTasks && editingId} onChange={updateField("status")} value={form.status}>
                   <option>Planejado</option>
                   <option>Em andamento</option>
                   <option>Em risco</option>
@@ -111,22 +120,24 @@ function ProjectsPage() {
               </label>
               <label className="field-block">
                 <span>Progresso (%)</span>
-                <input max="100" min="0" onChange={updateField("progress")} type="number" value={form.progress} />
+                <input disabled={!canManageTasks && editingId} max="100" min="0" onChange={updateField("progress")} type="number" value={form.progress} />
               </label>
               <label className="field-block">
                 <span>Entrega</span>
-                <input onChange={updateField("dueDate")} type="date" value={form.dueDate} />
+                <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("dueDate")} type="date" value={form.dueDate} />
               </label>
               <label className="field-block field-full">
                 <span>Resumo</span>
-                <textarea onChange={updateField("summary")} value={form.summary} />
+                <textarea disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("summary")} value={form.summary} />
               </label>
             </div>
 
             <div className="ticket-create-actions">
-              <button className="primary-button interactive-button" type="submit">
-                {editingId ? "Salvar projeto" : "Cadastrar projeto"}
-              </button>
+              {(editingId ? canEditProject : canCreateProject) ? (
+                <button className="primary-button interactive-button" type="submit">
+                  {editingId ? "Salvar projeto" : "Cadastrar projeto"}
+                </button>
+              ) : null}
               {editingId ? (
                 <button className="ghost-button interactive-button" onClick={resetForm} type="button">
                   Cancelar
@@ -155,26 +166,30 @@ function ProjectsPage() {
                 <span>Entrega {project.dueDate}</span>
               </div>
               <div className="ticket-create-actions">
-                <button
-                  className="ghost-button interactive-button"
-                  onClick={() => {
-                    setEditingId(project.id);
-                    setForm(project);
-                  }}
-                  type="button"
-                >
-                  Editar
-                </button>
-                <button
-                  className="danger-button interactive-button"
-                  onClick={() => {
-                    deleteProject(project.id);
-                    pushToast("Projeto removido", project.name);
-                  }}
-                  type="button"
-                >
-                  Excluir
-                </button>
+                {canEditProject ? (
+                  <button
+                    className="ghost-button interactive-button"
+                    onClick={() => {
+                      setEditingId(project.id);
+                      setForm(project);
+                    }}
+                    type="button"
+                  >
+                    Editar
+                  </button>
+                ) : null}
+                {canDeleteProject ? (
+                  <button
+                    className="danger-button interactive-button"
+                    onClick={() => {
+                      deleteProject(project.id);
+                      pushToast("Projeto removido", project.name);
+                    }}
+                    type="button"
+                  >
+                    Excluir
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}
