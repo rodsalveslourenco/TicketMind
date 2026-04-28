@@ -2,7 +2,7 @@ import {
   adminPermissions,
   analystPermissions,
   defaultPermissions,
-} from "./permissions";
+} from "./permissions.js";
 
 export const seedData = {
   currentUser: {

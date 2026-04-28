@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { requestJson } from "../lib/api";
 import {
   canViewAllTickets,
   canViewOwnTickets,
@@ -10,7 +11,6 @@ import {
 import { seedData } from "./seedData";
 import { assetTypeOptions } from "./assetCatalog";
 
-const STORAGE_KEY = "ticketmind-data";
 const AppDataContext = createContext(null);
 
 function buildDefaultUsers() {
@@ -66,16 +66,7 @@ function mergeCollections(stored) {
   };
 }
 
-function readInitialState() {
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (!stored) return mergeCollections({});
-
-  try {
-    return mergeCollections(JSON.parse(stored));
-  } catch {
-    return mergeCollections({});
-  }
-}
+const EMPTY_DATA = mergeCollections({});
 
 function formatDate(isoValue) {
   if (!isoValue) return "";
@@ -229,13 +220,53 @@ function sanitizeProjectPayload(payload) {
 }
 
 export function AppDataProvider({ children }) {
-  const { user } = useAuth();
-  const [data, setData] = useState(readInitialState);
+  const { setSessionUser, user } = useAuth();
+  const [data, setData] = useState(EMPTY_DATA);
   const [notifications, setNotifications] = useState([]);
+  const [serverReady, setServerReady] = useState(false);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [data]);
+    let cancelled = false;
+
+    async function loadData() {
+      try {
+        const serverData = await requestJson("/api/state");
+        if (cancelled) return;
+        setData(mergeCollections(serverData));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (!cancelled) setServerReady(true);
+      }
+    }
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!serverReady) return undefined;
+
+    let active = true;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await requestJson("/api/state", {
+          method: "PUT",
+          body: JSON.stringify(data),
+        });
+      } catch (error) {
+        if (active) console.error(error);
+      }
+    }, 150);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [data, serverReady]);
 
   const pushToast = (title, detail = "", tone = "success") => {
     const toastId = `toast-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -456,15 +487,16 @@ export function AppDataProvider({ children }) {
 
   const updateUser = (userId, payload) => {
     if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
-    setData((current) => ({
-      ...current,
-      users: current.users.map((candidate) => {
+    setData((current) => {
+      let nextCurrentUser = null;
+
+      const nextUsers = current.users.map((candidate) => {
         if (candidate.id !== userId) return candidate;
         const sanitizedPayload = sanitizeUserPayload(payload);
         const permissionsChanged =
           JSON.stringify(candidate.permissions || {}) !== JSON.stringify(sanitizedPayload.permissions || {});
         const passwordChanged = String(candidate.password || "") !== String(sanitizedPayload.password || "");
-        return {
+        const nextUser = {
           ...candidate,
           ...(hasAnyPermission(user, ["users_edit", "users_admin"])
             ? {
@@ -483,23 +515,32 @@ export function AppDataProvider({ children }) {
             ? { permissions: sanitizedPayload.permissions }
             : {}),
         };
-      }),
-    }));
+        if (nextUser.id === user?.id) nextCurrentUser = nextUser;
+        return nextUser;
+      });
+
+      if (nextCurrentUser) setSessionUser(nextCurrentUser);
+      return { ...current, users: nextUsers };
+    });
   };
 
   const updateOwnProfile = (payload) => {
     if (!user?.id) return;
-    setData((current) => ({
-      ...current,
-      users: current.users.map((candidate) =>
-        candidate.id === user.id
-          ? {
-              ...candidate,
-              avatar: String(payload.avatar || "").trim(),
-            }
-          : candidate,
-      ),
-    }));
+    setData((current) => {
+      let nextCurrentUser = null;
+
+      const nextUsers = current.users.map((candidate) => {
+        if (candidate.id !== user.id) return candidate;
+        nextCurrentUser = {
+          ...candidate,
+          avatar: String(payload.avatar || "").trim(),
+        };
+        return nextCurrentUser;
+      });
+
+      if (nextCurrentUser) setSessionUser(nextCurrentUser);
+      return { ...current, users: nextUsers };
+    });
   };
 
   const deleteUser = (userId) => {
