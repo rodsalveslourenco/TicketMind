@@ -292,6 +292,12 @@ function AssetsPage() {
     setEditingId(null);
   };
 
+  const closeAssetModal = () => {
+    setShowCreateModal(false);
+    setDetailAssetId(null);
+    resetForm();
+  };
+
   const resetQuickCatalogForm = (assetType = catalogAssetType) => {
     setQuickCatalogForm({
       ...defaultQuickCatalogForm,
@@ -395,6 +401,13 @@ function AssetsPage() {
 
   const handleQuickCatalogField = (field) => (event) => {
     setQuickCatalogForm((current) => ({ ...current, [field]: event.target.value }));
+  };
+
+  const handleDeleteCurrentAsset = () => {
+    if (!editingId || !canDeleteAsset) return;
+    deleteAsset(editingId);
+    pushToast("Ativo removido", form.name);
+    closeAssetModal();
   };
 
   const handleQuickCatalogSubmit = (event) => {
@@ -558,7 +571,7 @@ function AssetsPage() {
                   <button
                     className={`sheet-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
                     key={asset.id}
-                    onDoubleClick={() => setDetailAssetId(asset.id)}
+                    onClick={() => setDetailAssetId(asset.id)}
                     type="button"
                   >
                     <strong>{asset.serial}</strong>
@@ -594,7 +607,7 @@ function AssetsPage() {
               <button
                 className={`sheet-row interactive-button ${getAssetPriorityClass(asset.criticality)}`}
                 key={`detail-${asset.id}`}
-                onDoubleClick={() => setDetailAssetId(asset.id)}
+                onClick={() => setDetailAssetId(asset.id)}
                 type="button"
               >
                 <span>{asset.type}</span>
@@ -610,7 +623,7 @@ function AssetsPage() {
       </section>
 
       {(showCreateModal || detailAsset) ? (
-        <div className="ticket-modal-backdrop" onClick={() => { setShowCreateModal(false); setDetailAssetId(null); }} role="presentation">
+        <div className="ticket-modal-backdrop" onClick={closeAssetModal} role="presentation">
           <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-detail-form" onSubmit={handleSubmit}>
               <div className="ticket-modal-header">
@@ -618,17 +631,13 @@ function AssetsPage() {
                   <h2>{editingId ? form.name || "Editar ativo" : "Novo ativo"}</h2>
                 </div>
                 <div className="ticket-detail-actions">
-                  <button className="ghost-button compact-button interactive-button" onClick={() => { setShowCreateModal(false); setDetailAssetId(null); }} type="button">
+                  <button className="ghost-button compact-button interactive-button" onClick={closeAssetModal} type="button">
                     Fechar
                   </button>
                   {editingId && canDeleteAsset ? (
                     <button
                       className="danger-button compact-button interactive-button"
-                      onClick={() => {
-                        deleteAsset(editingId);
-                        setDetailAssetId(null);
-                        pushToast("Ativo removido", form.name);
-                      }}
+                      onClick={handleDeleteCurrentAsset}
                       type="button"
                     >
                       Excluir
