@@ -4,10 +4,10 @@ import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
 
 function LoginPage() {
-  const { login, demoCredentials } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [form, setForm] = useState(demoCredentials);
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -75,11 +75,6 @@ function LoginPage() {
             {submitting ? "Validando acesso..." : "Entrar"}
           </button>
 
-          <div className="demo-box">
-            <strong>Acesso inicial</strong>
-            <span>E-mail padrao: {demoCredentials.email}</span>
-            <span>Utilize a senha cadastrada para a conta.</span>
-          </div>
         </form>
       </section>
     </div>

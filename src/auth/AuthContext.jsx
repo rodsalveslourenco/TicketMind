@@ -27,10 +27,6 @@ function readUsers() {
   }
 }
 
-function readDefaultUser() {
-  return readUsers().find((candidate) => candidate.email === seedData.currentUser.email) ?? seedData.currentUser;
-}
-
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -80,9 +76,12 @@ export function AuthProvider({ children }) {
       throw new Error("Preencha email e senha para continuar.");
     }
 
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedPassword = String(password || "");
     const currentUser = readUsers().find(
       (candidate) =>
-        candidate.email.toLowerCase() === email.trim().toLowerCase() && candidate.password === password,
+        String(candidate.email || "").trim().toLowerCase() === normalizedEmail &&
+        String(candidate.password || "") === normalizedPassword,
     );
 
     if (!currentUser) {
@@ -112,10 +111,6 @@ export function AuthProvider({ children }) {
       isAuthenticated: Boolean(session),
       login,
       logout,
-      demoCredentials: {
-        email: readDefaultUser().email,
-        password: "admin0123",
-      },
     }),
     [loading, session],
   );
