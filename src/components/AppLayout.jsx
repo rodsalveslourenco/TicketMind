@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import wegaLogo from "../assets/logo-wega.png";
 import { canAccessModule, moduleNavigation } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
@@ -12,9 +13,12 @@ function AppLayout() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-panel">
-          <div className="brand-mark">TM</div>
+          <div className="brand-mark">
+            <img alt="Wega Marine" className="brand-mark-image" src={wegaLogo} />
+          </div>
           <div>
-            <strong>TicketMind</strong>
+            <strong>Wega Marine</strong>
+            <span>TicketMind by SysteMind</span>
           </div>
         </div>
 

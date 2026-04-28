@@ -1758,15 +1758,30 @@ textarea:focus {
 .brand-mark {
   width: 58px;
   height: 58px;
+  display: grid;
+  place-items: center;
   border-radius: 10px;
-  color: #1c262d;
-  background: linear-gradient(145deg, #c5efff, #85d9ff 58%, #4abfe9);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.92);
   border: none;
-  box-shadow: 0 14px 28px rgba(63, 189, 233, 0.25);
+  box-shadow: 0 10px 22px rgba(22, 39, 57, 0.18);
+}
+
+.brand-mark-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand-panel strong {
   letter-spacing: 0.18em;
+}
+
+.brand-panel span {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
 }
 
 .brand-panel span,
