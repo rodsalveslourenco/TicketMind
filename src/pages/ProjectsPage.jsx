@@ -86,6 +86,7 @@ function ProjectsPage() {
   const [editingPhaseId, setEditingPhaseId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [detailProjectId, setDetailProjectId] = useState(null);
+  const [showProjectModal, setShowProjectModal] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const canCreateProject = hasAnyPermission(user, ["projects_create", "projects_admin"]);
@@ -129,6 +130,7 @@ function ProjectsPage() {
     setEditingId(null);
     setPhaseForm(defaultPhaseForm);
     setEditingPhaseId(null);
+    setShowProjectModal(false);
   };
 
   const openProjectEditor = (project) => {
@@ -137,6 +139,15 @@ function ProjectsPage() {
     setDetailProjectId(null);
     setPhaseForm(defaultPhaseForm);
     setEditingPhaseId(null);
+    setShowProjectModal(true);
+  };
+
+  const openCreateModal = () => {
+    setForm(defaultForm);
+    setPhaseForm(defaultPhaseForm);
+    setEditingPhaseId(null);
+    setEditingId(null);
+    setShowProjectModal(true);
   };
 
   const handleAddOrUpdatePhase = () => {
@@ -247,157 +258,7 @@ function ProjectsPage() {
         </div>
       </section>
 
-      <section className="module-grid">
-        <section className="board-card glpi-panel">
-          <div className="glpi-toolbar">
-            <div>
-              <h2>{editingId ? "Editar projeto" : "Cadastro operacional"}</h2>
-            </div>
-          </div>
-
-          <form className="glpi-ticket-form user-form" onSubmit={handleSubmit}>
-            <div className="glpi-form-grid">
-              <label className="field-block field-span-2">
-                <span>Projeto</span>
-                <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("name")} value={form.name} />
-              </label>
-              <label className="field-block">
-                <span>Patrocinador</span>
-                <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("sponsor")} value={form.sponsor} />
-              </label>
-              <label className="field-block">
-                <span>Responsavel</span>
-                <UserAutocomplete
-                  disabled={!canManageTasks && editingId}
-                  onChange={(nextValue) => setForm((current) => ({ ...current, manager: nextValue }))}
-                  placeholder="Comece a digitar um usuario"
-                  users={users}
-                  value={form.manager}
-                />
-              </label>
-              <label className="field-block">
-                <span>Status</span>
-                <select disabled={!canManageTasks && editingId} onChange={updateField("status")} value={form.status}>
-                  <option>Planejado</option>
-                  <option>Em andamento</option>
-                  <option>Em risco</option>
-                  <option>Concluido</option>
-                </select>
-              </label>
-              <label className="field-block">
-                <span>Progresso (%)</span>
-                <input disabled value={phaseProgress} />
-              </label>
-              <label className="field-block">
-                <span>Entrega</span>
-                <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("dueDate")} type="date" value={form.dueDate} />
-              </label>
-              <label className="field-block field-full">
-                <span>Resumo</span>
-                <textarea disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("summary")} value={form.summary} />
-              </label>
-            </div>
-
-            <div className="glpi-ticket-form compact-form projects-phases-panel">
-              <div className="compact-panel-heading">
-                <strong>Fases do projeto</strong>
-                <span>{phaseProgress}% concluido | distribuicao {phaseDistribution}%</span>
-              </div>
-
-              {phaseDistribution > 100 ? (
-                <div className="form-alert">A soma dos percentuais das fases nao pode ultrapassar 100%.</div>
-              ) : null}
-              {phaseDistribution < 100 ? (
-                <div className="projects-phase-note">A distribuicao atual esta abaixo de 100%. O projeto pode ser salvo assim mesmo.</div>
-              ) : null}
-
-              <div className="glpi-form-grid compact-form-grid">
-                <label className="field-block">
-                  <span>Nome da fase</span>
-                  <input onChange={updatePhaseField("name")} value={phaseForm.name} />
-                </label>
-                <label className="field-block field-span-2">
-                  <span>Descricao</span>
-                  <input onChange={updatePhaseField("description")} value={phaseForm.description} />
-                </label>
-                <label className="field-block">
-                  <span>Percentual</span>
-                  <input min="0" onChange={updatePhaseField("weight")} type="number" value={phaseForm.weight} />
-                </label>
-                <label className="field-block projects-phase-checkbox">
-                  <span>Concluida</span>
-                  <input checked={phaseForm.completed} onChange={updatePhaseField("completed")} type="checkbox" />
-                </label>
-              </div>
-
-              <div className="compact-row-actions">
-                <button className="ghost-button compact-button interactive-button" onClick={handleAddOrUpdatePhase} type="button">
-                  {editingPhaseId ? "Salvar fase" : "Adicionar fase"}
-                </button>
-                {editingPhaseId ? (
-                  <button
-                    className="ghost-button compact-button interactive-button"
-                    onClick={() => {
-                      setPhaseForm(defaultPhaseForm);
-                      setEditingPhaseId(null);
-                    }}
-                    type="button"
-                  >
-                    Cancelar fase
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="sheet-list projects-phase-list">
-                <div className="sheet-row sheet-row-header projects-phase-row">
-                  <strong>Concluida</strong>
-                  <strong>Fase</strong>
-                  <strong>Percentual</strong>
-                  <strong>Acoes</strong>
-                </div>
-                {(form.phases || []).map((phase) => (
-                  <div className="sheet-row projects-phase-row" key={phase.id}>
-                    <input checked={Boolean(phase.completed)} onChange={() => togglePhaseCompleted(phase.id)} type="checkbox" />
-                    <div className="project-row-main">
-                      <strong>{phase.name}</strong>
-                      <span>{phase.description || "Sem descricao adicional."}</span>
-                    </div>
-                    <span>{phase.weight}%</span>
-                    <div className="compact-row-actions">
-                      <button className="ghost-button compact-button interactive-button" onClick={() => handleEditPhase(phase)} type="button">
-                        Editar
-                      </button>
-                      <button className="danger-button compact-button interactive-button" onClick={() => handleDeletePhase(phase.id)} type="button">
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {!form.phases?.length ? (
-                  <div className="empty-state">
-                    <strong>Nenhuma fase cadastrada.</strong>
-                    <span>Adicione fases para o progresso ser calculado automaticamente.</span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="ticket-create-actions">
-              {(editingId ? canEditProject : canCreateProject) ? (
-                <button className="primary-button interactive-button" type="submit">
-                  {editingId ? "Salvar projeto" : "Cadastrar projeto"}
-                </button>
-              ) : null}
-              {editingId ? (
-                <button className="ghost-button interactive-button" onClick={resetForm} type="button">
-                  Cancelar
-                </button>
-              ) : null}
-            </div>
-          </form>
-        </section>
-
-        <section className="board-card glpi-panel projects-panel">
+      <section className="board-card glpi-panel projects-panel">
           <div className="glpi-toolbar projects-toolbar">
             <div>
               <h2>Carteira de projetos</h2>
@@ -426,6 +287,11 @@ function ProjectsPage() {
                 placeholder="Buscar por projeto, patrocinador, responsavel ou resumo"
                 value={search}
               />
+              {canCreateProject ? (
+                <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
+                  + Novo projeto
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -512,8 +378,162 @@ function ProjectsPage() {
               </div>
             )}
           </div>
-        </section>
       </section>
+
+      {showProjectModal ? (
+        <div className="ticket-modal-backdrop" onClick={resetForm} role="presentation">
+          <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <form className="ticket-detail-form" onSubmit={handleSubmit}>
+              <div className="ticket-modal-header">
+                <div>
+                  <h2>{editingId ? "Editar projeto" : "Novo projeto"}</h2>
+                </div>
+                <div className="ticket-detail-actions">
+                  <button className="ghost-button interactive-button" onClick={resetForm} type="button">
+                    Fechar
+                  </button>
+                </div>
+              </div>
+
+              <div className="glpi-ticket-form user-form">
+                <div className="glpi-form-grid">
+                  <label className="field-block field-span-2">
+                    <span>Projeto</span>
+                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("name")} value={form.name} />
+                  </label>
+                  <label className="field-block">
+                    <span>Patrocinador</span>
+                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("sponsor")} value={form.sponsor} />
+                  </label>
+                  <label className="field-block">
+                    <span>Responsavel</span>
+                    <UserAutocomplete
+                      disabled={!canManageTasks && editingId}
+                      onChange={(nextValue) => setForm((current) => ({ ...current, manager: nextValue }))}
+                      placeholder="Comece a digitar um usuario"
+                      users={users}
+                      value={form.manager}
+                    />
+                  </label>
+                  <label className="field-block">
+                    <span>Status</span>
+                    <select disabled={!canManageTasks && editingId} onChange={updateField("status")} value={form.status}>
+                      <option>Planejado</option>
+                      <option>Em andamento</option>
+                      <option>Em risco</option>
+                      <option>Concluido</option>
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Progresso (%)</span>
+                    <input disabled value={phaseProgress} />
+                  </label>
+                  <label className="field-block">
+                    <span>Entrega</span>
+                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("dueDate")} type="date" value={form.dueDate} />
+                  </label>
+                  <label className="field-block field-full">
+                    <span>Resumo</span>
+                    <textarea disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("summary")} value={form.summary} />
+                  </label>
+                </div>
+              </div>
+
+              <div className="glpi-ticket-form compact-form projects-phases-panel">
+                <div className="compact-panel-heading">
+                  <strong>Fases do projeto</strong>
+                  <span>{phaseProgress}% concluido | distribuicao {phaseDistribution}%</span>
+                </div>
+
+                {phaseDistribution > 100 ? (
+                  <div className="form-alert">A soma dos percentuais das fases nao pode ultrapassar 100%.</div>
+                ) : null}
+                {phaseDistribution < 100 ? (
+                  <div className="projects-phase-note">A distribuicao atual esta abaixo de 100%. O projeto pode ser salvo assim mesmo.</div>
+                ) : null}
+
+                <div className="glpi-form-grid compact-form-grid">
+                  <label className="field-block">
+                    <span>Nome da fase</span>
+                    <input onChange={updatePhaseField("name")} value={phaseForm.name} />
+                  </label>
+                  <label className="field-block field-span-2">
+                    <span>Descricao</span>
+                    <input onChange={updatePhaseField("description")} value={phaseForm.description} />
+                  </label>
+                  <label className="field-block">
+                    <span>Percentual</span>
+                    <input min="0" onChange={updatePhaseField("weight")} type="number" value={phaseForm.weight} />
+                  </label>
+                  <label className="field-block projects-phase-checkbox">
+                    <span>Concluida</span>
+                    <input checked={phaseForm.completed} onChange={updatePhaseField("completed")} type="checkbox" />
+                  </label>
+                </div>
+
+                <div className="compact-row-actions">
+                  <button className="ghost-button compact-button interactive-button" onClick={handleAddOrUpdatePhase} type="button">
+                    {editingPhaseId ? "Salvar fase" : "Adicionar fase"}
+                  </button>
+                  {editingPhaseId ? (
+                    <button
+                      className="ghost-button compact-button interactive-button"
+                      onClick={() => {
+                        setPhaseForm(defaultPhaseForm);
+                        setEditingPhaseId(null);
+                      }}
+                      type="button"
+                    >
+                      Cancelar fase
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="sheet-list projects-phase-list">
+                  <div className="sheet-row sheet-row-header projects-phase-row">
+                    <strong>Concluida</strong>
+                    <strong>Fase</strong>
+                    <strong>Percentual</strong>
+                    <strong>Acoes</strong>
+                  </div>
+                  {(form.phases || []).map((phase) => (
+                    <div className="sheet-row projects-phase-row" key={phase.id}>
+                      <input checked={Boolean(phase.completed)} onChange={() => togglePhaseCompleted(phase.id)} type="checkbox" />
+                      <div className="project-row-main">
+                        <strong>{phase.name}</strong>
+                        <span>{phase.description || "Sem descricao adicional."}</span>
+                      </div>
+                      <span>{phase.weight}%</span>
+                      <div className="compact-row-actions">
+                        <button className="ghost-button compact-button interactive-button" onClick={() => handleEditPhase(phase)} type="button">
+                          Editar
+                        </button>
+                        <button className="danger-button compact-button interactive-button" onClick={() => handleDeletePhase(phase.id)} type="button">
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {!form.phases?.length ? (
+                    <div className="empty-state">
+                      <strong>Nenhuma fase cadastrada.</strong>
+                      <span>Adicione fases para o progresso ser calculado automaticamente.</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="ticket-create-actions">
+                {(editingId ? canEditProject : canCreateProject) ? (
+                  <button className="primary-button interactive-button" type="submit">
+                    {editingId ? "Salvar projeto" : "Cadastrar projeto"}
+                  </button>
+                ) : null}
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {detailProject ? (
         <div className="ticket-modal-backdrop" onClick={() => setDetailProjectId(null)} role="presentation">
