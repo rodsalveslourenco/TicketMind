@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import wegaLogo from "../assets/logo-wega.png";
 
 function LoginPage() {
   const { login, demoCredentials } = useAuth();
@@ -33,8 +34,7 @@ function LoginPage() {
   return (
     <div className="login-shell">
       <section className="login-panel login-copy">
-        <span className="eyebrow">TicketMind</span>
-        <h1>TicketMind e uma ferramenta criada pela SysteMind.</h1>
+        <img alt="Wega Marine" className="login-brand-image" src={wegaLogo} />
       </section>
 
       <section className="login-panel login-form-panel">

@@ -12,7 +12,6 @@ const defaultCreateForm = {
   urgency: "Media",
   impact: "Media",
   openedAt: new Date().toISOString(),
-  dueDate: "",
   watchers: [],
   description: "",
   attachments: [],
@@ -318,7 +317,6 @@ function TicketsPage() {
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
       assignee: "Triagem TI",
       openedAt: toIsoOrEmpty(createForm.openedAt) || new Date().toISOString(),
-      dueDate: createForm.dueDate || "",
     });
 
     pushToast("Chamado aberto", createForm.title);
@@ -564,10 +562,6 @@ function TicketsPage() {
                     type="datetime-local"
                     value={toLocalDatetimeInput(createForm.openedAt)}
                   />
-                </label>
-                <label className="field-block">
-                  <span>Data limite</span>
-                  <input onChange={updateCreateField("dueDate")} type="date" value={createForm.dueDate} />
                 </label>
                 <div className="field-block field-span-2" ref={watcherBoxRef}>
                   <span>Observadores</span>

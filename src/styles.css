@@ -124,7 +124,14 @@ textarea:focus {
 .login-copy {
   display: grid;
   align-content: center;
+  justify-items: center;
   padding: 2.6rem;
+}
+
+.login-brand-image {
+  width: min(100%, 420px);
+  height: auto;
+  object-fit: contain;
 }
 
 .login-copy h1 {
