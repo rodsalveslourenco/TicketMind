@@ -138,6 +138,7 @@ function sanitizeUserPayload(payload) {
     role: String(payload.role || "").trim(),
     team: String(payload.team || "").trim(),
     department: String(payload.department || "").trim(),
+    avatar: String(payload.avatar || "").trim(),
     permissions: normalizeUserPermissions(payload.permissions || defaultUserPermissions, payload),
   };
 }
@@ -472,6 +473,7 @@ export function AppDataProvider({ children }) {
                 role: sanitizedPayload.role,
                 team: sanitizedPayload.team,
                 department: sanitizedPayload.department,
+                avatar: sanitizedPayload.avatar,
               }
             : {}),
           ...(passwordChanged && hasAnyPermission(user, ["users_reset_password", "users_admin"])
@@ -482,6 +484,21 @@ export function AppDataProvider({ children }) {
             : {}),
         };
       }),
+    }));
+  };
+
+  const updateOwnProfile = (payload) => {
+    if (!user?.id) return;
+    setData((current) => ({
+      ...current,
+      users: current.users.map((candidate) =>
+        candidate.id === user.id
+          ? {
+              ...candidate,
+              avatar: String(payload.avatar || "").trim(),
+            }
+          : candidate,
+      ),
     }));
   };
 
@@ -688,6 +705,7 @@ export function AppDataProvider({ children }) {
       removeTicketAttachment,
       addUser,
       updateUser,
+      updateOwnProfile,
       deleteUser,
       addAsset,
       updateAsset,

@@ -12,6 +12,7 @@ import InventoryPage from "./pages/InventoryPage";
 import BrandsModelsPage from "./pages/BrandsModelsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
+import ProfilePage from "./pages/ProfilePage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -32,6 +33,7 @@ function App() {
         path="/app"
       >
         <Route element={<Navigate replace to={homePath} />} index />
+        <Route element={<ProfilePage />} path="profile" />
         <Route element={<ProtectedRoute requiredPermissions={["dashboard_view"]}><DashboardPage /></ProtectedRoute>} path="dashboard" />
         <Route element={<ProtectedRoute requiredPermissions={["tickets_view_own", "tickets_view_all", "tickets_admin"]}><TicketsPage /></ProtectedRoute>} path="tickets" />
         <Route element={<ProtectedRoute requiredPermissions={["assets_view", "assets_admin"]}><AssetsPage /></ProtectedRoute>} path="assets" />

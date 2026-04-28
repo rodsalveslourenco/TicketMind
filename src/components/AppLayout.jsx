@@ -4,6 +4,15 @@ import wegaLogo from "../assets/logo-wega.png";
 import { canAccessModule, moduleNavigation } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
+function getInitials(name) {
+  return String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "U";
+}
+
 function AppLayout() {
   const { user, logout } = useAuth();
   const { dismissToast, notifications, summary } = useAppData();
@@ -47,10 +56,17 @@ function AppLayout() {
             <h1>Central de operações</h1>
           </div>
           <div className="topbar-actions">
-            <div className="user-badge">
+            <NavLink className="user-badge interactive-button" to="/app/profile">
+              <div className="user-avatar">
+                {user?.avatar ? (
+                  <img alt={user.name} className="user-avatar-image" src={user.avatar} />
+                ) : (
+                  <span>{getInitials(user?.name)}</span>
+                )}
+              </div>
               <strong>{user?.name}</strong>
               <span>{user?.role} | {user?.team}</span>
-            </div>
+            </NavLink>
             <button className="ghost-button interactive-button" onClick={logout} type="button">
               Sair
             </button>

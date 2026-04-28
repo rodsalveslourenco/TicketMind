@@ -16,6 +16,7 @@ const defaultUserForm = {
   role: "Analista",
   team: "",
   department: "TI",
+  avatar: "",
   permissions: defaultPermissions,
 };
 
@@ -29,6 +30,24 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function getInitials(name) {
+  return String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "U";
+}
+
+function readImageFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Nao foi possivel ler a imagem selecionada."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function UsersPage() {
@@ -100,8 +119,30 @@ function UsersPage() {
       role: candidate.role,
       team: candidate.team,
       department: candidate.department,
+      avatar: candidate.avatar || "",
       permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
     });
+  };
+
+  const handleAvatarChange = async (event) => {
+    const [file] = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      pushToast("Arquivo invalido", "Selecione uma imagem valida para a foto do usuario.", "warning");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      pushToast("Arquivo muito grande", "Use uma imagem com ate 2 MB.", "warning");
+      return;
+    }
+
+    try {
+      const avatar = await readImageFileAsDataUrl(file);
+      setForm((current) => ({ ...current, avatar }));
+    } catch (error) {
+      pushToast("Falha ao carregar foto", error.message, "warning");
+    }
   };
 
   const handleSubmit = (event) => {
@@ -224,6 +265,13 @@ function UsersPage() {
               type="button"
             >
               <div className="user-row-main">
+                <div className="user-avatar user-avatar-list">
+                  {candidate.avatar ? (
+                    <img alt={candidate.name} className="user-avatar-image" src={candidate.avatar} />
+                  ) : (
+                    <span>{getInitials(candidate.name)}</span>
+                  )}
+                </div>
                 <div>
                   <strong>{candidate.name}</strong>
                   <span>{candidate.email}</span>
@@ -286,6 +334,19 @@ function UsersPage() {
                 </button>
               </div>
               <div className="glpi-form-grid">
+                <label className="field-block field-span-2">
+                  <span>Foto do usuario</span>
+                  <div className="profile-avatar-panel">
+                    <div className="user-avatar profile-avatar">
+                      {form.avatar ? (
+                        <img alt={form.name || "Novo usuario"} className="user-avatar-image" src={form.avatar} />
+                      ) : (
+                        <span>{getInitials(form.name)}</span>
+                      )}
+                    </div>
+                    <input accept="image/*" onChange={handleAvatarChange} type="file" />
+                  </div>
+                </label>
                 <label className="field-block">
                   <span>Nome</span>
                   <input onChange={updateField("name")} value={form.name} />
@@ -387,6 +448,19 @@ function UsersPage() {
                 </div>
               </div>
               <div className="glpi-form-grid">
+                <label className="field-block field-span-2">
+                  <span>Foto do usuario</span>
+                  <div className="profile-avatar-panel">
+                    <div className="user-avatar profile-avatar">
+                      {form.avatar ? (
+                        <img alt={form.name || detailUser.name} className="user-avatar-image" src={form.avatar} />
+                      ) : (
+                        <span>{getInitials(form.name || detailUser.name)}</span>
+                      )}
+                    </div>
+                    <input accept="image/*" disabled={!canEditUsers} onChange={handleAvatarChange} type="file" />
+                  </div>
+                </label>
                 <label className="field-block">
                   <span>Nome</span>
                   <input disabled={!canEditUsers} onChange={updateField("name")} value={form.name} />
