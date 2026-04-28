@@ -374,9 +374,15 @@ export const seedData = {
       sponsor: "Seguranca",
       manager: "Daniel Rocha",
       status: "Em andamento",
-      progress: 68,
+      progress: 60,
       dueDate: "2026-05-20",
       summary: "Substituicao gradual do acesso legado por politica Zero Trust.",
+      phases: [
+        { id: "project-1-phase-1", name: "Planejamento", description: "Escopo, cronograma e desenho da solucao.", weight: 20, completed: true },
+        { id: "project-1-phase-2", name: "Implantacao piloto", description: "Validacao com grupo controlado.", weight: 40, completed: true },
+        { id: "project-1-phase-3", name: "Expansao operacional", description: "Liberacao progressiva para demais equipes.", weight: 25, completed: false },
+        { id: "project-1-phase-4", name: "Encerramento", description: "Aceite final e handover.", weight: 15, completed: false },
+      ],
     },
     {
       id: "project-2",
@@ -384,9 +390,15 @@ export const seedData = {
       sponsor: "Operacoes",
       manager: "Carla Menezes",
       status: "Planejado",
-      progress: 24,
+      progress: 15,
       dueDate: "2026-06-10",
       summary: "Consolidacao CMDB com etiquetas, agentes e reconciliação.",
+      phases: [
+        { id: "project-2-phase-1", name: "Mapeamento inicial", description: "Levantamento de fontes e bases existentes.", weight: 15, completed: true },
+        { id: "project-2-phase-2", name: "Padronizacao da CMDB", description: "Definicao de campos e relacionamentos.", weight: 25, completed: false },
+        { id: "project-2-phase-3", name: "Coleta automatizada", description: "Implantacao de agentes e integracoes.", weight: 35, completed: false },
+        { id: "project-2-phase-4", name: "Reconciliacao final", description: "Saneamento e aceite.", weight: 25, completed: false },
+      ],
     },
   ],
   apiConfigs: [

@@ -60,7 +60,7 @@ function mergeCollections(stored) {
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
     brands,
     models,
-    projects: Array.isArray(stored?.projects) ? stored.projects : seedData.projects,
+    projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
     apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
     reports: Array.isArray(stored?.reports) && stored.reports.length ? stored.reports : seedData.reports,
   };
@@ -194,6 +194,36 @@ function sanitizeModelPayload(payload) {
     name: String(payload.name || "").trim(),
     assetType: String(payload.assetType || "").trim(),
     status: String(payload.status || "Ativo").trim(),
+  };
+}
+
+function normalizeProjectPhases(phases) {
+  return (Array.isArray(phases) ? phases : []).map((phase, index) => ({
+    id: phase.id || `phase-${index + 1}-${Date.now().toString(36)}`,
+    name: String(phase.name || "").trim(),
+    description: String(phase.description || "").trim(),
+    weight: Math.max(0, Number(phase.weight) || 0),
+    completed: Boolean(phase.completed),
+  }));
+}
+
+function computeProjectProgress(phases) {
+  return normalizeProjectPhases(phases)
+    .filter((phase) => phase.completed)
+    .reduce((total, phase) => total + phase.weight, 0);
+}
+
+function sanitizeProjectPayload(payload) {
+  const phases = normalizeProjectPhases(payload.phases);
+  return {
+    name: String(payload.name || "").trim(),
+    sponsor: String(payload.sponsor || "").trim(),
+    manager: String(payload.manager || "").trim(),
+    status: String(payload.status || "").trim(),
+    dueDate: String(payload.dueDate || "").trim(),
+    summary: String(payload.summary || "").trim(),
+    phases,
+    progress: computeProjectProgress(phases),
   };
 }
 
@@ -587,7 +617,7 @@ export function AppDataProvider({ children }) {
     if (!hasAnyPermission(user, ["projects_create", "projects_admin"])) return;
     setData((current) => ({
       ...current,
-      projects: [{ id: nextId("project", current.projects || []), ...payload }, ...(current.projects || [])],
+      projects: [{ id: nextId("project", current.projects || []), ...sanitizeProjectPayload(payload) }, ...(current.projects || [])],
     }));
   };
 
@@ -596,7 +626,7 @@ export function AppDataProvider({ children }) {
     setData((current) => ({
       ...current,
       projects: current.projects.map((project) =>
-        project.id === projectId ? { ...project, ...payload } : project,
+        project.id === projectId ? { ...project, ...sanitizeProjectPayload({ ...project, ...payload }) } : project,
       ),
     }));
   };

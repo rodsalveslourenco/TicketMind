@@ -12,6 +12,14 @@ const defaultForm = {
   progress: 0,
   dueDate: "",
   summary: "",
+  phases: [],
+};
+
+const defaultPhaseForm = {
+  name: "",
+  description: "",
+  weight: "",
+  completed: false,
 };
 
 function clampProgress(value) {
@@ -60,10 +68,22 @@ function getProgressTone(progress) {
   return "badge-alta";
 }
 
+function computeProjectProgress(phases) {
+  return phases
+    .filter((phase) => phase.completed)
+    .reduce((total, phase) => total + (Number(phase.weight) || 0), 0);
+}
+
+function computePhaseDistribution(phases) {
+  return phases.reduce((total, phase) => total + (Number(phase.weight) || 0), 0);
+}
+
 function ProjectsPage() {
   const { user } = useAuth();
   const { addProject, deleteProject, projects, pushToast, updateProject, users } = useAppData();
   const [form, setForm] = useState(defaultForm);
+  const [phaseForm, setPhaseForm] = useState(defaultPhaseForm);
+  const [editingPhaseId, setEditingPhaseId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [detailProjectId, setDetailProjectId] = useState(null);
   const [search, setSearch] = useState("");
@@ -92,28 +112,104 @@ function ProjectsPage() {
     [orderedProjects],
   );
   const detailProject = projects.find((project) => project.id === detailProjectId) ?? null;
+  const phaseDistribution = useMemo(() => computePhaseDistribution(form.phases || []), [form.phases]);
+  const phaseProgress = useMemo(() => computeProjectProgress(form.phases || []), [form.phases]);
 
   const updateField = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
   };
 
+  const updatePhaseField = (field) => (event) => {
+    const value = field === "completed" ? event.target.checked : event.target.value;
+    setPhaseForm((current) => ({ ...current, [field]: value }));
+  };
+
   const resetForm = () => {
     setForm(defaultForm);
     setEditingId(null);
+    setPhaseForm(defaultPhaseForm);
+    setEditingPhaseId(null);
   };
 
   const openProjectEditor = (project) => {
     setEditingId(project.id);
     setForm(project);
     setDetailProjectId(null);
+    setPhaseForm(defaultPhaseForm);
+    setEditingPhaseId(null);
+  };
+
+  const handleAddOrUpdatePhase = () => {
+    if (!phaseForm.name || phaseForm.weight === "") return;
+
+    const nextPhase = {
+      id: editingPhaseId || `phase-${Date.now().toString(36)}`,
+      name: phaseForm.name.trim(),
+      description: phaseForm.description.trim(),
+      weight: Number(phaseForm.weight) || 0,
+      completed: Boolean(phaseForm.completed),
+    };
+
+    setForm((current) => ({
+      ...current,
+      phases: editingPhaseId
+        ? current.phases.map((phase) => (phase.id === editingPhaseId ? nextPhase : phase))
+        : [...(current.phases || []), nextPhase],
+    }));
+    setPhaseForm(defaultPhaseForm);
+    setEditingPhaseId(null);
+  };
+
+  const handleEditPhase = (phase) => {
+    setEditingPhaseId(phase.id);
+    setPhaseForm({
+      name: phase.name,
+      description: phase.description || "",
+      weight: String(phase.weight),
+      completed: Boolean(phase.completed),
+    });
+  };
+
+  const handleDeletePhase = (phaseId) => {
+    setForm((current) => ({
+      ...current,
+      phases: current.phases.filter((phase) => phase.id !== phaseId),
+    }));
+    if (editingPhaseId === phaseId) {
+      setPhaseForm(defaultPhaseForm);
+      setEditingPhaseId(null);
+    }
+  };
+
+  const togglePhaseCompleted = (phaseId) => {
+    setForm((current) => ({
+      ...current,
+      phases: current.phases.map((phase) =>
+        phase.id === phaseId ? { ...phase, completed: !phase.completed } : phase,
+      ),
+    }));
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
     if (editingId ? !canEditProject : !canCreateProject) return;
     if (!form.name || !form.manager || !form.dueDate) return;
+    if (phaseDistribution > 100) {
+      pushToast("Distribuicao invalida", "A soma dos percentuais das fases nao pode ultrapassar 100%.", "warning");
+      return;
+    }
+    if (phaseDistribution < 100) {
+      pushToast("Distribuicao incompleta", "O projeto foi salvo com fases abaixo de 100% de distribuicao.", "warning");
+    }
 
-    const payload = { ...form, progress: clampProgress(form.progress) };
+    const payload = {
+      ...form,
+      progress: clampProgress(phaseProgress),
+      phases: (form.phases || []).map((phase) => ({
+        ...phase,
+        weight: Number(phase.weight) || 0,
+      })),
+    };
     if (editingId) {
       updateProject(editingId, payload);
       pushToast("Projeto atualizado", form.name);
@@ -190,7 +286,7 @@ function ProjectsPage() {
               </label>
               <label className="field-block">
                 <span>Progresso (%)</span>
-                <input disabled={!canManageTasks && editingId} max="100" min="0" onChange={updateField("progress")} type="number" value={form.progress} />
+                <input disabled value={phaseProgress} />
               </label>
               <label className="field-block">
                 <span>Entrega</span>
@@ -200,6 +296,90 @@ function ProjectsPage() {
                 <span>Resumo</span>
                 <textarea disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("summary")} value={form.summary} />
               </label>
+            </div>
+
+            <div className="glpi-ticket-form compact-form projects-phases-panel">
+              <div className="compact-panel-heading">
+                <strong>Fases do projeto</strong>
+                <span>{phaseProgress}% concluido | distribuicao {phaseDistribution}%</span>
+              </div>
+
+              {phaseDistribution > 100 ? (
+                <div className="form-alert">A soma dos percentuais das fases nao pode ultrapassar 100%.</div>
+              ) : null}
+              {phaseDistribution < 100 ? (
+                <div className="projects-phase-note">A distribuicao atual esta abaixo de 100%. O projeto pode ser salvo assim mesmo.</div>
+              ) : null}
+
+              <div className="glpi-form-grid compact-form-grid">
+                <label className="field-block">
+                  <span>Nome da fase</span>
+                  <input onChange={updatePhaseField("name")} value={phaseForm.name} />
+                </label>
+                <label className="field-block field-span-2">
+                  <span>Descricao</span>
+                  <input onChange={updatePhaseField("description")} value={phaseForm.description} />
+                </label>
+                <label className="field-block">
+                  <span>Percentual</span>
+                  <input min="0" onChange={updatePhaseField("weight")} type="number" value={phaseForm.weight} />
+                </label>
+                <label className="field-block projects-phase-checkbox">
+                  <span>Concluida</span>
+                  <input checked={phaseForm.completed} onChange={updatePhaseField("completed")} type="checkbox" />
+                </label>
+              </div>
+
+              <div className="compact-row-actions">
+                <button className="ghost-button compact-button interactive-button" onClick={handleAddOrUpdatePhase} type="button">
+                  {editingPhaseId ? "Salvar fase" : "Adicionar fase"}
+                </button>
+                {editingPhaseId ? (
+                  <button
+                    className="ghost-button compact-button interactive-button"
+                    onClick={() => {
+                      setPhaseForm(defaultPhaseForm);
+                      setEditingPhaseId(null);
+                    }}
+                    type="button"
+                  >
+                    Cancelar fase
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="sheet-list projects-phase-list">
+                <div className="sheet-row sheet-row-header projects-phase-row">
+                  <strong>Concluida</strong>
+                  <strong>Fase</strong>
+                  <strong>Percentual</strong>
+                  <strong>Acoes</strong>
+                </div>
+                {(form.phases || []).map((phase) => (
+                  <div className="sheet-row projects-phase-row" key={phase.id}>
+                    <input checked={Boolean(phase.completed)} onChange={() => togglePhaseCompleted(phase.id)} type="checkbox" />
+                    <div className="project-row-main">
+                      <strong>{phase.name}</strong>
+                      <span>{phase.description || "Sem descricao adicional."}</span>
+                    </div>
+                    <span>{phase.weight}%</span>
+                    <div className="compact-row-actions">
+                      <button className="ghost-button compact-button interactive-button" onClick={() => handleEditPhase(phase)} type="button">
+                        Editar
+                      </button>
+                      <button className="danger-button compact-button interactive-button" onClick={() => handleDeletePhase(phase.id)} type="button">
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!form.phases?.length ? (
+                  <div className="empty-state">
+                    <strong>Nenhuma fase cadastrada.</strong>
+                    <span>Adicione fases para o progresso ser calculado automaticamente.</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="ticket-create-actions">
@@ -272,7 +452,10 @@ function ProjectsPage() {
                   >
                     <div className="project-row-main">
                       <strong>{project.name}</strong>
-                      <span>{project.summary || "Resumo nao informado."}</span>
+                      <span>
+                        {project.summary || "Resumo nao informado."}
+                        {project.phases?.length ? ` | ${project.phases.filter((phase) => phase.completed).length}/${project.phases.length} fases concluidas` : ""}
+                      </span>
                     </div>
                     <div className="project-row-stack">
                       <span className="badge badge-neutral">{project.status}</span>
@@ -398,6 +581,25 @@ function ProjectsPage() {
               <div className="field-block field-full">
                 <span>Resumo</span>
                 <p className="project-summary">{detailProject.summary || "Resumo nao informado."}</p>
+              </div>
+
+              <div className="sheet-list projects-phase-list">
+                <div className="sheet-row sheet-row-header projects-phase-row">
+                  <strong>Status</strong>
+                  <strong>Fase</strong>
+                  <strong>Percentual</strong>
+                  <strong>Descricao</strong>
+                </div>
+                {(detailProject.phases || []).map((phase) => (
+                  <div className="sheet-row projects-phase-row" key={phase.id}>
+                    <span className={`badge ${phase.completed ? "badge-baixa" : "badge-neutral"}`}>
+                      {phase.completed ? "Concluida" : "Pendente"}
+                    </span>
+                    <strong>{phase.name}</strong>
+                    <span>{phase.weight}%</span>
+                    <span>{phase.description || "-"}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
