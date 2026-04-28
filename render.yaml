@@ -6,3 +6,14 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     pullRequestPreviewsEnabled: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ticketmind-db
+          property: connectionString
+
+databases:
+  - name: ticketmind-db
+    plan: free
+    databaseName: ticketmind
+    user: ticketmind

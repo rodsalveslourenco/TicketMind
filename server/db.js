@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Pool } from "pg";
 import initSqlJs from "sql.js";
 import { seedData } from "../src/data/seedData.js";
 import { normalizeUserPermissions } from "../src/data/permissions.js";
@@ -15,6 +16,7 @@ const dbPath = process.env.DB_PATH
   ? path.resolve(process.env.DB_PATH)
   : path.join(dataDir, "ticketmind.sqlite");
 const wasmPath = path.join(rootDir, "node_modules", "sql.js", "dist");
+const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 
 function buildDefaultUsers() {
   return seedData.users.map((candidate) => ({
@@ -73,11 +75,16 @@ function withDefaults(stored = {}) {
   };
 }
 
-let dbPromise = null;
+let sqlitePromise = null;
+let pgPool = null;
 
-async function getDb() {
-  if (!dbPromise) {
-    dbPromise = (async () => {
+function isPostgresEnabled() {
+  return Boolean(databaseUrl);
+}
+
+async function getSqliteDb() {
+  if (!sqlitePromise) {
+    sqlitePromise = (async () => {
       fs.mkdirSync(dataDir, { recursive: true });
       const SQL = await initSqlJs({
         locateFile: (file) => path.join(wasmPath, file),
@@ -96,35 +103,29 @@ async function getDb() {
     })();
   }
 
-  return dbPromise;
+  return sqlitePromise;
 }
 
-async function persistDb(db) {
+async function persistSqliteDb(db) {
   const bytes = db.export();
+  fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(dbPath, Buffer.from(bytes));
 }
 
-export async function readState() {
-  const db = await getDb();
+async function readSqliteStateRaw() {
+  const db = await getSqliteDb();
   const result = db.exec("SELECT data FROM app_state WHERE id = 1");
-
-  if (!result.length || !result[0].values.length) {
-    const initialState = withDefaults({});
-    await writeState(initialState);
-    return initialState;
-  }
+  if (!result.length || !result[0].values.length) return null;
 
   try {
-    return withDefaults(JSON.parse(String(result[0].values[0][0] || "{}")));
+    return JSON.parse(String(result[0].values[0][0] || "{}"));
   } catch {
-    const initialState = withDefaults({});
-    await writeState(initialState);
-    return initialState;
+    return null;
   }
 }
 
-export async function writeState(nextState) {
-  const db = await getDb();
+async function writeSqliteState(nextState) {
+  const db = await getSqliteDb();
   const normalizedState = withDefaults(nextState);
   const now = new Date().toISOString();
 
@@ -134,8 +135,85 @@ export async function writeState(nextState) {
     JSON.stringify(normalizedState),
     now,
   ]);
-  await persistDb(db);
+  await persistSqliteDb(db);
   return normalizedState;
+}
+
+function getPgPool() {
+  if (!pgPool) {
+    pgPool = new Pool({
+      connectionString: databaseUrl,
+      ssl: databaseUrl.includes("render.com") ? { rejectUnauthorized: false } : false,
+    });
+  }
+  return pgPool;
+}
+
+async function ensurePgSchema() {
+  const pool = getPgPool();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      id INTEGER PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+}
+
+async function readPostgresStateRaw() {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const { rows } = await pool.query("SELECT data FROM app_state WHERE id = 1");
+  return rows[0]?.data || null;
+}
+
+async function writePostgresState(nextState) {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const normalizedState = withDefaults(nextState);
+
+  await pool.query(
+    `
+      INSERT INTO app_state (id, data, updated_at)
+      VALUES (1, $1::jsonb, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        data = EXCLUDED.data,
+        updated_at = EXCLUDED.updated_at
+    `,
+    [JSON.stringify(normalizedState)],
+  );
+
+  return normalizedState;
+}
+
+async function loadBootstrapState() {
+  const sqliteState = await readSqliteStateRaw();
+  if (sqliteState) return sqliteState;
+  return {};
+}
+
+export async function readState() {
+  if (!isPostgresEnabled()) {
+    const sqliteState = await readSqliteStateRaw();
+    if (sqliteState) return withDefaults(sqliteState);
+    const initialState = withDefaults({});
+    await writeSqliteState(initialState);
+    return initialState;
+  }
+
+  const postgresState = await readPostgresStateRaw();
+  if (postgresState) return withDefaults(postgresState);
+
+  const initialState = withDefaults(await loadBootstrapState());
+  await writePostgresState(initialState);
+  return initialState;
+}
+
+export async function writeState(nextState) {
+  if (!isPostgresEnabled()) {
+    return writeSqliteState(nextState);
+  }
+  return writePostgresState(nextState);
 }
 
 export function sanitizeSessionUser(user) {
