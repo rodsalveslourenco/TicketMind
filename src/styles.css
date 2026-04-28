@@ -2486,3 +2486,240 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.page-content {
+  font-size: 0.84rem;
+}
+
+.page-content .board-card,
+.page-content .glpi-ticket-form,
+.page-content .ticket-attachment-panel,
+.page-content .ticket-modal,
+.page-content .kanban-column,
+.page-content .record-card,
+.page-content .ticket-row-card,
+.page-content .table-row,
+.page-content .sheet-row,
+.page-content .project-snapshot,
+.page-content .integration-row,
+.page-content .kpi-item {
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.page-content .board-card,
+.page-content .glpi-ticket-form,
+.page-content .ticket-attachment-panel,
+.page-content .record-card,
+.page-content .kanban-column,
+.page-content .ticket-row-card,
+.page-content .table-row,
+.page-content .sheet-row,
+.page-content .project-snapshot,
+.page-content .integration-row,
+.page-content .kpi-item {
+  border-color: rgba(128, 142, 156, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 248, 250, 0.96)),
+    rgba(255, 255, 255, 0.96);
+}
+
+.page-content .module-hero,
+.page-content .board-card,
+.page-content .glpi-ticket-form,
+.page-content .ticket-attachment-panel {
+  padding: 0.8rem;
+}
+
+.page-content .module-hero h2,
+.page-content .glpi-toolbar h2,
+.page-content .ticket-modal-header h2,
+.page-content .card-heading h2 {
+  font-size: 0.98rem;
+  letter-spacing: -0.02em;
+}
+
+.page-content .eyebrow {
+  margin-bottom: 0.55rem;
+  font-size: 0.64rem;
+}
+
+.page-content .module-caption,
+.page-content .modal-subtitle,
+.page-content .field-block span,
+.page-content .table-row span,
+.page-content .glpi-toolbar span,
+.page-content .ticket-meta span,
+.page-content .ticket-row-meta,
+.page-content .ticket-row-badges,
+.page-content .project-row-main span {
+  font-size: 0.74rem;
+}
+
+.page-content .insight-strip {
+  gap: 0.55rem;
+}
+
+.page-content .insight-chip {
+  padding: 0.6rem 0.7rem;
+  border-radius: 5px;
+}
+
+.page-content .insight-chip strong,
+.page-content .metric-card strong {
+  font-size: 1.15rem;
+}
+
+.page-content .glpi-toolbar,
+.page-content .card-heading,
+.page-content .ticket-modal-header {
+  margin-bottom: 0.7rem;
+}
+
+.page-content .toolbar,
+.page-content .row-stats,
+.page-content .ticket-meta,
+.page-content .ticket-row-meta,
+.page-content .ticket-row-badges,
+.page-content .compact-row-actions,
+.page-content .ticket-create-actions,
+.page-content .ticket-detail-actions,
+.page-content .attachment-actions {
+  gap: 0.4rem;
+}
+
+.page-content input,
+.page-content select,
+.page-content textarea {
+  min-height: 30px;
+  padding: 0.38rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.page-content textarea {
+  min-height: 78px;
+}
+
+.page-content .primary-button,
+.page-content .ghost-button,
+.page-content .danger-button,
+.page-content .compact-button {
+  min-height: 30px;
+  padding: 0 0.65rem;
+  border-radius: 4px;
+  font-size: 0.76rem;
+}
+
+.page-content .filter-pill,
+.page-content .badge,
+.page-content .watcher-chip {
+  min-height: 20px;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+}
+
+.page-content .toolbar-search {
+  min-height: 30px;
+  max-width: 340px;
+}
+
+.page-content .sheet-list,
+.page-content .table-list,
+.page-content .ticket-rows,
+.page-content .record-grid,
+.page-content .user-list,
+.page-content .kanban-column-body {
+  gap: 0.22rem;
+}
+
+.page-content .sheet-row,
+.page-content .table-row,
+.page-content .ticket-row-card,
+.page-content .record-card,
+.page-content .kanban-card,
+.page-content .project-snapshot,
+.page-content .integration-row,
+.page-content .kpi-item {
+  padding: 0.46rem 0.58rem;
+  line-height: 1.28;
+}
+
+.page-content .sheet-row,
+.page-content .table-row {
+  border-left: 3px solid #a4b2bf;
+}
+
+.page-content .sheet-row-header {
+  background: linear-gradient(180deg, #eef2f5, #e4e9ee);
+  border-color: rgba(128, 142, 156, 0.34);
+  border-left-color: #8a98a6;
+}
+
+.page-content .sheet-row-header strong {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+
+.page-content .ticket-row-card,
+.page-content .kanban-card,
+.page-content .record-card {
+  border-left: 3px solid #a4b2bf;
+}
+
+.page-content .ticket-row-title strong,
+.page-content .project-row-main strong,
+.page-content .record-card strong,
+.page-content .user-row strong {
+  font-size: 0.82rem;
+}
+
+.page-content .ticket-row-title h3,
+.page-content .kanban-card h3 {
+  font-size: 0.82rem;
+}
+
+.page-content .glpi-form-grid,
+.page-content .detail-grid {
+  gap: 0.55rem;
+}
+
+.page-content .attachment-item,
+.page-content .empty-state,
+.page-content .requester-stamp,
+.page-content .permission-group {
+  border-radius: 4px;
+}
+
+.page-content .permissions-panel {
+  gap: 0.5rem;
+}
+
+.page-content .permission-group {
+  padding: 0.5rem 0.6rem;
+}
+
+.page-content .permission-group strong {
+  font-size: 0.7rem;
+}
+
+.page-content .permission-item {
+  min-height: 20px;
+  font-size: 0.76rem;
+}
+
+.page-content .glpi-info-strip {
+  gap: 0.55rem;
+  padding: 0.6rem;
+  border-radius: 4px;
+}
+
+.page-content .kanban-grid {
+  gap: 0.65rem;
+}
+
+.page-content .kanban-column {
+  padding: 0.65rem;
+  border-radius: 5px;
+}
