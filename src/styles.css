@@ -2328,3 +2328,122 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.projects-page .insight-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.projects-page .module-grid {
+  grid-template-columns: minmax(320px, 0.88fr) minmax(0, 1.12fr);
+  align-items: start;
+}
+
+.projects-page .glpi-ticket-form {
+  padding: 0.9rem;
+}
+
+.projects-page .glpi-form-grid {
+  gap: 0.65rem;
+}
+
+.projects-page .field-block span,
+.projects-page .project-row-main span,
+.projects-page .projects-sheet-row span {
+  font-size: 0.79rem;
+}
+
+.projects-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.projects-toolbar {
+  margin-bottom: 0.4rem;
+}
+
+.projects-sheet {
+  gap: 0.35rem;
+}
+
+.projects-sheet-row {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.8fr) minmax(180px, 1fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) minmax(110px, 0.7fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.65rem 0.8rem;
+}
+
+.projects-sheet-row-header strong {
+  font-size: 0.76rem;
+}
+
+.project-row-main {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.project-row-main strong {
+  font-size: 0.88rem;
+}
+
+.project-row-main span {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.project-row-stack {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+}
+
+.project-row-progress {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.project-progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.project-progress-top strong {
+  font-size: 0.82rem;
+}
+
+.project-progress-shell {
+  width: 100%;
+  height: 8px;
+}
+
+.projects-page .toolbar-search {
+  min-width: min(320px, 100%);
+}
+
+.projects-page .filter-pill {
+  min-height: 28px;
+  font-size: 0.72rem;
+}
+
+.projects-page .compact-row-actions {
+  justify-content: flex-end;
+}
+
+.projects-page .compact-button {
+  min-height: 30px;
+  padding: 0 0.65rem;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 1200px) {
+  .projects-page .module-grid,
+  .projects-page .insight-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .projects-sheet-row {
+    grid-template-columns: 1fr;
+  }
+}
