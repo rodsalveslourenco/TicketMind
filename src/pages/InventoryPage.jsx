@@ -44,6 +44,7 @@ function buildInventoryRows(assets) {
 function InventoryPage() {
   const { assets } = useAppData();
   const [search, setSearch] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState(null);
 
   const inventoryRows = useMemo(() => {
     const normalizedSearch = normalizeText(search);
@@ -56,6 +57,8 @@ function InventoryPage() {
     );
     return buildInventoryRows(filteredAssets);
   }, [assets, search]);
+
+  const selectedItem = inventoryRows.find((item) => item.id === selectedItemId) ?? null;
 
   return (
     <div className="users-page">
@@ -103,24 +106,90 @@ function InventoryPage() {
             <strong>Quantidade</strong>
             <strong>Series</strong>
           </div>
-          {inventoryRows.map((item) => (
-            <div className="sheet-row" key={item.id}>
-              <span>{item.type}</span>
-              <span>{item.manufacturer}</span>
-              <span>{item.model}</span>
-              <span>{item.quantity}</span>
-              <div className="row-stats row-stats-wrap">
-                {item.serials.slice(0, 4).map((serial) => (
-                  <span className="badge badge-neutral" key={serial}>
-                    {serial}
-                  </span>
-                ))}
-                {item.serials.length > 4 ? <span className="badge badge-neutral">+{item.serials.length - 4}</span> : null}
-              </div>
+          {inventoryRows.length ? (
+            inventoryRows.map((item) => (
+              <button
+                className="sheet-row interactive-button"
+                key={item.id}
+                onClick={() => setSelectedItemId(item.id)}
+                type="button"
+              >
+                <span>{item.type}</span>
+                <span>{item.manufacturer}</span>
+                <span>{item.model}</span>
+                <span>{item.quantity}</span>
+                <div className="row-stats row-stats-wrap">
+                  {item.serials.slice(0, 4).map((serial) => (
+                    <span className="badge badge-neutral" key={serial}>
+                      {serial}
+                    </span>
+                  ))}
+                  {item.serials.length > 4 ? <span className="badge badge-neutral">+{item.serials.length - 4}</span> : null}
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="empty-state">
+              <strong>Nenhum item encontrado.</strong>
+              <span>Ajuste o filtro para localizar registros do inventario.</span>
             </div>
-          ))}
+          )}
         </div>
       </section>
+
+      {selectedItem ? (
+        <div className="ticket-modal-backdrop" onClick={() => setSelectedItemId(null)} role="presentation">
+          <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="ticket-modal-header">
+              <div>
+                <h2>{selectedItem.type}</h2>
+                <span className="modal-subtitle">
+                  {selectedItem.manufacturer} | {selectedItem.model}
+                </span>
+              </div>
+              <div className="ticket-detail-actions">
+                <button className="ghost-button compact-button interactive-button" onClick={() => setSelectedItemId(null)} type="button">
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+            <div className="glpi-ticket-form compact-form">
+              <div className="glpi-info-strip">
+                <div>
+                  <span>Tipo</span>
+                  <strong>{selectedItem.type}</strong>
+                </div>
+                <div>
+                  <span>Marca</span>
+                  <strong>{selectedItem.manufacturer}</strong>
+                </div>
+                <div>
+                  <span>Quantidade</span>
+                  <strong>{selectedItem.quantity}</strong>
+                </div>
+              </div>
+
+              <div className="detail-grid compact-form-grid">
+                <div className="field-block">
+                  <span>Modelo</span>
+                  <strong>{selectedItem.model}</strong>
+                </div>
+                <div className="field-block field-full">
+                  <span>Numeros de serie</span>
+                  <div className="row-stats row-stats-wrap">
+                    {selectedItem.serials.map((serial) => (
+                      <span className="badge badge-neutral" key={serial}>
+                        {serial}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
