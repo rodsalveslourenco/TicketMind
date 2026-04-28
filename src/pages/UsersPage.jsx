@@ -1,21 +1,22 @@
 import { useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 
 const permissionFields = [
-  { key: "dashboard", label: "Dashboard" },
-  { key: "tickets_view", label: "Ver chamados" },
-  { key: "tickets_manage", label: "Gerenciar chamados" },
-  { key: "users_view", label: "Ver usuarios" },
-  { key: "users_manage", label: "Gerenciar usuarios" },
-  { key: "assets_view", label: "Ver ativos" },
-  { key: "assets_manage", label: "Gerenciar ativos" },
-  { key: "projects_view", label: "Ver projetos" },
-  { key: "projects_manage", label: "Gerenciar projetos" },
-  { key: "api_view", label: "Ver API REST" },
-  { key: "api_manage", label: "Gerenciar API REST" },
-  { key: "reports_view", label: "Ver relatorios" },
-  { key: "sla_manage", label: "Gerenciar SLA" },
+  { key: "dashboard", label: "Dashboard", area: "Geral" },
+  { key: "tickets_view", label: "Ver chamados", area: "Chamados" },
+  { key: "tickets_manage", label: "Gerenciar chamados", area: "Chamados" },
+  { key: "users_view", label: "Ver usuarios", area: "Usuarios" },
+  { key: "users_manage", label: "Gerenciar usuarios", area: "Usuarios" },
+  { key: "assets_view", label: "Ver ativos", area: "Ativos" },
+  { key: "assets_manage", label: "Gerenciar ativos", area: "Ativos" },
+  { key: "projects_view", label: "Ver projetos", area: "Projetos" },
+  { key: "projects_manage", label: "Gerenciar projetos", area: "Projetos" },
+  { key: "api_view", label: "Ver API REST", area: "API" },
+  { key: "api_manage", label: "Gerenciar API REST", area: "API" },
+  { key: "reports_view", label: "Ver relatorios", area: "Relatorios" },
+  { key: "sla_manage", label: "Gerenciar SLA", area: "SLA" },
 ];
 
 const defaultPermissions = {
@@ -67,6 +68,18 @@ function UsersPage() {
   const [revealedUserIds, setRevealedUserIds] = useState([]);
 
   const canRevealPasswords = user?.department === "TI";
+  const canViewUsers = Boolean(user?.permissions?.users_view);
+  const canManageUsers = Boolean(user?.permissions?.users_manage);
+
+  const permissionGroups = useMemo(() => {
+    const groups = new Map();
+    permissionFields.forEach((permission) => {
+      const current = groups.get(permission.area) || [];
+      current.push(permission);
+      groups.set(permission.area, current);
+    });
+    return Array.from(groups.entries());
+  }, []);
 
   const orderedUsers = useMemo(() => {
     const normalizedSearch = search
@@ -128,6 +141,7 @@ function UsersPage() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (!canManageUsers) return;
     if (!form.name || !form.email || !form.team || !form.password) return;
 
     const normalizedEmail = normalizeText(form.email);
@@ -153,6 +167,7 @@ function UsersPage() {
   };
 
   const openCreateModal = () => {
+    if (!canManageUsers) return;
     resetForm();
     setShowCreateModal(true);
   };
@@ -170,6 +185,7 @@ function UsersPage() {
   };
 
   const handleDeleteUser = (candidate) => {
+    if (!canManageUsers) return;
     if (!candidate) return;
     if (candidate.id === user?.id) {
       pushToast("Operacao bloqueada", "Nao e permitido excluir o usuario logado.", "warning");
@@ -182,6 +198,10 @@ function UsersPage() {
     resetForm();
     pushToast("Usuario removido", candidate.name);
   };
+
+  if (!canViewUsers) {
+    return <Navigate replace to="/app/dashboard" />;
+  }
 
   return (
     <div className="users-page">
@@ -218,9 +238,11 @@ function UsersPage() {
               placeholder="Buscar por nome, email, equipe ou perfil"
               value={search}
             />
-            <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
-              + Novo usuario
-            </button>
+            {canManageUsers ? (
+              <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
+                + Novo usuario
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -331,23 +353,33 @@ function UsersPage() {
                   </select>
                 </label>
               </div>
-              <div className="permissions-grid">
-                {permissionFields.map((permission) => (
-                  <label className="permission-card" key={permission.key}>
-                    <input
-                      checked={Boolean(form.permissions[permission.key])}
-                      onChange={updatePermission(permission.key)}
-                      type="checkbox"
-                    />
-                    <span>{permission.label}</span>
-                  </label>
+              <div className="permissions-panel">
+                {permissionGroups.map(([area, permissions]) => (
+                  <section className="permission-group" key={area}>
+                    <strong>{area}</strong>
+                    <div className="permissions-list">
+                      {permissions.map((permission) => (
+                        <label className="permission-item" key={permission.key}>
+                          <input
+                            checked={Boolean(form.permissions[permission.key])}
+                            disabled={!canManageUsers}
+                            onChange={updatePermission(permission.key)}
+                            type="checkbox"
+                          />
+                          <span>{permission.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
-              <div className="ticket-create-actions">
-                <button className="primary-button interactive-button" type="submit">
-                  Cadastrar usuario
-                </button>
-              </div>
+              {canManageUsers ? (
+                <div className="ticket-create-actions">
+                  <button className="primary-button interactive-button" type="submit">
+                    Cadastrar usuario
+                  </button>
+                </div>
+              ) : null}
             </form>
           </div>
         </div>
@@ -373,31 +405,33 @@ function UsersPage() {
                   <button className="ghost-button interactive-button" onClick={() => setDetailUserId(null)} type="button">
                     Fechar
                   </button>
-                  <button
-                    className="danger-button interactive-button"
-                    onClick={() => handleDeleteUser(detailUser)}
-                    type="button"
-                  >
-                    Excluir
-                  </button>
+                  {canManageUsers ? (
+                    <button
+                      className="danger-button interactive-button"
+                      onClick={() => handleDeleteUser(detailUser)}
+                      type="button"
+                    >
+                      Excluir
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <div className="glpi-form-grid">
                 <label className="field-block">
                   <span>Nome</span>
-                  <input onChange={updateField("name")} value={form.name} />
+                  <input disabled={!canManageUsers} onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
                   <span>Email</span>
-                  <input onChange={updateField("email")} type="email" value={form.email} />
+                  <input disabled={!canManageUsers} onChange={updateField("email")} type="email" value={form.email} />
                 </label>
                 <label className="field-block">
                   <span>Senha</span>
-                  <input onChange={updateField("password")} type="password" value={form.password} />
+                  <input disabled={!canManageUsers} onChange={updateField("password")} type="password" value={form.password} />
                 </label>
                 <label className="field-block">
                   <span>Perfil</span>
-                  <select onChange={updateField("role")} value={form.role}>
+                  <select disabled={!canManageUsers} onChange={updateField("role")} value={form.role}>
                     <option>Administrador</option>
                     <option>Analista</option>
                     <option>Especialista</option>
@@ -407,11 +441,11 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Equipe</span>
-                  <input onChange={updateField("team")} value={form.team} />
+                  <input disabled={!canManageUsers} onChange={updateField("team")} value={form.team} />
                 </label>
                 <label className="field-block">
                   <span>Departamento</span>
-                  <select onChange={updateField("department")} value={form.department}>
+                  <select disabled={!canManageUsers} onChange={updateField("department")} value={form.department}>
                     <option>TI</option>
                     <option>RH</option>
                     <option>Financeiro</option>
@@ -420,23 +454,33 @@ function UsersPage() {
                   </select>
                 </label>
               </div>
-              <div className="permissions-grid">
-                {permissionFields.map((permission) => (
-                  <label className="permission-card" key={permission.key}>
-                    <input
-                      checked={Boolean(form.permissions[permission.key])}
-                      onChange={updatePermission(permission.key)}
-                      type="checkbox"
-                    />
-                    <span>{permission.label}</span>
-                  </label>
+              <div className="permissions-panel">
+                {permissionGroups.map(([area, permissions]) => (
+                  <section className="permission-group" key={area}>
+                    <strong>{area}</strong>
+                    <div className="permissions-list">
+                      {permissions.map((permission) => (
+                        <label className="permission-item" key={permission.key}>
+                          <input
+                            checked={Boolean(form.permissions[permission.key])}
+                            disabled={!canManageUsers}
+                            onChange={updatePermission(permission.key)}
+                            type="checkbox"
+                          />
+                          <span>{permission.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
-              <div className="ticket-create-actions">
-                <button className="primary-button interactive-button" type="submit">
-                  Salvar usuario
-                </button>
-              </div>
+              {canManageUsers ? (
+                <div className="ticket-create-actions">
+                  <button className="primary-button interactive-button" type="submit">
+                    Salvar usuario
+                  </button>
+                </div>
+              ) : null}
             </form>
           </div>
         </div>

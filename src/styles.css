@@ -2140,3 +2140,169 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.module-caption {
+  margin: -0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ticket-page .module-hero,
+.users-page .module-hero,
+.ticket-page .board-card,
+.users-page .board-card,
+.ticket-page .glpi-ticket-form,
+.ticket-page .ticket-attachment-panel,
+.users-page .glpi-ticket-form {
+  padding: 0.9rem;
+}
+
+.ticket-page .insight-chip,
+.users-page .insight-chip {
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+}
+
+.ticket-page .insight-chip strong,
+.users-page .insight-chip strong {
+  font-size: 1.35rem;
+}
+
+.ticket-page .glpi-toolbar h2,
+.users-page .glpi-toolbar h2,
+.ticket-page .ticket-row-title h3,
+.ticket-page .kanban-card h3,
+.users-page .user-row strong {
+  font-size: 0.92rem;
+}
+
+.ticket-page .toolbar-search,
+.users-page .toolbar-search,
+.ticket-page input,
+.ticket-page select,
+.ticket-page textarea,
+.users-page input,
+.users-page select,
+.users-page textarea {
+  font-size: 0.88rem;
+}
+
+.ticket-page input,
+.ticket-page select,
+.users-page input,
+.users-page select {
+  min-height: 34px;
+  padding: 0.45rem 0.6rem;
+}
+
+.ticket-page textarea,
+.users-page textarea {
+  min-height: 96px;
+  padding: 0.55rem 0.65rem;
+}
+
+.ticket-page .field-block span,
+.users-page .field-block span,
+.ticket-page .ticket-row-meta,
+.ticket-page .ticket-meta,
+.users-page .user-row-footer,
+.users-page .user-password-row,
+.users-page .permissions-inline,
+.users-page .row-stats {
+  font-size: 0.8rem;
+}
+
+.ticket-page .ticket-row-card,
+.ticket-page .kanban-card,
+.users-page .user-row,
+.users-page .table-row {
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.ticket-page .ticket-rows,
+.users-page .user-list {
+  gap: 0.45rem;
+}
+
+.ticket-page .ticket-row-meta,
+.ticket-page .ticket-row-badges,
+.users-page .user-row-footer,
+.users-page .row-stats {
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.ticket-page .badge,
+.ticket-page .filter-pill,
+.users-page .badge {
+  min-height: 22px;
+  padding: 0.08rem 0.45rem;
+  font-size: 0.7rem;
+}
+
+.ticket-page .primary-button,
+.ticket-page .ghost-button,
+.ticket-page .danger-button,
+.users-page .primary-button,
+.users-page .ghost-button,
+.users-page .danger-button {
+  min-height: 34px;
+  padding: 0 0.75rem;
+  font-size: 0.82rem;
+}
+
+.permissions-panel {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.permission-group {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(157, 173, 189, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.permission-group strong {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #596b79;
+}
+
+.permissions-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.8rem;
+}
+
+.permission-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 24px;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.permission-item input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #587690;
+}
+
+.permission-item span {
+  color: inherit;
+}
+
+@media (max-width: 760px) {
+  .permissions-list {
+    grid-template-columns: 1fr;
+  }
+}

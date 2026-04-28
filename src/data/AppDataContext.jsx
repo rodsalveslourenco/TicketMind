@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import { seedData } from "./seedData";
 import { assetTypeOptions } from "./assetCatalog";
 
@@ -48,7 +49,7 @@ function mergeCollections(stored) {
     currentUser,
     users,
     queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
-    tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
+    tickets: prepareTickets(Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets, users),
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
     brands,
     models,
@@ -134,6 +135,46 @@ function sanitizeUserPayload(payload) {
   };
 }
 
+function canViewAllTickets(user) {
+  return normalizeText(user?.department) === "ti";
+}
+
+function resolveTicketRequesterId(ticket, users) {
+  if (ticket.requesterId && users.some((candidate) => candidate.id === ticket.requesterId)) {
+    return ticket.requesterId;
+  }
+
+  const requesterName = normalizeText(ticket.requester);
+  const requesterEmail = normalizeText(ticket.requesterEmail);
+  const matchedUser = users.find(
+    (candidate) =>
+      normalizeText(candidate.name) === requesterName ||
+      (requesterEmail && normalizeText(candidate.email) === requesterEmail),
+  );
+
+  return matchedUser?.id || "";
+}
+
+function prepareTickets(tickets, users) {
+  const sourceTickets = Array.isArray(tickets) ? tickets : [];
+  return sourceTickets.map((ticket) => ({
+    ...ticket,
+    requesterId: resolveTicketRequesterId(ticket, users),
+    requesterEmail: String(ticket.requesterEmail || "").trim().toLowerCase(),
+  }));
+}
+
+function filterTicketsForUser(tickets, user) {
+  if (!user) return [];
+  if (canViewAllTickets(user)) return tickets;
+  return tickets.filter((ticket) => ticket.requesterId === user.id);
+}
+
+function canAccessTicket(ticket, user) {
+  if (!ticket || !user) return false;
+  return canViewAllTickets(user) || ticket.requesterId === user.id;
+}
+
 function sanitizeBrandPayload(payload) {
   return {
     name: String(payload.name || "").trim(),
@@ -153,6 +194,7 @@ function sanitizeModelPayload(payload) {
 }
 
 export function AppDataProvider({ children }) {
+  const { user } = useAuth();
   const [data, setData] = useState(readInitialState);
   const [notifications, setNotifications] = useState([]);
 
@@ -172,16 +214,18 @@ export function AppDataProvider({ children }) {
     setNotifications((current) => current.filter((toast) => toast.id !== toastId));
   };
 
+  const visibleTickets = useMemo(() => filterTicketsForUser(data.tickets, user), [data.tickets, user]);
+
   const summary = useMemo(() => {
     const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovacao", "Analise"];
-    const openTickets = data.tickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
-    const criticalOpen = data.tickets.filter(
+    const openTickets = visibleTickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
+    const criticalOpen = visibleTickets.filter(
       (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.includes(ticket.status),
     ).length;
-    const waitingApproval = data.tickets.filter(
+    const waitingApproval = visibleTickets.filter(
       (ticket) => normalizeText(ticket.status) === "aguardando aprovacao",
     ).length;
-    const solved = data.tickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
+    const solved = visibleTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
     const activeAssets = data.assets.filter((asset) => normalizeText(asset.status) !== "baixado").length;
     const activeProjects = data.projects.filter((project) => normalizeText(project.status) !== "concluido").length;
     const activeApis = data.apiConfigs.filter((config) => normalizeText(config.status) === "ativa").length;
@@ -202,19 +246,19 @@ export function AppDataProvider({ children }) {
       slaCompliance,
       backlogTrend: openTickets > 12 ? -8 : -3,
     };
-  }, [data]);
+  }, [data, visibleTickets]);
 
   const queueStats = useMemo(
     () =>
       data.queues.map((queue) => {
-        const queueTickets = data.tickets.filter((ticket) => ticket.queue === queue.name);
+        const queueTickets = visibleTickets.filter((ticket) => ticket.queue === queue.name);
         return {
           ...queue,
           open: queueTickets.length,
           overdue: queueTickets.filter((ticket) => ticket.sla.toLowerCase().includes("min")).length,
         };
       }),
-    [data.queues, data.tickets],
+    [data.queues, visibleTickets],
   );
 
   const createTicket = (payload) => {
@@ -225,6 +269,11 @@ export function AppDataProvider({ children }) {
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
       const openedAt = payload.openedAt || new Date().toISOString();
       const priority = computePriority(payload.urgency, payload.impact);
+      const ticketRequesterId = canViewAllTickets(user) ? payload.requesterId || "" : user?.id || "";
+      const ticketRequesterEmail = canViewAllTickets(user)
+        ? String(payload.requesterEmail || "").trim().toLowerCase()
+        : String(user?.email || "").trim().toLowerCase();
+      const ticketRequester = canViewAllTickets(user) ? payload.requester : user?.name || payload.requester;
 
       createdTicket = {
         id: `${typeCodeMap[normalizeText(payload.type)] ?? "TCK"}-${nextNumber}`,
@@ -234,7 +283,9 @@ export function AppDataProvider({ children }) {
         urgency: payload.urgency,
         impact: payload.impact,
         status: "Aberto",
-        requester: payload.requester,
+        requester: ticketRequester,
+        requesterId: ticketRequesterId,
+        requesterEmail: ticketRequesterEmail,
         assignee: payload.assignee || "Triagem TI",
         queue: payload.queue,
         category: payload.category,
@@ -263,15 +314,21 @@ export function AppDataProvider({ children }) {
       ...current,
       tickets: current.tickets.map((ticket) => {
         if (ticket.id !== ticketId) return ticket;
+        if (!canAccessTicket(ticket, user)) return ticket;
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
         const priority = computePriority(nextUrgency, nextImpact);
         const openedAt = updates.openedAt ?? ticket.openedAt;
         const dueDate = updates.dueDate ?? ticket.dueDate;
+        const nextRequester = canViewAllTickets(user) ? updates.requester ?? ticket.requester : ticket.requester;
+        const nextRequesterEmail = canViewAllTickets(user)
+          ? String(updates.requesterEmail ?? ticket.requesterEmail ?? "").trim().toLowerCase()
+          : String(ticket.requesterEmail || "").trim().toLowerCase();
 
         return {
           ...ticket,
           ...updates,
+          requester: nextRequester,
           urgency: nextUrgency,
           impact: nextImpact,
           priority,
@@ -280,6 +337,10 @@ export function AppDataProvider({ children }) {
           openedAtLabel: formatTimestamp(openedAt),
           dueDate,
           dueDateLabel: dueDate ? formatDate(dueDate) : "",
+          requesterId: canViewAllTickets(user)
+            ? resolveTicketRequesterId({ ...ticket, ...updates, requester: nextRequester }, current.users || [])
+            : ticket.requesterId,
+          requesterEmail: nextRequesterEmail,
           updatedAt: "Agora",
         };
       }),
@@ -289,7 +350,7 @@ export function AppDataProvider({ children }) {
   const deleteTicket = (ticketId) => {
     setData((current) => ({
       ...current,
-      tickets: current.tickets.filter((ticket) => ticket.id !== ticketId),
+      tickets: current.tickets.filter((ticket) => ticket.id !== ticketId || !canAccessTicket(ticket, user)),
     }));
   };
 
@@ -297,7 +358,7 @@ export function AppDataProvider({ children }) {
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
-        ticket.id === ticketId
+        ticket.id === ticketId && canAccessTicket(ticket, user)
           ? { ...ticket, attachments: [...(ticket.attachments || []), ...attachments], updatedAt: "Agora" }
           : ticket,
       ),
@@ -308,7 +369,7 @@ export function AppDataProvider({ children }) {
     setData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
-        ticket.id === ticketId
+        ticket.id === ticketId && canAccessTicket(ticket, user)
           ? {
               ...ticket,
               attachments: (ticket.attachments || []).filter((attachment) => attachment.id !== attachmentId),
@@ -496,7 +557,8 @@ export function AppDataProvider({ children }) {
       summary,
       queues: queueStats,
       users: data.users || [],
-      tickets: data.tickets,
+      tickets: visibleTickets,
+      canViewAllTickets: canViewAllTickets(user),
       assets: data.assets || [],
       brands: data.brands || [],
       models: data.models || [],
@@ -530,7 +592,7 @@ export function AppDataProvider({ children }) {
       deleteApiConfig,
       toLocalDatetimeInput,
     }),
-    [summary, queueStats, data, notifications],
+    [summary, queueStats, data, notifications, visibleTickets, user],
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

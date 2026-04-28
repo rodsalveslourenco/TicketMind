@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Navigate } from "react-router-dom";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
@@ -103,6 +104,7 @@ function TicketsPage() {
     toLocalDatetimeInput,
     updateTicket,
     users,
+    canViewAllTickets,
   } = useAppData();
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState("list");
@@ -179,6 +181,10 @@ function TicketsPage() {
       )
       .slice(0, 6);
   }, [createForm.watchers, user?.id, users, watcherQuery]);
+
+  if (!user?.permissions?.tickets_view) {
+    return <Navigate replace to="/app/dashboard" />;
+  }
 
   useEffect(() => {
     if (!detailTicket) {
@@ -295,6 +301,8 @@ function TicketsPage() {
     createTicket({
       ...createForm,
       requester: user.name,
+      requesterId: user.id,
+      requesterEmail: user.email,
       queue: "Service Desk",
       category: "Geral",
       source: "Portal",
@@ -358,6 +366,7 @@ function TicketsPage() {
             <span>itens no recorte atual</span>
           </div>
         </div>
+        {!canViewAllTickets ? <p className="module-caption">Visualizacao restrita aos seus proprios chamados.</p> : null}
       </section>
 
       <section className="board-card glpi-panel">
@@ -409,31 +418,38 @@ function TicketsPage() {
 
         {viewMode === "list" ? (
           <div className="ticket-rows ticket-rows-wide">
-            {filteredTickets.map((ticket) => (
-              <button
-                className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}`}
-                key={ticket.id}
-                onDoubleClick={() => setDetailTicketId(ticket.id)}
-                type="button"
-              >
-                <div className="ticket-row-main">
-                  <div className="ticket-row-title">
-                    <strong>{ticket.id}</strong>
-                    <h3>{ticket.title}</h3>
+            {filteredTickets.length ? (
+              filteredTickets.map((ticket) => (
+                <button
+                  className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}`}
+                  key={ticket.id}
+                  onDoubleClick={() => setDetailTicketId(ticket.id)}
+                  type="button"
+                >
+                  <div className="ticket-row-main">
+                    <div className="ticket-row-title">
+                      <strong>{ticket.id}</strong>
+                      <h3>{ticket.title}</h3>
+                    </div>
+                    <div className="ticket-row-badges">
+                      <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
+                      <span className="badge badge-neutral">{ticket.status}</span>
+                    </div>
                   </div>
-                  <div className="ticket-row-badges">
-                    <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                    <span className="badge badge-neutral">{ticket.status}</span>
+                  <div className="ticket-row-meta">
+                    <span>{ticket.requester}</span>
+                    <span>{ticket.queue}</span>
+                    <span>{ticket.assignee}</span>
+                    <span>{ticket.openedAtLabel}</span>
                   </div>
-                </div>
-                <div className="ticket-row-meta">
-                  <span>{ticket.requester}</span>
-                  <span>{ticket.queue}</span>
-                  <span>{ticket.assignee}</span>
-                  <span>{ticket.openedAtLabel}</span>
-                </div>
-              </button>
-            ))}
+                </button>
+              ))
+            ) : (
+              <div className="empty-state">
+                <strong>Nenhum chamado encontrado.</strong>
+                <span>Ajuste os filtros ou registre um novo chamado.</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="kanban-grid">
