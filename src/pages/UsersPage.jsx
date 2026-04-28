@@ -118,16 +118,16 @@ function UsersPage() {
       (candidate) => normalizeText(candidate.email) === normalizedEmail && candidate.id !== editingUserId,
     );
     if (duplicatedUser) {
-      pushToast("Email ja cadastrado", duplicatedUser.email, "warning");
+      pushToast("Email já cadastrado", duplicatedUser.email, "warning");
       return;
     }
 
     if (editingUserId) {
       updateUser(editingUserId, form);
-      pushToast("Usuario atualizado", form.name);
+      pushToast("Usuário atualizado", form.name);
     } else {
       addUser(form);
-      pushToast("Usuario cadastrado", form.name);
+      pushToast("Usuário cadastrado", form.name);
     }
 
     setShowCreateModal(false);
@@ -157,7 +157,7 @@ function UsersPage() {
     if (!canDeleteUsers) return;
     if (!candidate) return;
     if (candidate.id === user?.id) {
-      pushToast("Operacao bloqueada", "Nao e permitido excluir o usuario logado.", "warning");
+      pushToast("Operação bloqueada", "Não e permitido excluir o usuário logado.", "warning");
       return;
     }
 
@@ -165,7 +165,7 @@ function UsersPage() {
     setDetailUserId(null);
     setShowCreateModal(false);
     resetForm();
-    pushToast("Usuario removido", candidate.name);
+    pushToast("Usuário removido", candidate.name);
   };
 
   if (!canViewUsers) {
@@ -176,17 +176,17 @@ function UsersPage() {
     <div className="users-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">Usuarios</span>
-          <h2>Usuarios</h2>
+          <span className="eyebrow">Usuários</span>
+          <h2>Usuários</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
             <strong>{orderedUsers.length}</strong>
-            <span>usuarios no recorte</span>
+            <span>usuários no recorte</span>
           </div>
           <div className="insight-chip">
             <strong>{orderedUsers.filter((candidate) => candidate.department === "TI").length}</strong>
-            <span>usuarios TI</span>
+            <span>usuários TI</span>
           </div>
           <div className="insight-chip">
             <strong>{orderedUsers.filter((candidate) => candidate.permissions?.users_admin).length}</strong>
@@ -198,7 +198,7 @@ function UsersPage() {
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
-            <h2>Usuarios cadastrados</h2>
+            <h2>Usuários cadastrados</h2>
           </div>
           <div className="toolbar">
             <input
@@ -209,7 +209,7 @@ function UsersPage() {
             />
             {canCreateUsers ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
-                + Novo usuario
+                + Novo usuário
               </button>
             ) : null}
           </div>
@@ -279,7 +279,7 @@ function UsersPage() {
             <form className="ticket-create-form glpi-ticket-form" onSubmit={handleSubmit}>
               <div className="ticket-modal-header">
                 <div className="form-section-header">
-                  <strong>Novo usuario</strong>
+                  <strong>Novo usuário</strong>
                 </div>
                 <button className="ghost-button interactive-button" onClick={() => setShowCreateModal(false)} type="button">
                   Fechar
@@ -318,7 +318,7 @@ function UsersPage() {
                     <option>TI</option>
                     <option>RH</option>
                     <option>Financeiro</option>
-                    <option>Operacoes</option>
+                    <option>Operações</option>
                     <option>Comercial</option>
                   </select>
                 </label>
@@ -346,7 +346,7 @@ function UsersPage() {
               {canCreateUsers ? (
                 <div className="ticket-create-actions">
                   <button className="primary-button interactive-button" type="submit">
-                    Cadastrar usuario
+                    Cadastrar usuário
                   </button>
                 </div>
               ) : null}
@@ -419,7 +419,7 @@ function UsersPage() {
                     <option>TI</option>
                     <option>RH</option>
                     <option>Financeiro</option>
-                    <option>Operacoes</option>
+                    <option>Operações</option>
                     <option>Comercial</option>
                   </select>
                 </label>
@@ -447,7 +447,7 @@ function UsersPage() {
               {canEditUsers || canResetPasswords || canManagePermissions ? (
                 <div className="ticket-create-actions">
                   <button className="primary-button interactive-button" type="submit">
-                    Salvar usuario
+                    Salvar usuário
                   </button>
                 </div>
               ) : null}

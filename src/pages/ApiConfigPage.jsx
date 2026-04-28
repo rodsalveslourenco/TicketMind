@@ -55,7 +55,7 @@ function ApiConfigPage() {
       },
       editingId,
     );
-    pushToast(editingId ? "Configuracao atualizada" : "Configuracao criada", form.name);
+    pushToast(editingId ? "Configuração atualizada" : "Configuração criada", form.name);
     resetForm();
   };
 
@@ -69,7 +69,7 @@ function ApiConfigPage() {
         <div className="insight-strip">
           <div className="insight-chip">
             <strong>{orderedConfigs.length}</strong>
-            <span>integracoes</span>
+            <span>integrações</span>
           </div>
           <div className="insight-chip">
             <strong>{orderedConfigs.filter((config) => config.status === "Ativa").length}</strong>
@@ -86,7 +86,7 @@ function ApiConfigPage() {
         <section className="board-card glpi-panel">
           <div className="glpi-toolbar">
             <div>
-              <h2>{editingId ? "Editar integracao" : "Configuracao de API REST"}</h2>
+              <h2>{editingId ? "Editar integração" : "Configuração de API REST"}</h2>
             </div>
           </div>
 
@@ -140,7 +140,7 @@ function ApiConfigPage() {
             <div className="ticket-create-actions">
               {canConfigureApi ? (
                 <button className="primary-button interactive-button" type="submit">
-                  {editingId ? "Salvar configuracao" : "Cadastrar configuracao"}
+                  {editingId ? "Salvar configuração" : "Cadastrar configuração"}
                 </button>
               ) : null}
               {editingId ? (
@@ -155,7 +155,7 @@ function ApiConfigPage() {
         <section className="board-card glpi-panel record-grid-shell">
           <div className="glpi-toolbar">
             <div>
-              <h2>Integracoes registradas</h2>
+              <h2>Integrações registradas</h2>
             </div>
           </div>
           <div className="record-grid">
@@ -191,7 +191,7 @@ function ApiConfigPage() {
                         className="danger-button interactive-button"
                         onClick={() => {
                           deleteApiConfig(config.id);
-                          pushToast("Configuracao removida", config.name);
+                          pushToast("Configuração removida", config.name);
                         }}
                         type="button"
                       >

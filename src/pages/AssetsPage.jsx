@@ -17,7 +17,7 @@ const defaultForm = {
   model: "",
   owner: "",
   status: "Ativo",
-  criticality: "Media",
+  criticality: "Média",
   location: "",
   serial: "",
   assetTag: "",
@@ -105,14 +105,14 @@ function getAssetConfiguration(asset) {
   const processor = asset.processor || "";
 
   if (isComputerType(asset.type)) {
-    return [ram, storage, processor].filter(Boolean).join(" / ") || "Configuracao nao informada";
+    return [ram, storage, processor].filter(Boolean).join(" / ") || "Configuração não informada";
   }
 
   if (isPhoneType(asset.type)) {
-    return [asset.storage || "", ram].filter(Boolean).join(" / ") || "Configuracao nao informada";
+    return [asset.storage || "", ram].filter(Boolean).join(" / ") || "Configuração não informada";
   }
 
-  return asset.technicalSpec || asset.type || "Configuracao nao informada";
+  return asset.technicalSpec || asset.type || "Configuração não informada";
 }
 
 function getAssetPriorityClass(criticality) {
@@ -128,9 +128,9 @@ function buildHierarchyRows(assets, level) {
   assets.forEach((asset) => {
     const key =
       level === "manufacturer"
-        ? asset.manufacturer || "Nao informado"
+        ? asset.manufacturer || "Não informado"
         : level === "model"
-          ? asset.model || "Nao informado"
+          ? asset.model || "Não informado"
           : getAssetConfiguration(asset);
 
     if (!buckets.has(key)) {
@@ -344,7 +344,7 @@ function AssetsPage() {
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!form.name || !form.type || !form.manufacturer || !form.model || !form.owner || !form.serial) {
-      pushToast("Campos obrigatorios", "Preencha nome, tipo, marca, modelo, usuario e numero de serie.", "warning");
+      pushToast("Campos obrigatorios", "Preencha nome, tipo, marca, modelo, usuário e número de série.", "warning");
       return;
     }
 
@@ -357,7 +357,7 @@ function AssetsPage() {
       payload.manufacturer,
     );
     if (!selectedBrand || selectedBrand.name !== payload.manufacturer) {
-      pushToast("Marca invalida", "Selecione uma marca existente e compativel com o tipo do ativo.", "warning");
+      pushToast("Marca inválida", "Selecione uma marca existente e compativel com o tipo do ativo.", "warning");
       return;
     }
 
@@ -382,7 +382,7 @@ function AssetsPage() {
       (asset) => normalizeText(asset.serial) === normalizeText(payload.serial) && asset.id !== editingId,
     );
     if (serialConflict) {
-      pushToast("Numero de serie duplicado", serialConflict.serial, "warning");
+      pushToast("Número de série duplicado", serialConflict.serial, "warning");
       return;
     }
 
@@ -497,7 +497,7 @@ function AssetsPage() {
               <input
                 className="toolbar-search"
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por tipo, marca, modelo, patrimonio ou serie"
+                placeholder="Buscar por tipo, marca, modelo, patrimônio ou serie"
                 value={search}
               />
               {canCreateAsset ? (
@@ -562,7 +562,7 @@ function AssetsPage() {
                 <div className="sheet-row sheet-row-header">
                   <strong>Serie</strong>
                   <strong>Nome</strong>
-                  <strong>Usuario</strong>
+                  <strong>Usuário</strong>
                   <strong>Status</strong>
                   <strong>Patrimonio</strong>
                   <strong>Abrir</strong>
@@ -599,9 +599,9 @@ function AssetsPage() {
               <strong>Tipo</strong>
               <strong>Marca</strong>
               <strong>Modelo</strong>
-              <strong>Configuracao</strong>
+              <strong>Configuração</strong>
               <strong>Serie</strong>
-              <strong>Usuario</strong>
+              <strong>Usuário</strong>
             </div>
             {currentAssets.map((asset) => (
               <button
@@ -742,11 +742,11 @@ function AssetsPage() {
                   <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
-                  <span>Usuario</span>
+                  <span>Usuário</span>
                   <UserAutocomplete
                     disabled={!canLinkAssetUsers && Boolean(editingId)}
                     onChange={(nextValue) => setForm((current) => ({ ...current, owner: nextValue }))}
-                    placeholder="Comece a digitar um usuario"
+                    placeholder="Comece a digitar um usuário"
                     users={users}
                     value={form.owner}
                   />
@@ -763,16 +763,16 @@ function AssetsPage() {
                   <span>Criticidade</span>
                   <select disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("criticality")} value={form.criticality}>
                     <option>Baixa</option>
-                    <option>Media</option>
+                    <option>Média</option>
                     <option>Alta</option>
                   </select>
                 </label>
                 <label className="field-block">
-                  <span>Localizacao</span>
+                  <span>Localização</span>
                   <input disabled={!canMoveAsset && Boolean(editingId)} onChange={updateField("location")} value={form.location} />
                 </label>
                 <label className="field-block">
-                  <span>Numero de serie</span>
+                  <span>Número de série</span>
                   <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("serial")} value={form.serial} />
                 </label>
                 <label className="field-block">
@@ -844,7 +844,7 @@ function AssetsPage() {
             <form className="glpi-ticket-form compact-form" onSubmit={handleQuickCatalogSubmit}>
               <div className="ticket-modal-header">
                 <div>
-                  <h2>Cadastro rapido de Marca e Modelo</h2>
+                  <h2>Cadastro rápido de Marca e Modelo</h2>
                 </div>
                 <button className="ghost-button compact-button interactive-button" onClick={() => setShowQuickCatalogModal(false)} type="button">
                   Fechar

@@ -11,7 +11,7 @@ function UserAutocomplete({
   users,
   value,
   onChange,
-  placeholder = "Comece a digitar um usuario",
+  placeholder = "Comece a digitar um usuário",
   filterFn,
   disabled = false,
 }) {

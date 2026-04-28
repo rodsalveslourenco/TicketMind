@@ -13,9 +13,9 @@ function buildInventoryRows(assets) {
   const buckets = new Map();
 
   assets.forEach((asset) => {
-    const type = asset.type || "Nao informado";
-    const manufacturer = asset.manufacturer || "Nao informado";
-    const model = asset.model || "Nao informado";
+    const type = asset.type || "Não informado";
+    const manufacturer = asset.manufacturer || "Não informado";
+    const model = asset.model || "Não informado";
     const key = `${type}::${manufacturer}::${model}`;
 
     if (!buckets.has(key)) {
@@ -64,8 +64,8 @@ function InventoryPage() {
     <div className="users-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">Inventario</span>
-          <h2>Inventario</h2>
+          <span className="eyebrow">Inventário</span>
+          <h2>Inventário</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -86,13 +86,13 @@ function InventoryPage() {
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
-            <h2>Consolidado de inventario</h2>
+            <h2>Consolidado de inventário</h2>
           </div>
           <div className="toolbar">
             <input
               className="toolbar-search"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por tipo, fabricante, modelo ou numero de serie"
+              placeholder="Buscar por tipo, fabricante, modelo ou número de série"
               value={search}
             />
           </div>
@@ -131,7 +131,7 @@ function InventoryPage() {
           ) : (
             <div className="empty-state">
               <strong>Nenhum item encontrado.</strong>
-              <span>Ajuste o filtro para localizar registros do inventario.</span>
+              <span>Ajuste o filtro para localizar registros do inventário.</span>
             </div>
           )}
         </div>
@@ -176,7 +176,7 @@ function InventoryPage() {
                   <strong>{selectedItem.model}</strong>
                 </div>
                 <div className="field-block field-full">
-                  <span>Numeros de serie</span>
+                  <span>Números de série</span>
                   <div className="row-stats row-stats-wrap">
                     {selectedItem.serials.map((serial) => (
                       <span className="badge badge-neutral" key={serial}>

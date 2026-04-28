@@ -29,7 +29,7 @@ function DashboardPage() {
   );
 
   const technologyPulse = [
-    { label: "Usuarios TI", value: users.filter((user) => normalizeText(user.department) === "ti").length },
+    { label: "Usuários TI", value: users.filter((user) => normalizeText(user.department) === "ti").length },
     { label: "Ativos ativos", value: summary.activeAssets },
     { label: "Projetos em curso", value: summary.activeProjects },
     { label: "APIs ativas", value: summary.activeApis },
@@ -40,7 +40,7 @@ function DashboardPage() {
       label: "Em atendimento",
       value: tickets.filter((ticket) => normalizeText(ticket.status) === "em atendimento").length,
     },
-    { label: "Aguardando aprovacao", value: summary.waitingApproval },
+    { label: "Aguardando aprova\u00e7\u00e3o", value: summary.waitingApproval },
     { label: "Resolvidos", value: summary.solved },
     { label: "Resposta inicial", value: `${summary.firstResponseMinutes} min` },
   ];
@@ -56,7 +56,7 @@ function DashboardPage() {
         <article className="metric-card">
           <span>Chamados criticos</span>
           <strong>{summary.criticalOpen}</strong>
-          <small>Itens com maior risco para a operacao</small>
+          <small>Itens com maior risco para a operação</small>
         </article>
         <article className="metric-card">
           <span>SLA</span>
@@ -66,7 +66,7 @@ function DashboardPage() {
         <article className="metric-card">
           <span>CSAT</span>
           <strong>{summary.csat}/5</strong>
-          <small>Percepcao media do atendimento</small>
+          <small>Percepção média do atendimento</small>
         </article>
       </section>
 
@@ -82,11 +82,11 @@ function DashboardPage() {
               <div className="table-row" key={queue.id}>
                 <div>
                   <strong>{queue.name}</strong>
-                  <span>{queue.assigned} tecnicos alocados</span>
+                  <span>{queue.assigned} técnicos alocados</span>
                 </div>
                 <div className="row-stats">
                   <span>{queue.open} chamados</span>
-                  <span>{queue.overdue} proximos do SLA</span>
+                  <span>{queue.overdue} próximos do SLA</span>
                 </div>
               </div>
             ))}
@@ -114,7 +114,7 @@ function DashboardPage() {
         <div className="board-card">
           <div className="card-heading">
             <div>
-              <h2>Chamados que exigem acao</h2>
+              <h2>Chamados que exigem ação</h2>
             </div>
           </div>
           <div className="ticket-stack">
@@ -145,7 +145,7 @@ function DashboardPage() {
         <div className="board-card">
           <div className="card-heading">
             <div>
-              <h2>Projetos e integracoes</h2>
+              <h2>Projetos e integrações</h2>
             </div>
           </div>
           <div className="dashboard-column">
@@ -224,7 +224,7 @@ function DashboardPage() {
             <div className="kpi-item" key={report.id}>
               <div>
                 <strong>{report.label}</strong>
-                <span>Tendencia no periodo</span>
+                <span>Tendência no período</span>
               </div>
               <div className="kpi-value">
                 <strong>{report.value}</strong>

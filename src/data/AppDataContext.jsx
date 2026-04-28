@@ -116,9 +116,9 @@ function resolveAssetType(type) {
 function computePriority(urgency, impact) {
   const scoreMap = { baixa: 1, media: 2, alta: 3, critica: 4 };
   const score = Math.max(scoreMap[normalizeText(urgency)] ?? 2, scoreMap[normalizeText(impact)] ?? 2);
-  if (score >= 4) return "Critica";
+  if (score >= 4) return "Crítica";
   if (score === 3) return "Alta";
-  if (score === 2) return "Media";
+  if (score === 2) return "Média";
   return "Baixa";
 }
 
@@ -251,7 +251,7 @@ export function AppDataProvider({ children }) {
   const visibleTickets = useMemo(() => filterTicketsForUser(data.tickets, user), [data.tickets, user]);
 
   const summary = useMemo(() => {
-    const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovacao", "Analise"];
+    const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovação", "Análise"];
     const openTickets = visibleTickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
     const criticalOpen = visibleTickets.filter(
       (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.includes(ticket.status),

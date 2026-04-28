@@ -52,7 +52,7 @@ function LoginPage() {
             <input
               autoComplete="username"
               onChange={updateField("email")}
-              placeholder="usuario@empresa.com"
+              placeholder="usuário@empresa.com"
               type="email"
               value={form.email}
             />

@@ -240,7 +240,7 @@ function BrandsModelsPage() {
         (asset) => asset.manufacturer === row.brandName && matchesAssetType(asset, row.assetType),
       );
       if (hasModels || hasAssets) {
-        pushToast("Exclusao bloqueada", "A marca possui modelos ou ativos vinculados.", "warning");
+        pushToast("Exclusão bloqueada", "A marca possui modelos ou ativos vinculados.", "warning");
         return;
       }
       deleteBrand(row.brandId);
@@ -255,7 +255,7 @@ function BrandsModelsPage() {
         matchesAssetType(asset, row.assetType),
     );
     if (hasAssets) {
-      pushToast("Exclusao bloqueada", "O modelo possui ativos vinculados.", "warning");
+      pushToast("Exclusão bloqueada", "O modelo possui ativos vinculados.", "warning");
       return;
     }
     deleteModel(row.modelId);

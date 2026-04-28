@@ -47,8 +47,8 @@ function getDeadlineState(project) {
   const dueDate = new Date(`${project.dueDate}T00:00:00`);
   const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
 
-  if (normalizeText(project.status) === "concluido") {
-    return { label: "Concluido", tone: "badge-baixa", days: diffDays };
+  if (normalizeText(project.status) === "concluído") {
+    return { label: "Concluído", tone: "badge-baixa", days: diffDays };
   }
 
   if (diffDays < 0) {
@@ -206,11 +206,11 @@ function ProjectsPage() {
     if (editingId ? !canEditProject : !canCreateProject) return;
     if (!form.name || !form.manager || !form.dueDate) return;
     if (phaseDistribution > 100) {
-      pushToast("Distribuicao invalida", "A soma dos percentuais das fases nao pode ultrapassar 100%.", "warning");
+      pushToast("Distribuição inválida", "A soma dos percentuais das fases não pode ultrapassar 100%.", "warning");
       return;
     }
     if (phaseDistribution < 100) {
-      pushToast("Distribuicao incompleta", "O projeto foi salvo com fases abaixo de 100% de distribuicao.", "warning");
+      pushToast("Distribuição incompleta", "O projeto foi salvo com fases abaixo de 100% de distribuição.", "warning");
     }
 
     const payload = {
@@ -271,7 +271,7 @@ function ProjectsPage() {
               >
                 Todos
               </button>
-              {["Planejado", "Em andamento", "Em risco", "Concluido"].map((status) => (
+              {["Planejado", "Em andamento", "Em risco", "Concluído"].map((status) => (
                 <button
                   key={status}
                   className={`filter-pill interactive-button${statusFilter === status ? " is-active" : ""}`}
@@ -284,7 +284,7 @@ function ProjectsPage() {
               <input
                 className="toolbar-search"
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por projeto, patrocinador, responsavel ou resumo"
+                placeholder="Buscar por projeto, patrocinador, responsável ou resumo"
                 value={search}
               />
               {canCreateProject ? (
@@ -300,7 +300,7 @@ function ProjectsPage() {
               <strong>Projeto</strong>
               <strong>Status</strong>
               <strong>Progresso</strong>
-              <strong>Responsavel</strong>
+              <strong>Responsável</strong>
               <strong>Patrocinador</strong>
               <strong>Entrega</strong>
               <strong>Acoes</strong>
@@ -319,8 +319,8 @@ function ProjectsPage() {
                     <div className="project-row-main">
                       <strong>{project.name}</strong>
                       <span>
-                        {project.summary || "Resumo nao informado."}
-                        {project.phases?.length ? ` | ${project.phases.filter((phase) => phase.completed).length}/${project.phases.length} fases concluidas` : ""}
+                        {project.summary || "Resumo não informado."}
+                        {project.phases?.length ? ` | ${project.phases.filter((phase) => phase.completed).length}/${project.phases.length} fases concluídas` : ""}
                       </span>
                     </div>
                     <div className="project-row-stack">
@@ -406,11 +406,11 @@ function ProjectsPage() {
                     <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("sponsor")} value={form.sponsor} />
                   </label>
                   <label className="field-block">
-                    <span>Responsavel</span>
+                    <span>Responsável</span>
                     <UserAutocomplete
                       disabled={!canManageTasks && editingId}
                       onChange={(nextValue) => setForm((current) => ({ ...current, manager: nextValue }))}
-                      placeholder="Comece a digitar um usuario"
+                      placeholder="Comece a digitar um usuário"
                       users={users}
                       value={form.manager}
                     />
@@ -421,7 +421,7 @@ function ProjectsPage() {
                       <option>Planejado</option>
                       <option>Em andamento</option>
                       <option>Em risco</option>
-                      <option>Concluido</option>
+                      <option>Concluído</option>
                     </select>
                   </label>
                   <label className="field-block">
@@ -442,14 +442,14 @@ function ProjectsPage() {
               <div className="glpi-ticket-form compact-form projects-phases-panel">
                 <div className="compact-panel-heading">
                   <strong>Fases do projeto</strong>
-                  <span>{phaseProgress}% concluido | distribuicao {phaseDistribution}%</span>
+                  <span>{phaseProgress}% concluído | distribuição {phaseDistribution}%</span>
                 </div>
 
                 {phaseDistribution > 100 ? (
-                  <div className="form-alert">A soma dos percentuais das fases nao pode ultrapassar 100%.</div>
+                  <div className="form-alert">A soma dos percentuais das fases não pode ultrapassar 100%.</div>
                 ) : null}
                 {phaseDistribution < 100 ? (
-                  <div className="projects-phase-note">A distribuicao atual esta abaixo de 100%. O projeto pode ser salvo assim mesmo.</div>
+                  <div className="projects-phase-note">A distribuição atual está abaixo de 100%. O projeto pode ser salvo assim mesmo.</div>
                 ) : null}
 
                 <div className="glpi-form-grid compact-form-grid">
@@ -458,7 +458,7 @@ function ProjectsPage() {
                     <input onChange={updatePhaseField("name")} value={phaseForm.name} />
                   </label>
                   <label className="field-block field-span-2">
-                    <span>Descricao</span>
+                    <span>Descrição</span>
                     <input onChange={updatePhaseField("description")} value={phaseForm.description} />
                   </label>
                   <label className="field-block">
@@ -466,7 +466,7 @@ function ProjectsPage() {
                     <input min="0" onChange={updatePhaseField("weight")} type="number" value={phaseForm.weight} />
                   </label>
                   <label className="field-block projects-phase-checkbox">
-                    <span>Concluida</span>
+                    <span>Concluída</span>
                     <input checked={phaseForm.completed} onChange={updatePhaseField("completed")} type="checkbox" />
                   </label>
                 </div>
@@ -491,7 +491,7 @@ function ProjectsPage() {
 
                 <div className="sheet-list projects-phase-list">
                   <div className="sheet-row sheet-row-header projects-phase-row">
-                    <strong>Concluida</strong>
+                    <strong>Concluída</strong>
                     <strong>Fase</strong>
                     <strong>Percentual</strong>
                     <strong>Acoes</strong>
@@ -501,7 +501,7 @@ function ProjectsPage() {
                       <input checked={Boolean(phase.completed)} onChange={() => togglePhaseCompleted(phase.id)} type="checkbox" />
                       <div className="project-row-main">
                         <strong>{phase.name}</strong>
-                        <span>{phase.description || "Sem descricao adicional."}</span>
+                        <span>{phase.description || "Sem descrição adicional."}</span>
                       </div>
                       <span>{phase.weight}%</span>
                       <div className="compact-row-actions">
@@ -575,7 +575,7 @@ function ProjectsPage() {
 
               <div className="detail-grid compact-form-grid">
                 <div className="field-block">
-                  <span>Responsavel</span>
+                  <span>Responsável</span>
                   <strong>{detailProject.manager || "-"}</strong>
                 </div>
                 <div className="field-block">
@@ -600,7 +600,7 @@ function ProjectsPage() {
 
               <div className="field-block field-full">
                 <span>Resumo</span>
-                <p className="project-summary">{detailProject.summary || "Resumo nao informado."}</p>
+                <p className="project-summary">{detailProject.summary || "Resumo não informado."}</p>
               </div>
 
               <div className="sheet-list projects-phase-list">
@@ -608,12 +608,12 @@ function ProjectsPage() {
                   <strong>Status</strong>
                   <strong>Fase</strong>
                   <strong>Percentual</strong>
-                  <strong>Descricao</strong>
+                  <strong>Descrição</strong>
                 </div>
                 {(detailProject.phases || []).map((phase) => (
                   <div className="sheet-row projects-phase-row" key={phase.id}>
                     <span className={`badge ${phase.completed ? "badge-baixa" : "badge-neutral"}`}>
-                      {phase.completed ? "Concluida" : "Pendente"}
+                      {phase.completed ? "Concluída" : "Pendente"}
                     </span>
                     <strong>{phase.name}</strong>
                     <span>{phase.weight}%</span>

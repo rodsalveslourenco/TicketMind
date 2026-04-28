@@ -44,7 +44,7 @@ function AppLayout() {
       <div className="workspace">
         <header className="topbar">
           <div>
-            <h1>Central de operacoes</h1>
+            <h1>Central de operações</h1>
           </div>
           <div className="topbar-actions">
             <div className="user-badge">

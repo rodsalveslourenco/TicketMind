@@ -9,8 +9,8 @@ const defaultCreateForm = {
   title: "",
   type: "Incidente",
   location: "",
-  urgency: "Media",
-  impact: "Media",
+  urgency: "Média",
+  impact: "Média",
   openedAt: new Date().toISOString(),
   watchers: [],
   description: "",
@@ -24,16 +24,16 @@ const detailFields = [
   { key: "requester", label: "Solicitante", kind: "input" },
   { key: "source", label: "Origem", kind: "select" },
   { key: "category", label: "Categoria", kind: "input" },
-  { key: "location", label: "Localizacao", kind: "input" },
-  { key: "urgency", label: "Urgencia", kind: "select" },
+  { key: "location", label: "Localização", kind: "input" },
+  { key: "urgency", label: "Urgência", kind: "select" },
   { key: "impact", label: "Impacto", kind: "select" },
   { key: "dueDate", label: "Data limite", kind: "date" },
   { key: "openedAt", label: "Abertura", kind: "datetime" },
   { key: "watchers", label: "Observadores", kind: "input" },
-  { key: "assignee", label: "Tecnico responsavel", kind: "assignee" },
+  { key: "assignee", label: "Técnico responsável", kind: "assignee" },
 ];
 
-const kanbanStatuses = ["Aberto", "Em atendimento", "Aguardando aprovacao", "Analise", "Resolvido"];
+const kanbanStatuses = ["Aberto", "Em atendimento", "Aguardando aprovação", "Análise", "Resolvido"];
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -127,7 +127,7 @@ function TicketsPage() {
     let currentTickets = tickets;
 
     if (filter !== "Todos") {
-      if (filter === "Proximos do SLA") {
+      if (filter === "Próximos do SLA") {
         currentTickets = currentTickets.filter((ticket) => ticket.sla.toLowerCase().includes("min"));
       } else {
         const normalizedFilter = normalizeText(filter);
@@ -212,8 +212,8 @@ function TicketsPage() {
       source: detailTicket.source,
       category: detailTicket.category,
       location: detailTicket.location || "",
-      urgency: detailTicket.urgency || "Media",
-      impact: detailTicket.impact || "Media",
+      urgency: detailTicket.urgency || "Média",
+      impact: detailTicket.impact || "Média",
       openedAt: toLocalDatetimeInput(detailTicket.openedAt),
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
@@ -366,14 +366,14 @@ function TicketsPage() {
           </div>
           <div className="insight-chip">
             <strong>{tiUsers.length}</strong>
-            <span>tecnicos de TI</span>
+            <span>técnicos de TI</span>
           </div>
           <div className="insight-chip">
             <strong>{filteredTickets.length}</strong>
             <span>itens no recorte atual</span>
           </div>
         </div>
-        {!canSeeAllTickets ? <p className="module-caption">Visualizacao restrita aos seus proprios chamados.</p> : null}
+        {!canSeeAllTickets ? <p className="module-caption">Visualização restrita aos seus próprios chamados.</p> : null}
       </section>
 
       <section className="board-card glpi-panel">
@@ -407,7 +407,7 @@ function TicketsPage() {
         </div>
 
         <div className="toolbar glpi-filter-bar glpi-toolbar-stack">
-          {["Todos", "Incidente", "Requisicao", "Aguardando aprovacao", "Proximos do SLA"].map((item) => (
+          {["Todos", "Incidente", "Requisição", "Aguardando aprovação", "Próximos do SLA"].map((item) => (
             <button
               key={item}
               className={`filter-pill interactive-button${filter === item ? " is-active" : ""}`}
@@ -420,7 +420,7 @@ function TicketsPage() {
           <input
             className="toolbar-search"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por titulo, fila, solicitante ou tecnico"
+            placeholder="Buscar por título, fila, solicitante ou técnico"
             value={search}
           />
         </div>
@@ -522,37 +522,37 @@ function TicketsPage() {
                   <span>Tipo</span>
                   <select onChange={updateCreateField("type")} value={createForm.type}>
                     <option>Incidente</option>
-                    <option>Requisicao</option>
+                    <option>Requisição</option>
                     <option>Problema</option>
                   </select>
                 </label>
                 <div className="field-block">
                   <span>Solicitante</span>
                   <div className="requester-stamp">
-                    <strong>{user?.name || "Usuario nao identificado"}</strong>
-                    <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
+                    <strong>{user?.name || "Usuário não identificado"}</strong>
+                    <small>{user ? `${user.email} | ${user.role}` : "Faça login para registrar o solicitante."}</small>
                   </div>
                 </div>
                 <label className="field-block">
-                  <span>Localizacao</span>
+                  <span>Localização</span>
                   <input onChange={updateCreateField("location")} value={createForm.location} />
                 </label>
                 <label className="field-block">
-                  <span>Urgencia</span>
+                  <span>Urgência</span>
                   <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
                     <option>Baixa</option>
-                    <option>Media</option>
+                    <option>Média</option>
                     <option>Alta</option>
-                    <option>Critica</option>
+                    <option>Crítica</option>
                   </select>
                 </label>
                 <label className="field-block">
                   <span>Impacto</span>
                   <select onChange={updateCreateField("impact")} value={createForm.impact}>
                     <option>Baixa</option>
-                    <option>Media</option>
+                    <option>Média</option>
                     <option>Alta</option>
-                    <option>Critica</option>
+                    <option>Crítica</option>
                   </select>
                 </label>
                 <label className="field-block">
@@ -599,7 +599,7 @@ function TicketsPage() {
                   </div>
                 </div>
                 <label className="field-block field-full">
-                  <span>Descricao</span>
+                  <span>Descrição</span>
                   <textarea onChange={updateCreateField("description")} value={createForm.description} />
                 </label>
               </div>
@@ -685,7 +685,7 @@ function TicketsPage() {
                     {field.kind === "select" && field.key === "type" ? (
                       <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Incidente</option>
-                        <option>Requisicao</option>
+                        <option>Requisição</option>
                         <option>Problema</option>
                       </select>
                     ) : null}
@@ -693,8 +693,8 @@ function TicketsPage() {
                       <select disabled={!canChangeStatus} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Aberto</option>
                         <option>Em atendimento</option>
-                        <option>Aguardando aprovacao</option>
-                        <option>Analise</option>
+                        <option>Aguardando aprovação</option>
+                        <option>Análise</option>
                         <option>Resolvido</option>
                       </select>
                     ) : null}
@@ -702,7 +702,7 @@ function TicketsPage() {
                       <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Service Desk</option>
                         <option>Infraestrutura</option>
-                        <option>Aplicacoes</option>
+                        <option>Aplicações</option>
                         <option>Seguranca</option>
                       </select>
                     ) : null}
@@ -717,9 +717,9 @@ function TicketsPage() {
                     {field.kind === "select" && (field.key === "urgency" || field.key === "impact") ? (
                       <select disabled={!canChangePriority} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Baixa</option>
-                        <option>Media</option>
+                        <option>Média</option>
                         <option>Alta</option>
-                        <option>Critica</option>
+                        <option>Crítica</option>
                       </select>
                     ) : null}
                     {field.kind === "assignee" ? (
@@ -727,7 +727,7 @@ function TicketsPage() {
                         filterFn={(candidate) => normalizeText(candidate.department) === "ti"}
                         disabled={!canAssignTicket}
                         onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
-                        placeholder="Comece a digitar um tecnico de TI"
+                        placeholder="Comece a digitar um técnico de TI"
                         users={tiUsers}
                         value={detailForm.assignee || ""}
                       />
@@ -770,12 +770,12 @@ function TicketsPage() {
               </div>
 
               <label className="field-block field-full">
-                <span>Descricao</span>
+                <span>Descrição</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} value={detailForm.description} />
               </label>
 
               <label className="field-block field-full">
-                <span>Solucao / acompanhamento tecnico</span>
+                <span>Solução / acompanhamento técnico</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
 
@@ -828,7 +828,7 @@ function TicketsPage() {
                 ) : (
                   <div className="empty-state">
                     <strong>Nenhum anexo vinculado.</strong>
-                    <span>Use o botao acima para anexar prints, PDFs, planilhas ou outros arquivos.</span>
+                    <span>Use o botão acima para anexar prints, PDFs, planilhas ou outros arquivos.</span>
                   </div>
                 )}
               </div>
@@ -836,7 +836,7 @@ function TicketsPage() {
               <div className="ticket-create-actions">
                 {canEditTicket ? (
                   <button className="primary-button interactive-button" type="submit">
-                    Salvar alteracoes
+                    Salvar alterações
                   </button>
                 ) : null}
               </div>
