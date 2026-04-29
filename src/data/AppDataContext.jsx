@@ -6,6 +6,7 @@ import {
   canViewOwnTickets,
   defaultPermissions as defaultUserPermissions,
   hasAnyPermission,
+  normalizeRoleName,
   normalizeUserPermissions,
 } from "./permissions";
 import { seedData } from "./seedData";
@@ -22,6 +23,7 @@ function hydrateUsers(users) {
   return baseUsers.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
+    role: normalizeRoleName(candidate.role),
     permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
   }));
 }
@@ -109,7 +111,7 @@ function sanitizeUserPayload(payload) {
     name: String(payload.name || "").trim(),
     email: String(payload.email || "").trim().toLowerCase(),
     password: payload.password || "admin0123",
-    role: String(payload.role || "").trim(),
+    role: normalizeRoleName(payload.role),
     team: String(payload.team || "").trim(),
     department: String(payload.department || "").trim(),
     avatar: String(payload.avatar || "").trim(),

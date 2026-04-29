@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import initSqlJs from "sql.js";
 import { seedData } from "../src/data/seedData.js";
-import { normalizeUserPermissions } from "../src/data/permissions.js";
+import { normalizeRoleName, normalizeUserPermissions } from "../src/data/permissions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +22,7 @@ function buildDefaultUsers() {
   return seedData.users.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
+    role: normalizeRoleName(candidate.role),
     permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
   }));
 }
@@ -31,6 +32,7 @@ function withDefaults(stored = {}) {
     ? stored.users.map((candidate) => ({
         ...candidate,
         password: candidate.password || "admin0123",
+        role: normalizeRoleName(candidate.role),
         permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
       }))
     : buildDefaultUsers();

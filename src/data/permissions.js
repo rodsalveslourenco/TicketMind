@@ -130,6 +130,146 @@ function setPermissions(keys) {
   return keys.reduce((accumulator, key) => ({ ...accumulator, [key]: true }), { ...emptyPermissions });
 }
 
+const roleAliases = {
+  Administrador: "Administrador da Plataforma",
+  Analista: "Analista de Service Desk",
+  Especialista: "Especialista de Infraestrutura",
+  Coordenador: "Gestor de Area",
+  Coordenadora: "Gestor de Area",
+  Solicitante: "Solicitante Interno",
+};
+
+export function normalizeRoleName(role) {
+  const sanitizedRole = String(role || "").trim();
+  return roleAliases[sanitizedRole] || sanitizedRole || "Solicitante Interno";
+}
+
+export const roleProfiles = [
+  {
+    name: "Administrador da Plataforma",
+    description: "Controle total da plataforma, acessos, configuracoes e operacao.",
+    permissions: setPermissions(allPermissionKeys),
+  },
+  {
+    name: "Gestor de TI",
+    description: "Acompanha a operacao, gerencia chamados, ativos, projetos e usuarios.",
+    permissions: setPermissions([
+      "dashboard_view",
+      "tickets_view_own",
+      "tickets_view_all",
+      "tickets_create",
+      "tickets_edit",
+      "tickets_close",
+      "tickets_reopen",
+      "tickets_change_priority",
+      "tickets_change_status",
+      "tickets_assign",
+      "tickets_export",
+      "assets_view",
+      "assets_create",
+      "assets_edit",
+      "assets_move",
+      "assets_link_users",
+      "assets_export",
+      "inventory_view",
+      "inventory_create",
+      "inventory_edit",
+      "inventory_move_stock",
+      "inventory_export",
+      "brands_models_view",
+      "brands_models_create",
+      "brands_models_edit",
+      "projects_view",
+      "projects_create",
+      "projects_edit",
+      "projects_manage_tasks",
+      "projects_export",
+      "api_rest_view",
+      "api_rest_generate_tokens",
+      "api_rest_revoke_tokens",
+      "users_view",
+      "users_create",
+      "users_edit",
+      "users_reset_password",
+    ]),
+  },
+  {
+    name: "Analista de Service Desk",
+    description: "Opera a fila de atendimento, tratamento, atribuicao e fechamento de chamados.",
+    permissions: setPermissions([
+      "dashboard_view",
+      "tickets_view_own",
+      "tickets_view_all",
+      "tickets_create",
+      "tickets_edit",
+      "tickets_close",
+      "tickets_reopen",
+      "tickets_change_priority",
+      "tickets_change_status",
+      "tickets_assign",
+      "tickets_export",
+      "assets_view",
+      "inventory_view",
+      "projects_view",
+    ]),
+  },
+  {
+    name: "Especialista de Infraestrutura",
+    description: "Atua em incidentes tecnicos e administra ativos, inventario e catalogo tecnico.",
+    permissions: setPermissions([
+      "dashboard_view",
+      "tickets_view_own",
+      "tickets_view_all",
+      "tickets_create",
+      "tickets_edit",
+      "tickets_close",
+      "tickets_reopen",
+      "tickets_change_priority",
+      "tickets_change_status",
+      "tickets_assign",
+      "assets_view",
+      "assets_create",
+      "assets_edit",
+      "assets_move",
+      "assets_link_users",
+      "assets_export",
+      "inventory_view",
+      "inventory_create",
+      "inventory_edit",
+      "inventory_move_stock",
+      "inventory_export",
+      "brands_models_view",
+      "brands_models_create",
+      "brands_models_edit",
+      "projects_view",
+    ]),
+  },
+  {
+    name: "Gestor de Area",
+    description: "Acompanha chamados da area, indicadores e projetos, sem administracao tecnica.",
+    permissions: setPermissions([
+      "dashboard_view",
+      "tickets_view_own",
+      "tickets_create",
+      "projects_view",
+    ]),
+  },
+  {
+    name: "Solicitante Interno",
+    description: "Abre e acompanha os proprios chamados.",
+    permissions: setPermissions(["dashboard_view", "tickets_view_own", "tickets_create"]),
+  },
+];
+
+export function getRoleProfile(role) {
+  const normalizedRole = normalizeRoleName(role);
+  return roleProfiles.find((profile) => profile.name === normalizedRole) || roleProfiles[roleProfiles.length - 1];
+}
+
+export function getRolePermissions(role) {
+  return { ...getRoleProfile(role).permissions };
+}
+
 export function hasPermission(user, permissionKey) {
   return Boolean(user?.permissions?.[permissionKey]);
 }
@@ -157,13 +297,19 @@ export function getUserHomePath(user) {
 }
 
 export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
-  const nextPermissions = { ...emptyPermissions };
+  const nextPermissions = { ...getRolePermissions(user.role) };
+  let hasExplicitPermission = false;
 
   allPermissionKeys.forEach((key) => {
     if (rawPermissions[key] !== undefined) {
       nextPermissions[key] = Boolean(rawPermissions[key]);
+      hasExplicitPermission = true;
     }
   });
+
+  if (!hasExplicitPermission && !Object.keys(rawPermissions || {}).length) {
+    return nextPermissions;
+  }
 
   if (rawPermissions.dashboard) nextPermissions.dashboard_view = true;
 

@@ -3,21 +3,23 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import {
-  defaultPermissions,
+  getRolePermissions,
   hasAnyPermission,
+  normalizeRoleName,
   normalizeUserPermissions,
   permissionGroups,
+  roleProfiles,
 } from "../data/permissions";
 
 const defaultUserForm = {
   name: "",
   email: "",
   password: "admin0123",
-  role: "Analista",
+  role: "Solicitante Interno",
   team: "",
   department: "TI",
   avatar: "",
-  permissions: defaultPermissions,
+  permissions: getRolePermissions("Solicitante Interno"),
 };
 
 function maskPassword(password) {
@@ -95,6 +97,15 @@ function UsersPage() {
     setForm((current) => ({ ...current, [field]: event.target.value }));
   };
 
+  const updateRoleField = (event) => {
+    const nextRole = normalizeRoleName(event.target.value);
+    setForm((current) => ({
+      ...current,
+      role: nextRole,
+      permissions: getRolePermissions(nextRole),
+    }));
+  };
+
   const updatePermission = (permissionKey) => (event) => {
     setForm((current) => ({
       ...current,
@@ -116,7 +127,7 @@ function UsersPage() {
       name: candidate.name,
       email: candidate.email,
       password: candidate.password || "admin0123",
-      role: candidate.role,
+      role: normalizeRoleName(candidate.role),
       team: candidate.team,
       department: candidate.department,
       avatar: candidate.avatar || "",
@@ -181,6 +192,8 @@ function UsersPage() {
     resetForm();
     setShowCreateModal(true);
   };
+
+  const selectedRoleProfile = roleProfiles.find((profile) => profile.name === form.role) || roleProfiles[0];
 
   const openDetailModal = (candidate) => {
     populateForm(candidate);
@@ -361,12 +374,12 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Perfil</span>
-                  <select onChange={updateField("role")} value={form.role}>
-                    <option>Administrador</option>
-                    <option>Analista</option>
-                    <option>Especialista</option>
-                    <option>Coordenador</option>
-                    <option>Solicitante</option>
+                  <select onChange={updateRoleField} value={form.role}>
+                    {roleProfiles.map((profile) => (
+                      <option key={profile.name} value={profile.name}>
+                        {profile.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="field-block">
@@ -383,6 +396,10 @@ function UsersPage() {
                     <option>Comercial</option>
                   </select>
                 </label>
+              </div>
+              <div className="board-card compact-record-card">
+                <strong>Escopo do perfil</strong>
+                <span>{selectedRoleProfile.description}</span>
               </div>
               <div className="permissions-panel">
                 {permissionGroups.map((group) => (
@@ -475,12 +492,12 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Perfil</span>
-                  <select disabled={!canEditUsers} onChange={updateField("role")} value={form.role}>
-                    <option>Administrador</option>
-                    <option>Analista</option>
-                    <option>Especialista</option>
-                    <option>Coordenador</option>
-                    <option>Solicitante</option>
+                  <select disabled={!canEditUsers} onChange={updateRoleField} value={form.role}>
+                    {roleProfiles.map((profile) => (
+                      <option key={profile.name} value={profile.name}>
+                        {profile.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="field-block">
@@ -497,6 +514,10 @@ function UsersPage() {
                     <option>Comercial</option>
                   </select>
                 </label>
+              </div>
+              <div className="board-card compact-record-card">
+                <strong>Escopo do perfil</strong>
+                <span>{selectedRoleProfile.description}</span>
               </div>
               <div className="permissions-panel">
                 {permissionGroups.map((group) => (
