@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAppData } from "../data/AppDataContext";
 
 function normalizeText(value) {
@@ -17,8 +17,59 @@ function formatMonthLabel(date) {
   return new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date).replace(".", "");
 }
 
+function parseTicketDate(ticket) {
+  const parsed = new Date(ticket.openedAt || Date.now());
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function DashboardPage() {
   const { apiConfigs, assets, projects, reports, summary, tickets, users } = useAppData();
+  const [periodFilter, setPeriodFilter] = useState("90");
+  const [queueFilter, setQueueFilter] = useState("Todas");
+  const [assigneeFilter, setAssigneeFilter] = useState("Todos");
+
+  const openStatuses = useMemo(
+    () => new Set(["aberto", "em atendimento", "aguardando aprovacao", "analise"]),
+    [],
+  );
+
+  const queueOptions = useMemo(
+    () => ["Todas", ...new Set(tickets.map((ticket) => String(ticket.queue || "Sem fila").trim() || "Sem fila"))],
+    [tickets],
+  );
+
+  const assigneeOptions = useMemo(
+    () => ["Todos", ...new Set(tickets.map((ticket) => String(ticket.assignee || "Nao atribuido").trim() || "Nao atribuido"))],
+    [tickets],
+  );
+
+  const filteredTickets = useMemo(() => {
+    const anchorDate = tickets.length
+      ? tickets.reduce((latest, ticket) => {
+          const openedAt = parseTicketDate(ticket);
+          if (!openedAt) return latest;
+          return openedAt > latest ? openedAt : latest;
+        }, new Date(0))
+      : new Date();
+
+    return tickets.filter((ticket) => {
+      const queueName = String(ticket.queue || "Sem fila").trim() || "Sem fila";
+      const assigneeName = String(ticket.assignee || "Nao atribuido").trim() || "Nao atribuido";
+
+      if (queueFilter !== "Todas" && queueName !== queueFilter) return false;
+      if (assigneeFilter !== "Todos" && assigneeName !== assigneeFilter) return false;
+
+      if (periodFilter === "all") return true;
+
+      const openedAt = parseTicketDate(ticket);
+      if (!openedAt) return false;
+
+      const periodDays = Number(periodFilter);
+      const threshold = new Date(anchorDate);
+      threshold.setDate(anchorDate.getDate() - periodDays);
+      return openedAt >= threshold;
+    });
+  }, [assigneeFilter, periodFilter, queueFilter, tickets]);
 
   const activeProjects = useMemo(
     () => projects.filter((project) => normalizeText(project.status) !== "concluido").slice(0, 3),
@@ -27,26 +78,30 @@ function DashboardPage() {
 
   const criticalTickets = useMemo(
     () =>
-      tickets
+      filteredTickets
         .filter(
           (ticket) =>
             normalizeText(ticket.priority) === "critica" ||
             normalizeText(ticket.status) === "em atendimento",
         )
         .slice(0, 5),
-    [tickets],
+    [filteredTickets],
   );
 
-  const openStatuses = useMemo(
-    () => new Set(["aberto", "em atendimento", "aguardando aprovacao", "analise"]),
-    [],
-  );
-
-  const totalTickets = tickets.length;
-  const openTickets = tickets.filter((ticket) => openStatuses.has(normalizeText(ticket.status))).length;
-  const resolvedTickets = tickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
-  const inProgressTickets = tickets.filter((ticket) => normalizeText(ticket.status) === "em atendimento").length;
-  const overdueTickets = tickets.filter((ticket) => ticket.sla.toLowerCase().includes("min")).length;
+  const totalTickets = filteredTickets.length;
+  const openTickets = filteredTickets.filter((ticket) => openStatuses.has(normalizeText(ticket.status))).length;
+  const resolvedTickets = filteredTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
+  const inProgressTickets = filteredTickets.filter((ticket) => normalizeText(ticket.status) === "em atendimento").length;
+  const overdueTickets = filteredTickets.filter((ticket) => String(ticket.sla || "").toLowerCase().includes("min")).length;
+  const criticalOpen = filteredTickets.filter(
+    (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.has(normalizeText(ticket.status)),
+  ).length;
+  const waitingApproval = filteredTickets.filter(
+    (ticket) => normalizeText(ticket.status) === "aguardando aprovacao",
+  ).length;
+  const slaCompliance = openTickets
+    ? Number((((openTickets - waitingApproval) / openTickets) * 100).toFixed(1))
+    : 100;
 
   const dashboardKpis = [
     {
@@ -75,7 +130,7 @@ function DashboardPage() {
     },
     {
       label: "Criticos",
-      value: summary.criticalOpen,
+      value: criticalOpen,
       detail: "Maior impacto para a operacao",
       tone: "danger",
     },
@@ -89,17 +144,17 @@ function DashboardPage() {
 
   const statusItems = useMemo(() => {
     const items = [
-      { label: "Aberto", value: tickets.filter((ticket) => normalizeText(ticket.status) === "aberto").length },
+      { label: "Aberto", value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "aberto").length },
       {
         label: "Em atendimento",
-        value: tickets.filter((ticket) => normalizeText(ticket.status) === "em atendimento").length,
+        value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "em atendimento").length,
       },
       {
         label: "Aguardando aprovacao",
-        value: tickets.filter((ticket) => normalizeText(ticket.status) === "aguardando aprovacao").length,
+        value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "aguardando aprovacao").length,
       },
-      { label: "Analise", value: tickets.filter((ticket) => normalizeText(ticket.status) === "analise").length },
-      { label: "Resolvido", value: tickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length },
+      { label: "Analise", value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "analise").length },
+      { label: "Resolvido", value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length },
     ];
     const maxValue = Math.max(...items.map((item) => item.value), 1);
     return items.map((item) => ({
@@ -107,14 +162,14 @@ function DashboardPage() {
       percentage: percent(item.value, totalTickets),
       width: Math.max((item.value / maxValue) * 100, item.value ? 16 : 0),
     }));
-  }, [tickets, totalTickets]);
+  }, [filteredTickets, totalTickets]);
 
   const priorityItems = useMemo(() => {
     const items = [
-      { label: "Critica", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "critica").length },
-      { label: "Alta", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "alta").length },
-      { label: "Media", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "media").length },
-      { label: "Baixa", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "baixa").length },
+      { label: "Critica", value: filteredTickets.filter((ticket) => normalizeText(ticket.priority) === "critica").length },
+      { label: "Alta", value: filteredTickets.filter((ticket) => normalizeText(ticket.priority) === "alta").length },
+      { label: "Media", value: filteredTickets.filter((ticket) => normalizeText(ticket.priority) === "media").length },
+      { label: "Baixa", value: filteredTickets.filter((ticket) => normalizeText(ticket.priority) === "baixa").length },
     ];
     const maxValue = Math.max(...items.map((item) => item.value), 1);
     return items.map((item) => ({
@@ -122,10 +177,10 @@ function DashboardPage() {
       percentage: percent(item.value, totalTickets),
       width: Math.max((item.value / maxValue) * 100, item.value ? 16 : 0),
     }));
-  }, [tickets, totalTickets]);
+  }, [filteredTickets, totalTickets]);
 
   const queueBreakdown = useMemo(() => {
-    const grouped = tickets.reduce((accumulator, ticket) => {
+    const grouped = filteredTickets.reduce((accumulator, ticket) => {
       const queueName = String(ticket.queue || "Sem fila").trim() || "Sem fila";
       if (!accumulator[queueName]) {
         accumulator[queueName] = {
@@ -137,7 +192,7 @@ function DashboardPage() {
       }
       accumulator[queueName].total += 1;
       if (normalizeText(ticket.priority) === "critica") accumulator[queueName].critical += 1;
-      if (ticket.sla.toLowerCase().includes("min")) accumulator[queueName].overdue += 1;
+      if (String(ticket.sla || "").toLowerCase().includes("min")) accumulator[queueName].overdue += 1;
       return accumulator;
     }, {});
 
@@ -149,7 +204,7 @@ function DashboardPage() {
       share: percent(item.total, totalTickets),
       width: Math.max((item.total / maxValue) * 100, item.total ? 18 : 0),
     }));
-  }, [tickets, totalTickets]);
+  }, [filteredTickets, totalTickets]);
 
   const platformPulse = [
     { label: "Usuarios TI", value: users.filter((user) => normalizeText(user.department) === "ti").length },
@@ -160,9 +215,10 @@ function DashboardPage() {
 
   const monthlyTrend = useMemo(() => {
     const monthMap = new Map();
-    const anchorDate = tickets.length
-      ? tickets.reduce((latest, ticket) => {
-          const openedAt = new Date(ticket.openedAt || Date.now());
+    const anchorDate = filteredTickets.length
+      ? filteredTickets.reduce((latest, ticket) => {
+          const openedAt = parseTicketDate(ticket);
+          if (!openedAt) return latest;
           return openedAt > latest ? openedAt : latest;
         }, new Date(0))
       : new Date();
@@ -178,9 +234,9 @@ function DashboardPage() {
       });
     }
 
-    tickets.forEach((ticket) => {
-      const openedAt = new Date(ticket.openedAt || Date.now());
-      if (Number.isNaN(openedAt.getTime())) return;
+    filteredTickets.forEach((ticket) => {
+      const openedAt = parseTicketDate(ticket);
+      if (!openedAt) return;
       const key = `${openedAt.getFullYear()}-${String(openedAt.getMonth() + 1).padStart(2, "0")}`;
       const monthEntry = monthMap.get(key);
       if (!monthEntry) return;
@@ -192,13 +248,12 @@ function DashboardPage() {
     const maxValue = Math.max(...items.map((item) => item.total), 1);
     return items.map((item) => ({
       ...item,
-      open: Math.max(item.total - item.resolved, 0),
       height: Math.max((item.total / maxValue) * 100, item.total ? 14 : 8),
     }));
-  }, [tickets]);
+  }, [filteredTickets]);
 
   const assigneeLoad = useMemo(() => {
-    const grouped = tickets.reduce((accumulator, ticket) => {
+    const grouped = filteredTickets.reduce((accumulator, ticket) => {
       const assignee = String(ticket.assignee || "Nao atribuido").trim() || "Nao atribuido";
       if (!accumulator[assignee]) {
         accumulator[assignee] = {
@@ -224,17 +279,64 @@ function DashboardPage() {
       share: percent(item.total, totalTickets),
       width: Math.max((item.total / maxValue) * 100, item.total ? 18 : 0),
     }));
-  }, [tickets, totalTickets]);
+  }, [filteredTickets, totalTickets]);
 
   const serviceDeskHealth = [
-    { label: "SLA", value: `${summary.slaCompliance}%`, note: "Conformidade atual" },
+    { label: "SLA", value: `${slaCompliance}%`, note: "Conformidade atual" },
     { label: "CSAT", value: `${summary.csat}/5`, note: "Satisfacao media" },
     { label: "1 resposta", value: `${summary.firstResponseMinutes} min`, note: "Tempo medio" },
-    { label: "Aprovacao", value: summary.waitingApproval, note: "Aguardando retorno" },
+    { label: "Aprovacao", value: waitingApproval, note: "Aguardando retorno" },
   ];
+
+  const resetFilters = () => {
+    setPeriodFilter("90");
+    setQueueFilter("Todas");
+    setAssigneeFilter("Todos");
+  };
 
   return (
     <div className="page-grid dashboard-grid">
+      <section className="module-hero board-card dashboard-filter-shell">
+        <div>
+          <h2>Dashboard operacional</h2>
+          <p>Filtre a leitura do service desk por periodo, fila e responsavel.</p>
+        </div>
+        <div className="glpi-form-grid dashboard-filter-grid">
+          <label>
+            <span>Periodo</span>
+            <select onChange={(event) => setPeriodFilter(event.target.value)} value={periodFilter}>
+              <option value="30">Ultimos 30 dias</option>
+              <option value="90">Ultimos 90 dias</option>
+              <option value="180">Ultimos 180 dias</option>
+              <option value="all">Todo o historico</option>
+            </select>
+          </label>
+          <label>
+            <span>Fila</span>
+            <select onChange={(event) => setQueueFilter(event.target.value)} value={queueFilter}>
+              {queueOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Tecnico</span>
+            <select onChange={(event) => setAssigneeFilter(event.target.value)} value={assigneeFilter}>
+              {assigneeOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="filter-pill interactive-button dashboard-reset-button" onClick={resetFilters} type="button">
+            Limpar filtros
+          </button>
+        </div>
+      </section>
+
       <section className="dashboard-kpi-strip">
         {dashboardKpis.map((item) => (
           <article
