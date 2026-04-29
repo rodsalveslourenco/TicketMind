@@ -33,7 +33,7 @@ const detailFields = [
   { key: "assignee", label: "Técnico responsável", kind: "assignee" },
 ];
 
-const kanbanStatuses = ["Aberto", "Em atendimento", "Aguardando aprovação", "Análise", "Resolvido"];
+const kanbanStatuses = ["Aberto", "Em andamento", "Aguardando usuário", "Reaberto", "Resolvido"];
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -407,7 +407,7 @@ function TicketsPage() {
         </div>
 
         <div className="toolbar glpi-filter-bar glpi-toolbar-stack">
-          {["Todos", "Incidente", "Requisição", "Aguardando aprovação", "Próximos do SLA"].map((item) => (
+          {["Todos", "Incidente", "Requisição", "Aguardando usuário", "Reaberto", "Próximos do SLA"].map((item) => (
             <button
               key={item}
               className={`filter-pill interactive-button${filter === item ? " is-active" : ""}`}
@@ -692,9 +692,9 @@ function TicketsPage() {
                     {field.kind === "select" && field.key === "status" ? (
                       <select disabled={!canChangeStatus} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
                         <option>Aberto</option>
-                        <option>Em atendimento</option>
-                        <option>Aguardando aprovação</option>
-                        <option>Análise</option>
+                        <option>Em andamento</option>
+                        <option>Aguardando usuário</option>
+                        <option>Reaberto</option>
                         <option>Resolvido</option>
                       </select>
                     ) : null}

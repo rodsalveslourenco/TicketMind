@@ -13,6 +13,7 @@ import BrandsModelsPage from "./pages/BrandsModelsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
 import ProfilePage from "./pages/ProfilePage";
+import KnowledgePage from "./pages/KnowledgePage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -40,6 +41,7 @@ function App() {
         <Route element={<ProtectedRoute requiredPermissions={["inventory_view", "inventory_admin"]}><InventoryPage /></ProtectedRoute>} path="inventory" />
         <Route element={<ProtectedRoute requiredPermissions={["brands_models_view", "brands_models_admin"]}><BrandsModelsPage /></ProtectedRoute>} path="brands-models" />
         <Route element={<ProtectedRoute requiredPermissions={["projects_view", "projects_admin"]}><ProjectsPage /></ProtectedRoute>} path="projects" />
+        <Route element={<ProtectedRoute requiredPermissions={["knowledge_view", "knowledge_admin"]}><KnowledgePage /></ProtectedRoute>} path="knowledge" />
         <Route element={<ProtectedRoute requiredPermissions={["api_rest_view", "api_rest_admin"]}><ApiConfigPage /></ProtectedRoute>} path="api-rest" />
         <Route element={<ProtectedRoute requiredPermissions={["users_view", "users_admin"]}><UsersPage /></ProtectedRoute>} path="users" />
       </Route>

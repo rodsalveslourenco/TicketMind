@@ -46,6 +46,7 @@ function mergeCollections(stored) {
     brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
     models: Array.isArray(stored?.models) ? stored.models : seedData.models,
     projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
+    knowledgeArticles: Array.isArray(stored?.knowledgeArticles) ? stored.knowledgeArticles : seedData.knowledgeArticles,
     apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
     reports: Array.isArray(stored?.reports) ? stored.reports : seedData.reports,
   };
@@ -82,6 +83,19 @@ function normalizeText(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function normalizeTicketStatus(status) {
+  const normalized = normalizeText(status);
+  if (normalized === "em atendimento" || normalized === "em andamento" || normalized === "analise") {
+    return "Em andamento";
+  }
+  if (normalized === "aguardando aprovacao" || normalized === "aguardando usuario") {
+    return "Aguardando usuário";
+  }
+  if (normalized === "resolvido") return "Resolvido";
+  if (normalized === "reaberto") return "Reaberto";
+  return "Aberto";
 }
 
 function resolveAssetType(type) {
@@ -139,8 +153,11 @@ function prepareTickets(tickets, users) {
   const sourceTickets = Array.isArray(tickets) ? tickets : [];
   return sourceTickets.map((ticket) => ({
     ...ticket,
+    status: normalizeTicketStatus(ticket.status),
     requesterId: resolveTicketRequesterId(ticket, users),
     requesterEmail: String(ticket.requesterEmail || "").trim().toLowerCase(),
+    resolvedAt: ticket.resolvedAt || "",
+    resolvedAtLabel: ticket.resolvedAt ? formatTimestamp(ticket.resolvedAt) : "",
   }));
 }
 
@@ -201,6 +218,16 @@ function sanitizeProjectPayload(payload) {
     summary: String(payload.summary || "").trim(),
     phases,
     progress: computeProjectProgress(phases),
+  };
+}
+
+function sanitizeKnowledgeArticlePayload(payload) {
+  return {
+    title: String(payload.title || "").trim(),
+    category: String(payload.category || "Procedimento").trim(),
+    owner: String(payload.owner || "").trim(),
+    summary: String(payload.summary || "").trim(),
+    lastUpdate: new Date().toISOString(),
   };
 }
 
@@ -268,13 +295,13 @@ export function AppDataProvider({ children }) {
   const visibleTickets = useMemo(() => filterTicketsForUser(data.tickets, user), [data.tickets, user]);
 
   const summary = useMemo(() => {
-    const openStatuses = ["Aberto", "Em atendimento", "Aguardando aprovação", "Análise"];
+    const openStatuses = ["Aberto", "Em andamento", "Aguardando usuário", "Reaberto"];
     const openTickets = visibleTickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
     const criticalOpen = visibleTickets.filter(
       (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.includes(ticket.status),
     ).length;
     const waitingApproval = visibleTickets.filter(
-      (ticket) => normalizeText(ticket.status) === "aguardando aprovacao",
+      (ticket) => normalizeText(ticket.status) === "aguardando usuario",
     ).length;
     const solved = visibleTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
     const activeAssets = data.assets.filter((asset) => normalizeText(asset.status) !== "baixado").length;
@@ -306,7 +333,7 @@ export function AppDataProvider({ children }) {
         return {
           ...queue,
           open: queueTickets.length,
-          overdue: queueTickets.filter((ticket) => ticket.sla.toLowerCase().includes("min")).length,
+          overdue: queueTickets.filter((ticket) => String(ticket.sla || "").toLowerCase().includes("min")).length,
         };
       }),
     [data.queues, visibleTickets],
@@ -351,6 +378,8 @@ export function AppDataProvider({ children }) {
         dueDateLabel: payload.dueDate ? formatDate(payload.dueDate) : "",
         description: payload.description,
         resolutionNotes: "",
+        resolvedAt: "",
+        resolvedAtLabel: "",
         watchers: payload.watchers || "",
         attachments: payload.attachments || [],
       };
@@ -397,6 +426,17 @@ export function AppDataProvider({ children }) {
         const priority = computePriority(nextUrgency, nextImpact);
         const openedAt = updates.openedAt ?? ticket.openedAt;
         const dueDate = updates.dueDate ?? ticket.dueDate;
+        const nextStatus = normalizeTicketStatus(updates.status ?? ticket.status);
+        const wasResolved = normalizeText(ticket.status) === "resolvido";
+        const isResolved = normalizeText(nextStatus) === "resolvido";
+        const isReopened = normalizeText(nextStatus) === "reaberto";
+        let resolvedAt = ticket.resolvedAt || "";
+        if (!wasResolved && isResolved) {
+          resolvedAt = new Date().toISOString();
+        }
+        if (isReopened) {
+          resolvedAt = "";
+        }
         const nextRequester = canViewAllTickets(user) ? updates.requester ?? ticket.requester : ticket.requester;
         const nextRequesterEmail = canViewAllTickets(user)
           ? String(updates.requesterEmail ?? ticket.requesterEmail ?? "").trim().toLowerCase()
@@ -405,6 +445,7 @@ export function AppDataProvider({ children }) {
         return {
           ...ticket,
           ...updates,
+          status: nextStatus,
           requester: nextRequester,
           urgency: nextUrgency,
           impact: nextImpact,
@@ -418,6 +459,8 @@ export function AppDataProvider({ children }) {
             ? resolveTicketRequesterId({ ...ticket, ...updates, requester: nextRequester }, current.users || [])
             : ticket.requesterId,
           requesterEmail: nextRequesterEmail,
+          resolvedAt,
+          resolvedAtLabel: resolvedAt ? formatTimestamp(resolvedAt) : "",
           updatedAt: "Agora",
         };
       }),
@@ -682,6 +725,22 @@ export function AppDataProvider({ children }) {
     }));
   };
 
+  const addKnowledgeArticle = (payload) => {
+    if (!hasAnyPermission(user, ["knowledge_create", "knowledge_admin"])) return null;
+    let createdArticle = null;
+    setData((current) => {
+      createdArticle = {
+        id: nextId("kb", current.knowledgeArticles || []),
+        ...sanitizeKnowledgeArticlePayload(payload),
+      };
+      return {
+        ...current,
+        knowledgeArticles: [createdArticle, ...(current.knowledgeArticles || [])],
+      };
+    });
+    return createdArticle;
+  };
+
   const saveApiConfig = (payload, configId) => {
     if (!hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin"])) return;
     if (configId) {
@@ -719,6 +778,7 @@ export function AppDataProvider({ children }) {
       brands: data.brands || [],
       models: data.models || [],
       projects: data.projects || [],
+      knowledgeArticles: data.knowledgeArticles || [],
       apiConfigs: data.apiConfigs || [],
       reports: data.reports,
       notifications,
@@ -745,6 +805,7 @@ export function AppDataProvider({ children }) {
       addProject,
       updateProject,
       deleteProject,
+      addKnowledgeArticle,
       saveApiConfig,
       deleteApiConfig,
       toLocalDatetimeInput,

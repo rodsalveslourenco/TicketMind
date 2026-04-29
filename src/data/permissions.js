@@ -80,6 +80,18 @@ export const permissionGroups = [
     ],
   },
   {
+    module: "knowledge",
+    label: "Base de Conhecimento",
+    viewPermissions: ["knowledge_view", "knowledge_admin"],
+    permissions: [
+      { key: "knowledge_view", label: "Visualizar" },
+      { key: "knowledge_create", label: "Criar artigo" },
+      { key: "knowledge_edit", label: "Editar artigo" },
+      { key: "knowledge_delete", label: "Excluir artigo" },
+      { key: "knowledge_admin", label: "Administrar base" },
+    ],
+  },
+  {
     module: "api_rest",
     label: "API REST",
     viewPermissions: ["api_rest_view", "api_rest_admin"],
@@ -114,6 +126,7 @@ export const moduleNavigation = [
   { to: "/app/inventory", label: "Inventário", module: "inventory" },
   { to: "/app/brands-models", label: "Marcas e Modelos", module: "brands_models" },
   { to: "/app/projects", label: "Projetos", module: "projects" },
+  { to: "/app/knowledge", label: "Base de Conhecimento", module: "knowledge" },
   { to: "/app/api-rest", label: "API REST", module: "api_rest" },
   { to: "/app/users", label: "Usuários", module: "users" },
 ];
@@ -184,6 +197,10 @@ export const roleProfiles = [
       "projects_edit",
       "projects_manage_tasks",
       "projects_export",
+      "knowledge_view",
+      "knowledge_create",
+      "knowledge_edit",
+      "knowledge_delete",
       "api_rest_view",
       "api_rest_generate_tokens",
       "api_rest_revoke_tokens",
@@ -210,6 +227,8 @@ export const roleProfiles = [
       "tickets_export",
       "assets_view",
       "inventory_view",
+      "knowledge_view",
+      "knowledge_create",
       "projects_view",
     ]),
   },
@@ -241,6 +260,7 @@ export const roleProfiles = [
       "brands_models_view",
       "brands_models_create",
       "brands_models_edit",
+      "knowledge_view",
       "projects_view",
     ]),
   },
@@ -251,6 +271,7 @@ export const roleProfiles = [
       "dashboard_view",
       "tickets_view_own",
       "tickets_create",
+      "knowledge_view",
       "projects_view",
     ]),
   },
@@ -400,6 +421,20 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
     });
   }
 
+  if (rawPermissions.knowledge_view) nextPermissions.knowledge_view = true;
+
+  if (rawPermissions.knowledge_manage) {
+    [
+      "knowledge_view",
+      "knowledge_create",
+      "knowledge_edit",
+      "knowledge_delete",
+      "knowledge_admin",
+    ].forEach((key) => {
+      nextPermissions[key] = true;
+    });
+  }
+
   if (rawPermissions.api_view) nextPermissions.api_rest_view = true;
 
   if (rawPermissions.api_manage) {
@@ -434,6 +469,7 @@ export const analystPermissions = setPermissions([
   "tickets_export",
   "assets_view",
   "inventory_view",
+  "knowledge_view",
   "projects_view",
 ]);
 

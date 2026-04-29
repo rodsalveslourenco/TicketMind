@@ -1,14 +1,28 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 function KnowledgePage() {
   const { addKnowledgeArticle, knowledgeArticles } = useAppData();
+  const { user } = useAuth();
   const [form, setForm] = useState({
     title: "",
     category: "Procedimento",
     owner: "",
     summary: "",
   });
+  const canCreateArticle = hasAnyPermission(user, ["knowledge_create", "knowledge_admin"]);
+  const articleList = useMemo(
+    () =>
+      (knowledgeArticles || []).map((article) => ({
+        ...article,
+        lastUpdateLabel: article.lastUpdate
+          ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(article.lastUpdate))
+          : "Sem data",
+      })),
+    [knowledgeArticles],
+  );
 
   const updateField = (field) => (event) =>
     setForm((current) => ({ ...current, [field]: event.target.value }));
@@ -39,25 +53,29 @@ function KnowledgePage() {
           </div>
         </div>
 
-        <form className="data-form compact-form" onSubmit={handleSubmit}>
-          <input onChange={updateField("title")} placeholder="Título do artigo" value={form.title} />
-          <select onChange={updateField("category")} value={form.category}>
-            <option>Procedimento</option>
-            <option>Acesso</option>
-            <option>Aplicações</option>
-            <option>Infraestrutura</option>
-          </select>
-          <input onChange={updateField("owner")} placeholder="Responsável" value={form.owner} />
-          <textarea onChange={updateField("summary")} placeholder="Resumo do conteúdo" value={form.summary} />
-          <button className="ghost-button" type="submit">
-            Publicar artigo
-          </button>
-        </form>
+        {canCreateArticle ? (
+          <form className="data-form compact-form" onSubmit={handleSubmit}>
+            <input onChange={updateField("title")} placeholder="Título do artigo" value={form.title} />
+            <select onChange={updateField("category")} value={form.category}>
+              <option>Procedimento</option>
+              <option>Acesso</option>
+              <option>Aplicações</option>
+              <option>Infraestrutura</option>
+            </select>
+            <input onChange={updateField("owner")} placeholder="Responsável" value={form.owner} />
+            <textarea onChange={updateField("summary")} placeholder="Resumo do conteúdo" value={form.summary} />
+            <button className="ghost-button" type="submit">
+              Publicar artigo
+            </button>
+          </form>
+        ) : (
+          <div className="dashboard-empty-state">Seu perfil pode consultar a base, mas não publicar novos artigos.</div>
+        )}
       </div>
 
       <div className="board-card">
         <div className="table-list">
-          {knowledgeArticles.map((article) => (
+          {articleList.map((article) => (
             <div className="table-row" key={article.id}>
               <div>
                 <strong>{article.title}</strong>
@@ -65,7 +83,7 @@ function KnowledgePage() {
               </div>
               <div className="row-stats">
                 <span>{article.owner}</span>
-                <span>{article.lastUpdate}</span>
+                <span>{article.lastUpdateLabel}</span>
               </div>
             </div>
           ))}

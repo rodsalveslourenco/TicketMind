@@ -42,7 +42,7 @@ function formatHours(value) {
 }
 
 function DashboardPage() {
-  const { apiConfigs, assets, projects, reports, summary, tickets, users } = useAppData();
+  const { apiConfigs, assets, knowledgeArticles, projects, reports, summary, tickets, users } = useAppData();
   const [periodFilter, setPeriodFilter] = useState("90");
   const [queueFilter, setQueueFilter] = useState("Todas");
   const [assigneeFilter, setAssigneeFilter] = useState("Todos");
@@ -422,6 +422,13 @@ function DashboardPage() {
   }, [filteredTickets]);
 
   const knowledgeInsights = useMemo(() => {
+    const articles = (knowledgeArticles || []).slice(0, 3).map((article) => ({
+      id: article.id,
+      title: article.title,
+      owner: article.owner || "Base de conhecimento",
+      category: article.category || "Procedimento",
+      summary: article.summary,
+    }));
     const notes = filteredTickets
       .filter((ticket) => String(ticket.resolutionNotes || "").trim())
       .slice(0, 5)
@@ -432,8 +439,8 @@ function DashboardPage() {
         category: ticket.queue || "Operacao",
         summary: ticket.resolutionNotes,
       }));
-    return notes;
-  }, [filteredTickets]);
+    return [...articles, ...notes].slice(0, 5);
+  }, [filteredTickets, knowledgeArticles]);
 
   const platformPulse = [
     { label: "Usuarios TI", value: users.filter((user) => normalizeText(user.department) === "ti").length },
