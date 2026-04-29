@@ -18,7 +18,7 @@ function buildDefaultUsers() {
 }
 
 function hydrateUsers(users) {
-  const baseUsers = Array.isArray(users) && users.length ? users : buildDefaultUsers();
+  const baseUsers = Array.isArray(users) ? users : buildDefaultUsers();
   return baseUsers.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
@@ -26,43 +26,26 @@ function hydrateUsers(users) {
   }));
 }
 
-function mergeCatalogItems(storedItems, seedItems, identityBuilder) {
-  const currentItems = Array.isArray(storedItems) ? storedItems : [];
-  const identities = new Set(currentItems.map(identityBuilder));
-  const missingSeedItems = seedItems.filter((item) => !identities.has(identityBuilder(item)));
-  return [...currentItems, ...missingSeedItems];
-}
-
 function mergeCollections(stored) {
   const users = hydrateUsers(stored?.users);
   const currentUser =
+    (stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null) ??
     users.find((candidate) => candidate.email === seedData.currentUser.email) ??
     { ...seedData.currentUser, password: "admin0123" };
-
-  const brands = mergeCatalogItems(
-    stored?.brands,
-    seedData.brands,
-    (brand) => `${normalizeText(brand.assetType)}::${normalizeText(brand.name)}`,
-  );
-  const models = mergeCatalogItems(
-    stored?.models,
-    seedData.models,
-    (model) => `${normalizeText(model.assetType)}::${normalizeText(model.brandName)}::${normalizeText(model.name)}`,
-  );
 
   return {
     ...seedData,
     ...stored,
     currentUser,
     users,
-    queues: Array.isArray(stored?.queues) && stored.queues.length ? stored.queues : seedData.queues,
+    queues: Array.isArray(stored?.queues) ? stored.queues : seedData.queues,
     tickets: prepareTickets(Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets, users),
     assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
-    brands,
-    models,
+    brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
+    models: Array.isArray(stored?.models) ? stored.models : seedData.models,
     projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
     apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
-    reports: Array.isArray(stored?.reports) && stored.reports.length ? stored.reports : seedData.reports,
+    reports: Array.isArray(stored?.reports) ? stored.reports : seedData.reports,
   };
 }
 

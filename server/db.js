@@ -26,52 +26,33 @@ function buildDefaultUsers() {
   }));
 }
 
-function mergeCatalogItems(storedItems, seedItems, identityBuilder) {
-  const currentItems = Array.isArray(storedItems) ? storedItems : [];
-  const identities = new Set(currentItems.map(identityBuilder));
-  const missingSeedItems = seedItems.filter((item) => !identities.has(identityBuilder(item)));
-  return [...currentItems, ...missingSeedItems];
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
 function withDefaults(stored = {}) {
-  const users =
-    Array.isArray(stored.users) && stored.users.length
-      ? stored.users.map((candidate) => ({
-          ...candidate,
-          password: candidate.password || "admin0123",
-          permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
-        }))
-      : buildDefaultUsers();
+  const users = Array.isArray(stored.users)
+    ? stored.users.map((candidate) => ({
+        ...candidate,
+        password: candidate.password || "admin0123",
+        permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
+      }))
+    : buildDefaultUsers();
+
+  const currentUser =
+    stored.currentUser && typeof stored.currentUser === "object"
+      ? stored.currentUser
+      : users.find((candidate) => candidate.email === seedData.currentUser.email) || seedData.currentUser;
 
   return {
     ...seedData,
     ...stored,
+    currentUser,
     users,
-    queues: Array.isArray(stored.queues) && stored.queues.length ? stored.queues : seedData.queues,
+    queues: Array.isArray(stored.queues) ? stored.queues : seedData.queues,
     tickets: Array.isArray(stored.tickets) ? stored.tickets : seedData.tickets,
     assets: Array.isArray(stored.assets) ? stored.assets : seedData.assets,
-    brands: mergeCatalogItems(
-      stored.brands,
-      seedData.brands,
-      (brand) => `${normalizeText(brand.assetType)}::${normalizeText(brand.name)}`,
-    ),
-    models: mergeCatalogItems(
-      stored.models,
-      seedData.models,
-      (model) =>
-        `${normalizeText(model.assetType)}::${normalizeText(model.brandName)}::${normalizeText(model.name)}`,
-    ),
+    brands: Array.isArray(stored.brands) ? stored.brands : seedData.brands,
+    models: Array.isArray(stored.models) ? stored.models : seedData.models,
     projects: Array.isArray(stored.projects) ? stored.projects : seedData.projects,
     apiConfigs: Array.isArray(stored.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
-    reports: Array.isArray(stored.reports) && stored.reports.length ? stored.reports : seedData.reports,
+    reports: Array.isArray(stored.reports) ? stored.reports : seedData.reports,
   };
 }
 
