@@ -486,8 +486,8 @@ export function AppDataProvider({ children }) {
         const nextImpact = updates.impact ?? ticket.impact;
         const nextOpenedAt = updates.openedAt ?? ticket.openedAt;
         const nextDueDate = updates.dueDate ?? ticket.dueDate;
-        const nextAssignee = String(updates.assignee ?? ticket.assignee || "").trim();
-        const nextResolutionNotes = String(updates.resolutionNotes ?? ticket.resolutionNotes || "").trim();
+        const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
+        const nextResolutionNotes = String((updates.resolutionNotes ?? ticket.resolutionNotes) || "").trim();
         const nextKnowledgeArticleIds = Array.isArray(updates.knowledgeArticleIds)
           ? [...new Set(updates.knowledgeArticleIds.filter(Boolean))]
           : ticket.knowledgeArticleIds || [];
