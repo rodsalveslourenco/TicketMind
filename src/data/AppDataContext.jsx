@@ -11,6 +11,25 @@ import {
 } from "./permissions";
 import { seedData } from "./seedData";
 import { assetTypeOptions } from "./assetCatalog";
+import {
+  appendHistory,
+  buildKnowledgeSearchText,
+  buildTicketSearchText,
+  computePriorityFromMatrix,
+  createHistoryEntry,
+  formatDateLabel,
+  formatTimestampLabel,
+  getSlaPolicyMinutes,
+  isOpenTicketStatus,
+  normalizeKnowledgeArticle,
+  normalizePriorityLabel,
+  normalizeText,
+  normalizeTicketStatus,
+  prepareTickets,
+  sanitizeKnowledgeArticlePayload,
+  syncHelpdeskState,
+  toLocalDatetimeInput,
+} from "./helpdesk";
 
 const AppDataContext = createContext(null);
 
@@ -28,96 +47,13 @@ function hydrateUsers(users) {
   }));
 }
 
-function mergeCollections(stored) {
-  const users = hydrateUsers(stored?.users);
-  const currentUser =
-    (stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null) ??
-    users.find((candidate) => candidate.email === seedData.currentUser.email) ??
-    { ...seedData.currentUser, password: "admin0123" };
-
-  return {
-    ...seedData,
-    ...stored,
-    currentUser,
-    users,
-    queues: Array.isArray(stored?.queues) ? stored.queues : seedData.queues,
-    tickets: prepareTickets(Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets, users),
-    assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
-    brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
-    models: Array.isArray(stored?.models) ? stored.models : seedData.models,
-    projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
-    knowledgeArticles: Array.isArray(stored?.knowledgeArticles) ? stored.knowledgeArticles : seedData.knowledgeArticles,
-    apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
-    reports: Array.isArray(stored?.reports) ? stored.reports : seedData.reports,
-  };
-}
-
-const EMPTY_DATA = mergeCollections({});
-
-function formatDate(isoValue) {
-  if (!isoValue) return "";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(isoValue));
-}
-
-function formatTimestamp(isoValue) {
-  if (!isoValue) return "";
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(isoValue));
-}
-
-function toLocalDatetimeInput(isoValue) {
-  if (!isoValue) return "";
-  const date = new Date(isoValue);
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 function nextId(prefix, list) {
   return `${prefix}-${list.length + 1}-${Date.now().toString(36)}`;
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function normalizeTicketStatus(status) {
-  const normalized = normalizeText(status);
-  if (normalized === "em atendimento" || normalized === "em andamento" || normalized === "analise") {
-    return "Em andamento";
-  }
-  if (normalized === "aguardando aprovacao" || normalized === "aguardando usuario") {
-    return "Aguardando usuário";
-  }
-  if (normalized === "resolvido") return "Resolvido";
-  if (normalized === "reaberto") return "Reaberto";
-  return "Aberto";
 }
 
 function resolveAssetType(type) {
   const normalized = normalizeText(type).trim();
   return assetTypeOptions.find((item) => normalizeText(item).trim() === normalized) || "Outros";
-}
-
-function computePriority(urgency, impact) {
-  const scoreMap = { baixa: 1, media: 2, alta: 3, critica: 4 };
-  const score = Math.max(scoreMap[normalizeText(urgency)] ?? 2, scoreMap[normalizeText(impact)] ?? 2);
-  if (score >= 4) return "Crítica";
-  if (score === 3) return "Alta";
-  if (score === 2) return "Média";
-  return "Baixa";
-}
-
-function computeSla(priority) {
-  const normalizedPriority = normalizeText(priority);
-  if (normalizedPriority === "critica") return "15 min";
-  if (normalizedPriority === "alta") return "1h";
-  if (normalizedPriority === "media") return "4h";
-  return "8h";
 }
 
 function sanitizeUserPayload(payload) {
@@ -131,46 +67,6 @@ function sanitizeUserPayload(payload) {
     avatar: String(payload.avatar || "").trim(),
     permissions: normalizeUserPermissions(payload.permissions || defaultUserPermissions, payload),
   };
-}
-
-function resolveTicketRequesterId(ticket, users) {
-  if (ticket.requesterId && users.some((candidate) => candidate.id === ticket.requesterId)) {
-    return ticket.requesterId;
-  }
-
-  const requesterName = normalizeText(ticket.requester);
-  const requesterEmail = normalizeText(ticket.requesterEmail);
-  const matchedUser = users.find(
-    (candidate) =>
-      normalizeText(candidate.name) === requesterName ||
-      (requesterEmail && normalizeText(candidate.email) === requesterEmail),
-  );
-
-  return matchedUser?.id || "";
-}
-
-function prepareTickets(tickets, users) {
-  const sourceTickets = Array.isArray(tickets) ? tickets : [];
-  return sourceTickets.map((ticket) => ({
-    ...ticket,
-    status: normalizeTicketStatus(ticket.status),
-    requesterId: resolveTicketRequesterId(ticket, users),
-    requesterEmail: String(ticket.requesterEmail || "").trim().toLowerCase(),
-    resolvedAt: ticket.resolvedAt || "",
-    resolvedAtLabel: ticket.resolvedAt ? formatTimestamp(ticket.resolvedAt) : "",
-  }));
-}
-
-function filterTicketsForUser(tickets, user) {
-  if (!user) return [];
-  if (canViewAllTickets(user)) return tickets;
-  if (!canViewOwnTickets(user)) return [];
-  return tickets.filter((ticket) => ticket.requesterId === user.id);
-}
-
-function canAccessTicket(ticket, user) {
-  if (!ticket || !user) return false;
-  return canViewAllTickets(user) || ticket.requesterId === user.id;
 }
 
 function sanitizeBrandPayload(payload) {
@@ -221,14 +117,124 @@ function sanitizeProjectPayload(payload) {
   };
 }
 
-function sanitizeKnowledgeArticlePayload(payload) {
-  return {
-    title: String(payload.title || "").trim(),
-    category: String(payload.category || "Procedimento").trim(),
-    owner: String(payload.owner || "").trim(),
-    summary: String(payload.summary || "").trim(),
-    lastUpdate: new Date().toISOString(),
+function filterTicketsForUser(tickets, user) {
+  if (!user) return [];
+  if (canViewAllTickets(user)) return tickets;
+  if (!canViewOwnTickets(user)) return [];
+  return tickets.filter((ticket) => ticket.requesterId === user.id);
+}
+
+function canAccessTicket(ticket, user) {
+  if (!ticket || !user) return false;
+  return canViewAllTickets(user) || ticket.requesterId === user.id;
+}
+
+function mergeCollections(stored) {
+  const users = hydrateUsers(stored?.users);
+  const currentUser =
+    (stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null) ??
+    users.find((candidate) => candidate.email === seedData.currentUser.email) ??
+    { ...seedData.currentUser, password: "admin0123" };
+
+  const baseState = {
+    ...seedData,
+    ...stored,
+    currentUser,
+    users,
+    queues: Array.isArray(stored?.queues) ? stored.queues : seedData.queues,
+    tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
+    assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
+    brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
+    models: Array.isArray(stored?.models) ? stored.models : seedData.models,
+    projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
+    knowledgeArticles: (Array.isArray(stored?.knowledgeArticles) ? stored.knowledgeArticles : seedData.knowledgeArticles).map(normalizeKnowledgeArticle),
+    apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
+    reports: Array.isArray(stored?.reports) ? stored.reports : seedData.reports,
   };
+
+  return syncHelpdeskState(baseState, users);
+}
+
+const EMPTY_DATA = mergeCollections({});
+
+function summarizeTicketsByQueue(queues, tickets) {
+  return queues.map((queue) => {
+    const queueTickets = tickets.filter((ticket) => ticket.queue === queue.name);
+    return {
+      ...queue,
+      open: queueTickets.filter((ticket) => isOpenTicketStatus(ticket.status)).length,
+      overdue: queueTickets.filter((ticket) => ticket.isOverdue).length,
+    };
+  });
+}
+
+function buildStatusBuckets(tickets) {
+  return [
+    { label: "Aberto", value: tickets.filter((ticket) => normalizeText(ticket.status) === "aberto").length },
+    { label: "Em andamento", value: tickets.filter((ticket) => normalizeText(ticket.status) === "em andamento").length },
+    { label: "Aguardando usuario", value: tickets.filter((ticket) => normalizeText(ticket.status) === "aguardando usuario").length },
+    { label: "Resolvido", value: tickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length },
+    { label: "Reaberto", value: tickets.filter((ticket) => normalizeText(ticket.status) === "reaberto").length },
+  ];
+}
+
+function buildPriorityBuckets(tickets) {
+  return [
+    { label: "Critica", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "critica").length },
+    { label: "Alta", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "alta").length },
+    { label: "Media", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "media").length },
+    { label: "Baixa", value: tickets.filter((ticket) => normalizeText(ticket.priority) === "baixa").length },
+  ];
+}
+
+function buildDailyOpenings(tickets, days = 5) {
+  const buckets = [];
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    buckets.push({
+      key,
+      label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(date),
+      value: tickets.filter((ticket) => String(ticket.openedAt || "").slice(0, 10) === key).length,
+    });
+  }
+  return buckets;
+}
+
+function buildTechnicianMetrics(tickets, users) {
+  const technicians = users.filter((candidate) => normalizeText(candidate.department) === "ti");
+  return technicians.map((technician) => {
+    const assigned = tickets.filter((ticket) => normalizeText(ticket.assignee) === normalizeText(technician.name));
+    const resolved = assigned.filter((ticket) => normalizeText(ticket.status) === "resolvido");
+    const withinSla = assigned.filter((ticket) => !ticket.isOverdue && !ticket.slaBreachedAt).length;
+    const outSla = assigned.filter((ticket) => ticket.isOverdue || Boolean(ticket.slaBreachedAt)).length;
+    const averageResolutionMinutes = resolved.length
+      ? Math.round(
+          resolved.reduce((total, ticket) => total + (ticket.resolutionMinutes || 0), 0) / Math.max(resolved.length, 1),
+        )
+      : 0;
+    const openAssigned = assigned.filter((ticket) => isOpenTicketStatus(ticket.status)).length;
+    const inProgress = assigned.filter((ticket) => normalizeText(ticket.status) === "em andamento").length;
+    const waitingUser = assigned.filter((ticket) => normalizeText(ticket.status) === "aguardando usuario").length;
+    const critical = assigned.filter((ticket) => normalizeText(ticket.priority) === "critica" && isOpenTicketStatus(ticket.status)).length;
+    return {
+      id: technician.id,
+      name: technician.name,
+      team: technician.team,
+      assignedCount: assigned.length,
+      resolvedCount: resolved.length,
+      withinSlaCount: withinSla,
+      outSlaCount: outSla,
+      averageResolutionMinutes,
+      slaRate: assigned.length ? Number(((withinSla / assigned.length) * 100).toFixed(1)) : 100,
+      openAssigned,
+      inProgress,
+      waitingUser,
+      critical,
+    };
+  });
 }
 
 export function AppDataProvider({ children }) {
@@ -236,6 +242,13 @@ export function AppDataProvider({ children }) {
   const [data, setData] = useState(EMPTY_DATA);
   const [notifications, setNotifications] = useState([]);
   const [serverReady, setServerReady] = useState(false);
+
+  const applyState = (updater) => {
+    setData((current) => {
+      const candidate = typeof updater === "function" ? updater(current) : updater;
+      return mergeCollections(candidate);
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -292,23 +305,27 @@ export function AppDataProvider({ children }) {
     setNotifications((current) => current.filter((toast) => toast.id !== toastId));
   };
 
-  const visibleTickets = useMemo(() => filterTicketsForUser(data.tickets, user), [data.tickets, user]);
+  const allTickets = useMemo(() => prepareTickets(data.tickets, data.users || []), [data.tickets, data.users]);
+  const visibleTickets = useMemo(() => filterTicketsForUser(allTickets, user), [allTickets, user]);
+  const operationalTickets = canViewAllTickets(user) ? allTickets : visibleTickets;
+  const knowledgeArticles = useMemo(
+    () => (data.knowledgeArticles || []).map((article) => normalizeKnowledgeArticle(article)),
+    [data.knowledgeArticles],
+  );
 
   const summary = useMemo(() => {
-    const openStatuses = ["Aberto", "Em andamento", "Aguardando usuário", "Reaberto"];
-    const openTickets = visibleTickets.filter((ticket) => openStatuses.includes(ticket.status)).length;
+    const openTickets = visibleTickets.filter((ticket) => isOpenTicketStatus(ticket.status)).length;
     const criticalOpen = visibleTickets.filter(
-      (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.includes(ticket.status),
+      (ticket) => normalizeText(ticket.priority) === "critica" && isOpenTicketStatus(ticket.status),
     ).length;
-    const waitingApproval = visibleTickets.filter(
-      (ticket) => normalizeText(ticket.status) === "aguardando usuario",
-    ).length;
+    const waitingApproval = visibleTickets.filter((ticket) => normalizeText(ticket.status) === "aguardando usuario").length;
     const solved = visibleTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length;
     const activeAssets = data.assets.filter((asset) => normalizeText(asset.status) !== "baixado").length;
     const activeProjects = data.projects.filter((project) => normalizeText(project.status) !== "concluido").length;
     const activeApis = data.apiConfigs.filter((config) => normalizeText(config.status) === "ativa").length;
-    const slaCompliance = openTickets
-      ? Number((((openTickets - waitingApproval) / openTickets) * 100).toFixed(1))
+    const breachedTickets = visibleTickets.filter((ticket) => ticket.isOverdue || ticket.slaBreachedAt).length;
+    const slaCompliance = visibleTickets.length
+      ? Number((((visibleTickets.length - breachedTickets) / visibleTickets.length) * 100).toFixed(1))
       : 100;
 
     return {
@@ -326,62 +343,96 @@ export function AppDataProvider({ children }) {
     };
   }, [data, visibleTickets]);
 
-  const queueStats = useMemo(
+  const queueStats = useMemo(() => summarizeTicketsByQueue(data.queues, operationalTickets), [data.queues, operationalTickets]);
+  const statusBuckets = useMemo(() => buildStatusBuckets(operationalTickets), [operationalTickets]);
+  const priorityBuckets = useMemo(() => buildPriorityBuckets(operationalTickets), [operationalTickets]);
+  const dailyOpenings = useMemo(() => buildDailyOpenings(operationalTickets, 5), [operationalTickets]);
+  const technicianMetrics = useMemo(() => buildTechnicianMetrics(allTickets, data.users || []), [allTickets, data.users]);
+
+  const slaAlerts = useMemo(
     () =>
-      data.queues.map((queue) => {
-        const queueTickets = visibleTickets.filter((ticket) => ticket.queue === queue.name);
-        return {
-          ...queue,
-          open: queueTickets.length,
-          overdue: queueTickets.filter((ticket) => String(ticket.sla || "").toLowerCase().includes("min")).length,
-        };
-      }),
-    [data.queues, visibleTickets],
+      operationalTickets
+        .filter(
+          (ticket) =>
+            ticket.dueSoon || ticket.isOverdue || ticket.criticalWaitingTechnician || ticket.unassigned,
+        )
+        .sort((left, right) => left.slaRemainingMinutes - right.slaRemainingMinutes)
+        .slice(0, 20),
+    [operationalTickets],
   );
+
+  const searchTickets = (query, scope = operationalTickets) => {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery) return scope;
+    return scope.filter((ticket) => buildTicketSearchText(ticket).includes(normalizedQuery));
+  };
+
+  const searchKnowledgeArticles = (query, articles = knowledgeArticles) => {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery) return articles;
+    return articles.filter((article) => buildKnowledgeSearchText(article).includes(normalizedQuery));
+  };
 
   const createTicket = (payload) => {
     if (!hasAnyPermission(user, ["tickets_create", "tickets_admin"])) return null;
     let createdTicket = null;
 
-    setData((current) => {
+    applyState((current) => {
       const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
-      const openedAt = payload.openedAt || new Date().toISOString();
-      const priority = computePriority(payload.urgency, payload.impact);
-      const ticketRequesterId = canViewAllTickets(user) ? payload.requesterId || "" : user?.id || "";
-      const ticketRequesterEmail = canViewAllTickets(user)
+      const nowIso = new Date().toISOString();
+      const openedAt = payload.openedAt || nowIso;
+      const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
+      const slaTargetMinutes = getSlaPolicyMinutes(priority);
+      const requesterId = canViewAllTickets(user) ? payload.requesterId || "" : user?.id || "";
+      const requesterEmail = canViewAllTickets(user)
         ? String(payload.requesterEmail || "").trim().toLowerCase()
         : String(user?.email || "").trim().toLowerCase();
-      const ticketRequester = canViewAllTickets(user) ? payload.requester : user?.name || payload.requester;
+      const requester = canViewAllTickets(user) ? payload.requester : user?.name || payload.requester;
+      const history = [
+        createHistoryEntry({
+          type: "created",
+          actorId: user?.id,
+          actorName: user?.name || "Sistema",
+          message: "Chamado aberto",
+          metadata: { status: "Aberto" },
+          createdAt: nowIso,
+        }),
+      ];
 
       createdTicket = {
         id: `${typeCodeMap[normalizeText(payload.type)] ?? "TCK"}-${nextNumber}`,
-        title: payload.title,
+        title: String(payload.title || "").trim(),
         type: payload.type,
         priority,
-        urgency: payload.urgency,
-        impact: payload.impact,
-        status: "Aberto",
-        requester: ticketRequester,
-        requesterId: ticketRequesterId,
-        requesterEmail: ticketRequesterEmail,
-        assignee: payload.assignee || "Triagem TI",
-        queue: payload.queue,
-        category: payload.category,
-        source: payload.source,
-        location: payload.location,
-        sla: computeSla(priority),
-        updatedAt: "Agora",
+        urgency: payload.urgency || priority,
+        impact: payload.impact || priority,
+        status: normalizeTicketStatus(payload.status || "Aberto"),
+        requester,
+        requesterId,
+        requesterEmail,
+        assignee: String(payload.assignee || "Triagem TI").trim(),
+        queue: String(payload.queue || "Service Desk").trim(),
+        category: String(payload.category || "Geral").trim(),
+        source: String(payload.source || "Portal").trim(),
+        location: String(payload.location || "").trim(),
+        sla: `${computeSlaFromMinutes(slaTargetMinutes)}`,
+        slaTargetMinutes,
+        slaDeadlineAt: new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString(),
+        updatedAt: formatTimestampLabel(nowIso),
+        updatedAtIso: nowIso,
         openedAt,
-        openedAtLabel: formatTimestamp(openedAt),
+        openedAtLabel: formatTimestampLabel(openedAt),
         dueDate: payload.dueDate || "",
-        dueDateLabel: payload.dueDate ? formatDate(payload.dueDate) : "",
-        description: payload.description,
+        dueDateLabel: payload.dueDate ? formatDateLabel(payload.dueDate) : "",
+        description: String(payload.description || "").trim(),
         resolutionNotes: "",
         resolvedAt: "",
         resolvedAtLabel: "",
         watchers: payload.watchers || "",
         attachments: payload.attachments || [],
+        history,
+        knowledgeArticleIds: Array.isArray(payload.knowledgeArticleIds) ? payload.knowledgeArticleIds : [],
       };
 
       return { ...current, tickets: [createdTicket, ...current.tickets] };
@@ -392,21 +443,27 @@ export function AppDataProvider({ children }) {
 
   const updateTicket = (ticketId, updates) => {
     if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) => {
         if (ticket.id !== ticketId) return ticket;
         if (!canAccessTicket(ticket, user)) return ticket;
-        if (updates.assignee !== undefined && updates.assignee !== ticket.assignee && !hasAnyPermission(user, ["tickets_assign", "tickets_admin"])) {
+
+        const statusChanged = updates.status !== undefined && normalizeTicketStatus(updates.status) !== normalizeTicketStatus(ticket.status);
+        const assigneeChanged = updates.assignee !== undefined && String(updates.assignee || "").trim() !== String(ticket.assignee || "").trim();
+        const requestedPriority =
+          updates.priority !== undefined
+            ? normalizePriorityLabel(updates.priority)
+            : normalizePriorityLabel(computePriorityFromMatrix(updates.urgency ?? ticket.urgency, updates.impact ?? ticket.impact));
+        const priorityChanged = normalizeText(requestedPriority) !== normalizeText(ticket.priority);
+
+        if (assigneeChanged && !hasAnyPermission(user, ["tickets_assign", "tickets_admin"])) {
           return ticket;
         }
-        if (
-          (updates.urgency !== undefined || updates.impact !== undefined) &&
-          !hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"])
-        ) {
+        if (priorityChanged && !hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"])) {
           return ticket;
         }
-        if (updates.status !== undefined && updates.status !== ticket.status) {
+        if (statusChanged) {
           if (!hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
             return ticket;
           }
@@ -421,55 +478,134 @@ export function AppDataProvider({ children }) {
             return ticket;
           }
         }
+
+        const nowIso = new Date().toISOString();
+        const nextStatus = normalizeTicketStatus(updates.status ?? ticket.status);
+        const nextPriority = requestedPriority;
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
-        const priority = computePriority(nextUrgency, nextImpact);
-        const openedAt = updates.openedAt ?? ticket.openedAt;
-        const dueDate = updates.dueDate ?? ticket.dueDate;
-        const nextStatus = normalizeTicketStatus(updates.status ?? ticket.status);
-        const wasResolved = normalizeText(ticket.status) === "resolvido";
-        const isResolved = normalizeText(nextStatus) === "resolvido";
-        const isReopened = normalizeText(nextStatus) === "reaberto";
+        const nextOpenedAt = updates.openedAt ?? ticket.openedAt;
+        const nextDueDate = updates.dueDate ?? ticket.dueDate;
+        const nextAssignee = String(updates.assignee ?? ticket.assignee || "").trim();
+        const nextResolutionNotes = String(updates.resolutionNotes ?? ticket.resolutionNotes || "").trim();
+        const nextKnowledgeArticleIds = Array.isArray(updates.knowledgeArticleIds)
+          ? [...new Set(updates.knowledgeArticleIds.filter(Boolean))]
+          : ticket.knowledgeArticleIds || [];
         let resolvedAt = ticket.resolvedAt || "";
-        if (!wasResolved && isResolved) {
-          resolvedAt = new Date().toISOString();
+        if (normalizeText(nextStatus) === "resolvido") {
+          resolvedAt = resolvedAt || nowIso;
         }
-        if (isReopened) {
+        if (normalizeText(nextStatus) === "reaberto") {
           resolvedAt = "";
         }
-        const nextRequester = canViewAllTickets(user) ? updates.requester ?? ticket.requester : ticket.requester;
-        const nextRequesterEmail = canViewAllTickets(user)
-          ? String(updates.requesterEmail ?? ticket.requesterEmail ?? "").trim().toLowerCase()
-          : String(ticket.requesterEmail || "").trim().toLowerCase();
 
-        return {
+        const historyEntries = [];
+        if (statusChanged) {
+          historyEntries.push(
+            createHistoryEntry({
+              type: "status_change",
+              actorId: user?.id,
+              actorName: user?.name || "Sistema",
+              message: `Status alterado para ${nextStatus}`,
+              metadata: { from: ticket.status, to: nextStatus },
+              createdAt: nowIso,
+            }),
+          );
+          if (normalizeText(nextStatus) === "resolvido") {
+            historyEntries.push(
+              createHistoryEntry({
+                type: "resolved",
+                actorId: user?.id,
+                actorName: user?.name || "Sistema",
+                message: "Chamado resolvido",
+                createdAt: nowIso,
+              }),
+            );
+          }
+          if (normalizeText(nextStatus) === "reaberto") {
+            historyEntries.push(
+              createHistoryEntry({
+                type: "reopened",
+                actorId: user?.id,
+                actorName: user?.name || "Sistema",
+                message: "Chamado reaberto",
+                createdAt: nowIso,
+              }),
+            );
+          }
+        }
+        if (priorityChanged) {
+          historyEntries.push(
+            createHistoryEntry({
+              type: "priority_change",
+              actorId: user?.id,
+              actorName: user?.name || "Sistema",
+              message: `Prioridade alterada para ${nextPriority}`,
+              metadata: { from: ticket.priority, to: nextPriority },
+              createdAt: nowIso,
+            }),
+          );
+        }
+        if (assigneeChanged) {
+          historyEntries.push(
+            createHistoryEntry({
+              type: "assignment_change",
+              actorId: user?.id,
+              actorName: user?.name || "Sistema",
+              message: `Tecnico responsavel alterado para ${nextAssignee || "Sem tecnico"}`,
+              metadata: { from: ticket.assignee, to: nextAssignee },
+              createdAt: nowIso,
+            }),
+          );
+        }
+        if (nextResolutionNotes && nextResolutionNotes !== String(ticket.resolutionNotes || "").trim()) {
+          historyEntries.push(
+            createHistoryEntry({
+              type: "solution",
+              actorId: user?.id,
+              actorName: user?.name || "Sistema",
+              message: "Solucao aplicada registrada",
+              createdAt: nowIso,
+            }),
+          );
+        }
+
+        const nextTicket = {
           ...ticket,
           ...updates,
           status: nextStatus,
-          requester: nextRequester,
+          priority: nextPriority,
           urgency: nextUrgency,
           impact: nextImpact,
-          priority,
-          sla: computeSla(priority),
-          openedAt,
-          openedAtLabel: formatTimestamp(openedAt),
-          dueDate,
-          dueDateLabel: dueDate ? formatDate(dueDate) : "",
-          requesterId: canViewAllTickets(user)
-            ? resolveTicketRequesterId({ ...ticket, ...updates, requester: nextRequester }, current.users || [])
-            : ticket.requesterId,
-          requesterEmail: nextRequesterEmail,
+          sla: computeSlaFromMinutes(getSlaPolicyMinutes(nextPriority)),
+          slaTargetMinutes: getSlaPolicyMinutes(nextPriority),
+          slaDeadlineAt: new Date(new Date(nextOpenedAt).getTime() + getSlaPolicyMinutes(nextPriority) * 60 * 1000).toISOString(),
+          openedAt: nextOpenedAt,
+          openedAtLabel: formatTimestampLabel(nextOpenedAt),
+          dueDate: nextDueDate,
+          dueDateLabel: nextDueDate ? formatDateLabel(nextDueDate) : "",
+          requester: canViewAllTickets(user) ? updates.requester ?? ticket.requester : ticket.requester,
+          requesterEmail: canViewAllTickets(user)
+            ? String(updates.requesterEmail ?? ticket.requesterEmail ?? "").trim().toLowerCase()
+            : String(ticket.requesterEmail || "").trim().toLowerCase(),
+          assignee: nextAssignee,
+          resolutionNotes: nextResolutionNotes,
           resolvedAt,
-          resolvedAtLabel: resolvedAt ? formatTimestamp(resolvedAt) : "",
-          updatedAt: "Agora",
+          resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
+          updatedAtIso: nowIso,
+          updatedAt: formatTimestampLabel(nowIso),
+          knowledgeArticleIds: nextKnowledgeArticleIds,
+          history: appendHistory(ticket, historyEntries),
         };
+
+        return nextTicket;
       }),
     }));
   };
 
   const deleteTicket = (ticketId) => {
     if (!hasAnyPermission(user, ["tickets_delete", "tickets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       tickets: current.tickets.filter((ticket) => ticket.id !== ticketId || !canAccessTicket(ticket, user)),
     }));
@@ -477,11 +613,16 @@ export function AppDataProvider({ children }) {
 
   const addTicketAttachments = (ticketId, attachments) => {
     if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
         ticket.id === ticketId && canAccessTicket(ticket, user)
-          ? { ...ticket, attachments: [...(ticket.attachments || []), ...attachments], updatedAt: "Agora" }
+          ? {
+              ...ticket,
+              attachments: [...(ticket.attachments || []), ...attachments],
+              updatedAtIso: new Date().toISOString(),
+              updatedAt: formatTimestampLabel(new Date().toISOString()),
+            }
           : ticket,
       ),
     }));
@@ -489,14 +630,15 @@ export function AppDataProvider({ children }) {
 
   const removeTicketAttachment = (ticketId, attachmentId) => {
     if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
         ticket.id === ticketId && canAccessTicket(ticket, user)
           ? {
               ...ticket,
               attachments: (ticket.attachments || []).filter((attachment) => attachment.id !== attachmentId),
-              updatedAt: "Agora",
+              updatedAtIso: new Date().toISOString(),
+              updatedAt: formatTimestampLabel(new Date().toISOString()),
             }
           : ticket,
       ),
@@ -506,7 +648,7 @@ export function AppDataProvider({ children }) {
   const addUser = (payload) => {
     if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
     let createdUser = null;
-    setData((current) => {
+    applyState((current) => {
       createdUser = { id: nextId("u", current.users || []), ...sanitizeUserPayload(payload) };
       return { ...current, users: [createdUser, ...(current.users || [])] };
     });
@@ -515,9 +657,8 @@ export function AppDataProvider({ children }) {
 
   const updateUser = (userId, payload) => {
     if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
-    setData((current) => {
+    applyState((current) => {
       let nextCurrentUser = null;
-
       const nextUsers = current.users.map((candidate) => {
         if (candidate.id !== userId) return candidate;
         const sanitizedPayload = sanitizeUserPayload(payload);
@@ -526,16 +667,12 @@ export function AppDataProvider({ children }) {
         const passwordChanged = String(candidate.password || "") !== String(sanitizedPayload.password || "");
         const nextUser = {
           ...candidate,
-          ...(hasAnyPermission(user, ["users_edit", "users_admin"])
-            ? {
-                name: sanitizedPayload.name,
-                email: sanitizedPayload.email,
-                role: sanitizedPayload.role,
-                team: sanitizedPayload.team,
-                department: sanitizedPayload.department,
-                avatar: sanitizedPayload.avatar,
-              }
-            : {}),
+          name: sanitizedPayload.name,
+          email: sanitizedPayload.email,
+          role: sanitizedPayload.role,
+          team: sanitizedPayload.team,
+          department: sanitizedPayload.department,
+          avatar: sanitizedPayload.avatar,
           ...(passwordChanged && hasAnyPermission(user, ["users_reset_password", "users_admin"])
             ? { password: sanitizedPayload.password }
             : {}),
@@ -546,7 +683,6 @@ export function AppDataProvider({ children }) {
         if (nextUser.id === user?.id) nextCurrentUser = nextUser;
         return nextUser;
       });
-
       if (nextCurrentUser) setSessionUser(nextCurrentUser);
       return { ...current, users: nextUsers };
     });
@@ -554,18 +690,13 @@ export function AppDataProvider({ children }) {
 
   const updateOwnProfile = (payload) => {
     if (!user?.id) return;
-    setData((current) => {
+    applyState((current) => {
       let nextCurrentUser = null;
-
       const nextUsers = current.users.map((candidate) => {
         if (candidate.id !== user.id) return candidate;
-        nextCurrentUser = {
-          ...candidate,
-          avatar: String(payload.avatar || "").trim(),
-        };
+        nextCurrentUser = { ...candidate, avatar: String(payload.avatar || "").trim() };
         return nextCurrentUser;
       });
-
       if (nextCurrentUser) setSessionUser(nextCurrentUser);
       return { ...current, users: nextUsers };
     });
@@ -573,7 +704,7 @@ export function AppDataProvider({ children }) {
 
   const deleteUser = (userId) => {
     if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       users: current.users.filter((candidate) => candidate.id !== userId),
     }));
@@ -581,7 +712,7 @@ export function AppDataProvider({ children }) {
 
   const addAsset = (payload) => {
     if (!hasAnyPermission(user, ["assets_create", "assets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       assets: [{ id: nextId("asset", current.assets || []), ...payload }, ...(current.assets || [])],
     }));
@@ -589,7 +720,7 @@ export function AppDataProvider({ children }) {
 
   const updateAsset = (assetId, payload) => {
     if (!hasAnyPermission(user, ["assets_edit", "assets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       assets: current.assets.map((asset) => {
         if (asset.id !== assetId) return asset;
@@ -608,7 +739,7 @@ export function AppDataProvider({ children }) {
 
   const deleteAsset = (assetId) => {
     if (!hasAnyPermission(user, ["assets_delete", "assets_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       assets: current.assets.filter((asset) => asset.id !== assetId),
     }));
@@ -617,23 +748,18 @@ export function AppDataProvider({ children }) {
   const addBrand = (payload) => {
     if (!hasAnyPermission(user, ["brands_models_create", "brands_models_admin"])) return null;
     let createdBrand = null;
-    setData((current) => {
+    applyState((current) => {
       createdBrand = { id: nextId("brand", current.brands || []), ...sanitizeBrandPayload(payload) };
-      return {
-        ...current,
-        brands: [createdBrand, ...(current.brands || [])],
-      };
+      return { ...current, brands: [createdBrand, ...(current.brands || [])] };
     });
     return createdBrand;
   };
 
   const updateBrand = (brandId, payload) => {
     if (!hasAnyPermission(user, ["brands_models_edit", "brands_models_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
-      brands: current.brands.map((brand) =>
-        brand.id === brandId ? { ...brand, ...sanitizeBrandPayload(payload) } : brand,
-      ),
+      brands: current.brands.map((brand) => (brand.id === brandId ? { ...brand, ...sanitizeBrandPayload(payload) } : brand)),
       models: current.models.map((model) =>
         model.brandId === brandId
           ? {
@@ -654,7 +780,7 @@ export function AppDataProvider({ children }) {
 
   const deleteBrand = (brandId) => {
     if (!hasAnyPermission(user, ["brands_models_delete", "brands_models_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       brands: current.brands.filter((brand) => brand.id !== brandId),
       models: current.models.filter((model) => model.brandId !== brandId),
@@ -664,23 +790,18 @@ export function AppDataProvider({ children }) {
   const addModel = (payload) => {
     if (!hasAnyPermission(user, ["brands_models_create", "brands_models_admin"])) return null;
     let createdModel = null;
-    setData((current) => {
+    applyState((current) => {
       createdModel = { id: nextId("model", current.models || []), ...sanitizeModelPayload(payload) };
-      return {
-        ...current,
-        models: [createdModel, ...(current.models || [])],
-      };
+      return { ...current, models: [createdModel, ...(current.models || [])] };
     });
     return createdModel;
   };
 
   const updateModel = (modelId, payload) => {
     if (!hasAnyPermission(user, ["brands_models_edit", "brands_models_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
-      models: current.models.map((model) =>
-        model.id === modelId ? { ...model, ...sanitizeModelPayload(payload) } : model,
-      ),
+      models: current.models.map((model) => (model.id === modelId ? { ...model, ...sanitizeModelPayload(payload) } : model)),
       assets: current.assets.map((asset) =>
         asset.manufacturer === payload.brandName &&
         asset.model === payload.previousName &&
@@ -693,7 +814,7 @@ export function AppDataProvider({ children }) {
 
   const deleteModel = (modelId) => {
     if (!hasAnyPermission(user, ["brands_models_delete", "brands_models_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       models: current.models.filter((model) => model.id !== modelId),
     }));
@@ -701,7 +822,7 @@ export function AppDataProvider({ children }) {
 
   const addProject = (payload) => {
     if (!hasAnyPermission(user, ["projects_create", "projects_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       projects: [{ id: nextId("project", current.projects || []), ...sanitizeProjectPayload(payload) }, ...(current.projects || [])],
     }));
@@ -709,7 +830,7 @@ export function AppDataProvider({ children }) {
 
   const updateProject = (projectId, payload) => {
     if (!hasAnyPermission(user, ["projects_edit", "projects_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       projects: current.projects.map((project) =>
         project.id === projectId ? { ...project, ...sanitizeProjectPayload({ ...project, ...payload }) } : project,
@@ -719,7 +840,7 @@ export function AppDataProvider({ children }) {
 
   const deleteProject = (projectId) => {
     if (!hasAnyPermission(user, ["projects_delete", "projects_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       projects: current.projects.filter((project) => project.id !== projectId),
     }));
@@ -728,10 +849,11 @@ export function AppDataProvider({ children }) {
   const addKnowledgeArticle = (payload) => {
     if (!hasAnyPermission(user, ["knowledge_create", "knowledge_admin"])) return null;
     let createdArticle = null;
-    setData((current) => {
+    applyState((current) => {
       createdArticle = {
         id: nextId("kb", current.knowledgeArticles || []),
         ...sanitizeKnowledgeArticlePayload(payload),
+        owner: payload.owner || user?.name || "",
       };
       return {
         ...current,
@@ -741,19 +863,119 @@ export function AppDataProvider({ children }) {
     return createdArticle;
   };
 
+  const updateKnowledgeArticle = (articleId, payload) => {
+    if (!hasAnyPermission(user, ["knowledge_edit", "knowledge_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      knowledgeArticles: current.knowledgeArticles.map((article) =>
+        article.id === articleId
+          ? {
+              ...article,
+              ...sanitizeKnowledgeArticlePayload({ ...article, ...payload }),
+              owner: payload.owner || article.owner,
+            }
+          : article,
+      ),
+    }));
+  };
+
+  const toggleKnowledgeArticleStatus = (articleId) => {
+    if (!hasAnyPermission(user, ["knowledge_inactivate", "knowledge_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      knowledgeArticles: current.knowledgeArticles.map((article) =>
+        article.id === articleId
+          ? {
+              ...article,
+              status: article.status === "Ativo" ? "Inativo" : "Ativo",
+              lastUpdate: new Date().toISOString(),
+            }
+          : article,
+      ),
+    }));
+  };
+
+  const createKnowledgeArticleFromTicket = (ticketId, payload = {}) => {
+    if (!hasAnyPermission(user, ["knowledge_create", "knowledge_admin"])) return null;
+    let articleId = null;
+    applyState((current) => {
+      const sourceTicket = current.tickets.find((ticket) => ticket.id === ticketId);
+      if (!sourceTicket) return current;
+      articleId = nextId("kb", current.knowledgeArticles || []);
+      const article = {
+        id: articleId,
+        ...sanitizeKnowledgeArticlePayload({
+          title: payload.title || sourceTicket.title,
+          category: payload.category || sourceTicket.queue || "Procedimento",
+          problemDescription: payload.problemDescription || sourceTicket.description,
+          solutionApplied: payload.solutionApplied || sourceTicket.resolutionNotes,
+          keywords: payload.keywords || `${sourceTicket.category || ""}, ${sourceTicket.priority || ""}`,
+          owner: payload.owner || user?.name || sourceTicket.assignee || "",
+          sourceTicketId: sourceTicket.id,
+          status: payload.status || "Ativo",
+        }),
+      };
+
+      return {
+        ...current,
+        knowledgeArticles: [article, ...(current.knowledgeArticles || [])],
+        tickets: current.tickets.map((ticket) =>
+          ticket.id === ticketId
+            ? {
+                ...ticket,
+                knowledgeArticleIds: [...new Set([...(ticket.knowledgeArticleIds || []), articleId])],
+                history: appendHistory(ticket, [
+                  createHistoryEntry({
+                    type: "knowledge_created",
+                    actorId: user?.id,
+                    actorName: user?.name || "Sistema",
+                    message: `Artigo ${article.title} criado a partir do chamado`,
+                    metadata: { articleId },
+                  }),
+                ]),
+              }
+            : ticket,
+        ),
+      };
+    });
+    return articleId;
+  };
+
+  const linkKnowledgeArticleToTicket = (ticketId, articleId) => {
+    if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              knowledgeArticleIds: [...new Set([...(ticket.knowledgeArticleIds || []), articleId])],
+              history: appendHistory(ticket, [
+                createHistoryEntry({
+                  type: "knowledge_linked",
+                  actorId: user?.id,
+                  actorName: user?.name || "Sistema",
+                  message: "Artigo da base vinculado ao chamado",
+                  metadata: { articleId },
+                }),
+              ]),
+            }
+          : ticket,
+      ),
+    }));
+  };
+
   const saveApiConfig = (payload, configId) => {
     if (!hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin"])) return;
     if (configId) {
-      setData((current) => ({
+      applyState((current) => ({
         ...current,
-        apiConfigs: current.apiConfigs.map((config) =>
-          config.id === configId ? { ...config, ...payload } : config,
-        ),
+        apiConfigs: current.apiConfigs.map((config) => (config.id === configId ? { ...config, ...payload } : config)),
       }));
       return;
     }
 
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       apiConfigs: [{ id: nextId("api", current.apiConfigs || []), ...payload }, ...(current.apiConfigs || [])],
     }));
@@ -761,7 +983,7 @@ export function AppDataProvider({ children }) {
 
   const deleteApiConfig = (configId) => {
     if (!hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin"])) return;
-    setData((current) => ({
+    applyState((current) => ({
       ...current,
       apiConfigs: current.apiConfigs.filter((config) => config.id !== configId),
     }));
@@ -773,14 +995,21 @@ export function AppDataProvider({ children }) {
       queues: queueStats,
       users: data.users || [],
       tickets: visibleTickets,
+      allTickets,
+      operationalTickets,
       canViewAllTickets: canViewAllTickets(user),
       assets: data.assets || [],
       brands: data.brands || [],
       models: data.models || [],
       projects: data.projects || [],
-      knowledgeArticles: data.knowledgeArticles || [],
+      knowledgeArticles,
       apiConfigs: data.apiConfigs || [],
       reports: data.reports,
+      statusBuckets,
+      priorityBuckets,
+      dailyOpenings,
+      technicianMetrics,
+      slaAlerts,
       notifications,
       pushToast,
       dismissToast,
@@ -789,6 +1018,8 @@ export function AppDataProvider({ children }) {
       deleteTicket,
       addTicketAttachments,
       removeTicketAttachment,
+      searchTickets,
+      searchKnowledgeArticles,
       addUser,
       updateUser,
       updateOwnProfile,
@@ -806,14 +1037,38 @@ export function AppDataProvider({ children }) {
       updateProject,
       deleteProject,
       addKnowledgeArticle,
+      updateKnowledgeArticle,
+      toggleKnowledgeArticleStatus,
+      createKnowledgeArticleFromTicket,
+      linkKnowledgeArticleToTicket,
       saveApiConfig,
       deleteApiConfig,
       toLocalDatetimeInput,
     }),
-    [summary, queueStats, data, notifications, visibleTickets, user],
+    [
+      summary,
+      queueStats,
+      data,
+      visibleTickets,
+      allTickets,
+      operationalTickets,
+      knowledgeArticles,
+      statusBuckets,
+      priorityBuckets,
+      dailyOpenings,
+      technicianMetrics,
+      slaAlerts,
+      notifications,
+      user,
+    ],
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
+}
+
+function computeSlaFromMinutes(minutes) {
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.round(minutes / 60)}h`;
 }
 
 export function useAppData() {
@@ -821,4 +1076,3 @@ export function useAppData() {
   if (!context) throw new Error("useAppData must be used within AppDataProvider");
   return context;
 }
-

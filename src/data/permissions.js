@@ -6,6 +6,24 @@ export const permissionGroups = [
     permissions: [{ key: "dashboard_view", label: "Visualizar" }],
   },
   {
+    module: "helpdesk_operations",
+    label: "Operacoes Helpdesk",
+    viewPermissions: ["helpdesk_indicators_view", "tickets_admin"],
+    permissions: [
+      { key: "helpdesk_indicators_view", label: "Visualizar indicadores" },
+      { key: "sla_alerts_view", label: "Visualizar alertas SLA" },
+    ],
+  },
+  {
+    module: "helpdesk_technicians",
+    label: "Gestao Tecnicos",
+    viewPermissions: ["technicians_performance_view", "technicians_workload_view", "tickets_admin"],
+    permissions: [
+      { key: "technicians_performance_view", label: "Visualizar performance de tecnicos" },
+      { key: "technicians_workload_view", label: "Visualizar carga de trabalho" },
+    ],
+  },
+  {
     module: "tickets",
     label: "Chamados",
     viewPermissions: ["tickets_view_own", "tickets_view_all", "tickets_admin"],
@@ -87,6 +105,7 @@ export const permissionGroups = [
       { key: "knowledge_view", label: "Visualizar" },
       { key: "knowledge_create", label: "Criar artigo" },
       { key: "knowledge_edit", label: "Editar artigo" },
+      { key: "knowledge_inactivate", label: "Inativar artigo" },
       { key: "knowledge_delete", label: "Excluir artigo" },
       { key: "knowledge_admin", label: "Administrar base" },
     ],
@@ -121,6 +140,8 @@ export const permissionGroups = [
 
 export const moduleNavigation = [
   { to: "/app/dashboard", label: "Dashboard", module: "dashboard" },
+  { to: "/app/helpdesk-operations", label: "Operacoes Helpdesk", module: "helpdesk_operations" },
+  { to: "/app/helpdesk-technicians", label: "Tecnicos", module: "helpdesk_technicians" },
   { to: "/app/tickets", label: "Chamados", module: "tickets" },
   { to: "/app/assets", label: "Ativos", module: "assets" },
   { to: "/app/inventory", label: "Inventário", module: "inventory" },
@@ -168,6 +189,10 @@ export const roleProfiles = [
     description: "Acompanha a operacao, gerencia chamados, ativos, projetos e usuarios.",
     permissions: setPermissions([
       "dashboard_view",
+      "helpdesk_indicators_view",
+      "sla_alerts_view",
+      "technicians_performance_view",
+      "technicians_workload_view",
       "tickets_view_own",
       "tickets_view_all",
       "tickets_create",
@@ -200,6 +225,7 @@ export const roleProfiles = [
       "knowledge_view",
       "knowledge_create",
       "knowledge_edit",
+      "knowledge_inactivate",
       "knowledge_delete",
       "api_rest_view",
       "api_rest_generate_tokens",
@@ -215,6 +241,10 @@ export const roleProfiles = [
     description: "Opera a fila de atendimento, tratamento, atribuicao e fechamento de chamados.",
     permissions: setPermissions([
       "dashboard_view",
+      "helpdesk_indicators_view",
+      "sla_alerts_view",
+      "technicians_performance_view",
+      "technicians_workload_view",
       "tickets_view_own",
       "tickets_view_all",
       "tickets_create",
@@ -237,6 +267,10 @@ export const roleProfiles = [
     description: "Atua em incidentes tecnicos e administra ativos, inventario e catalogo tecnico.",
     permissions: setPermissions([
       "dashboard_view",
+      "helpdesk_indicators_view",
+      "sla_alerts_view",
+      "technicians_performance_view",
+      "technicians_workload_view",
       "tickets_view_own",
       "tickets_view_all",
       "tickets_create",
@@ -269,6 +303,7 @@ export const roleProfiles = [
     description: "Acompanha chamados da area, indicadores e projetos, sem administracao tecnica.",
     permissions: setPermissions([
       "dashboard_view",
+      "helpdesk_indicators_view",
       "tickets_view_own",
       "tickets_create",
       "knowledge_view",
@@ -333,6 +368,16 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
   }
 
   if (rawPermissions.dashboard) nextPermissions.dashboard_view = true;
+
+  if (rawPermissions.helpdesk_view) {
+    nextPermissions.helpdesk_indicators_view = true;
+    nextPermissions.sla_alerts_view = true;
+  }
+
+  if (rawPermissions.technicians_view) {
+    nextPermissions.technicians_performance_view = true;
+    nextPermissions.technicians_workload_view = true;
+  }
 
   if (rawPermissions.tickets_view) {
     nextPermissions.tickets_view_own = true;
@@ -428,6 +473,7 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "knowledge_view",
       "knowledge_create",
       "knowledge_edit",
+      "knowledge_inactivate",
       "knowledge_delete",
       "knowledge_admin",
     ].forEach((key) => {
@@ -456,6 +502,10 @@ export const defaultPermissions = setPermissions(["dashboard_view", "tickets_vie
 
 export const analystPermissions = setPermissions([
   "dashboard_view",
+  "helpdesk_indicators_view",
+  "sla_alerts_view",
+  "technicians_performance_view",
+  "technicians_workload_view",
   "tickets_view_own",
   "tickets_view_all",
   "tickets_create",

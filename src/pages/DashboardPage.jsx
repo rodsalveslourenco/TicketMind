@@ -427,7 +427,7 @@ function DashboardPage() {
       title: article.title,
       owner: article.owner || "Base de conhecimento",
       category: article.category || "Procedimento",
-      summary: article.summary,
+      summary: article.solutionApplied || article.problemDescription || "",
     }));
     const notes = filteredTickets
       .filter((ticket) => String(ticket.resolutionNotes || "").trim())

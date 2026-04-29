@@ -1,39 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { canViewAllTickets as hasGlobalTicketView, hasAnyPermission } from "../data/permissions";
+import { PRIORITY_LEVELS, TICKET_STATUSES, normalizeText, toLocalDatetimeInput } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultCreateForm = {
   title: "",
   type: "Incidente",
+  status: "Aberto",
   location: "",
-  urgency: "Média",
-  impact: "Média",
+  priority: "Media",
+  urgency: "Media",
+  impact: "Media",
   openedAt: new Date().toISOString(),
   watchers: [],
   description: "",
   attachments: [],
+  knowledgeArticleIds: [],
 };
-
-const detailFields = [
-  { key: "type", label: "Tipo", kind: "select" },
-  { key: "status", label: "Status", kind: "select" },
-  { key: "queue", label: "Fila", kind: "select" },
-  { key: "requester", label: "Solicitante", kind: "input" },
-  { key: "source", label: "Origem", kind: "select" },
-  { key: "category", label: "Categoria", kind: "input" },
-  { key: "location", label: "Localização", kind: "input" },
-  { key: "urgency", label: "Urgência", kind: "select" },
-  { key: "impact", label: "Impacto", kind: "select" },
-  { key: "dueDate", label: "Data limite", kind: "date" },
-  { key: "openedAt", label: "Abertura", kind: "datetime" },
-  { key: "watchers", label: "Observadores", kind: "input" },
-  { key: "assignee", label: "Técnico responsável", kind: "assignee" },
-];
-
-const kanbanStatuses = ["Aberto", "Em andamento", "Aguardando usuário", "Reaberto", "Resolvido"];
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -61,13 +47,6 @@ function toIsoOrEmpty(value) {
   return value ? new Date(value).toISOString() : "";
 }
 
-function normalizeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
 function getPriorityBadgeClass(priority) {
   const normalized = normalizeText(priority);
   if (normalized === "critica") return "badge-critica";
@@ -84,103 +63,66 @@ function getPriorityRowClass(priority) {
   return "priority-line-media";
 }
 
+function getStatusBadgeClass(status) {
+  const normalized = normalizeText(status);
+  if (normalized === "aberto") return "status-badge-aberto";
+  if (normalized === "em andamento") return "status-badge-andamento";
+  if (normalized === "aguardando usuario") return "status-badge-aguardando";
+  if (normalized === "reaberto") return "status-badge-reaberto";
+  if (normalized === "resolvido") return "status-badge-resolvido";
+  return "badge-neutral";
+}
+
+function getSlaTone(ticket) {
+  if (ticket.isOverdue || ticket.criticalWaitingTechnician) return "status-badge-reaberto";
+  if (ticket.dueSoon || ticket.unassigned) return "status-badge-aguardando";
+  return "status-badge-resolvido";
+}
+
 function getFreshCreateForm() {
   return {
     ...defaultCreateForm,
     openedAt: new Date().toISOString(),
     watchers: [],
     attachments: [],
+    knowledgeArticleIds: [],
   };
 }
 
 function TicketsPage() {
   const {
     addTicketAttachments,
+    allTickets,
+    createKnowledgeArticleFromTicket,
     createTicket,
     deleteTicket,
+    knowledgeArticles,
+    linkKnowledgeArticleToTicket,
     pushToast,
     removeTicketAttachment,
+    searchKnowledgeArticles,
+    searchTickets,
     tickets,
-    toLocalDatetimeInput,
     updateTicket,
     users,
   } = useAppData();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState("list");
-  const [filter, setFilter] = useState("Todos");
-  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [priorityFilter, setPriorityFilter] = useState("Todas");
+  const [slaFilter, setSlaFilter] = useState("Todos");
+  const [search, setSearch] = useState(searchParams.get("q") || "");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
+  const [createKnowledgeQuery, setCreateKnowledgeQuery] = useState("");
   const [detailTicketId, setDetailTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
+  const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
-
-  const tiUsers = useMemo(
-    () => users.filter((candidate) => normalizeText(candidate.department) === "ti"),
-    [users],
-  );
-
-  const filteredTickets = useMemo(() => {
-    let currentTickets = tickets;
-
-    if (filter !== "Todos") {
-      if (filter === "Próximos do SLA") {
-        currentTickets = currentTickets.filter((ticket) => ticket.sla.toLowerCase().includes("min"));
-      } else {
-        const normalizedFilter = normalizeText(filter);
-        currentTickets = currentTickets.filter(
-          (ticket) =>
-            normalizeText(ticket.type) === normalizedFilter ||
-            normalizeText(ticket.status) === normalizedFilter,
-        );
-      }
-    }
-
-    const normalizedSearch = normalizeText(search);
-    if (!normalizedSearch) return currentTickets;
-
-    return currentTickets.filter((ticket) =>
-      [
-        ticket.id,
-        ticket.title,
-        ticket.requester,
-        ticket.assignee,
-        ticket.queue,
-        ticket.status,
-        ticket.priority,
-      ].some((field) => normalizeText(field).includes(normalizedSearch)),
-    );
-  }, [filter, search, tickets]);
-
-  const kanbanColumns = useMemo(
-    () =>
-      kanbanStatuses.map((status) => ({
-        status,
-        tickets: filteredTickets.filter((ticket) => ticket.status === status),
-      })),
-    [filteredTickets],
-  );
-
-  const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
-
-  const watcherSuggestions = useMemo(() => {
-    const query = normalizeText(watcherQuery);
-    if (!query) return [];
-
-    return users
-      .filter((candidate) => candidate.id !== user?.id)
-      .filter((candidate) => !createForm.watchers.some((watcher) => watcher.id === candidate.id))
-      .filter((candidate) =>
-        [candidate.name, candidate.email, candidate.team, candidate.department].some((value) =>
-          normalizeText(value).includes(query),
-        ),
-      )
-      .slice(0, 6);
-  }, [createForm.watchers, user?.id, users, watcherQuery]);
-
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);
@@ -188,11 +130,82 @@ function TicketsPage() {
   const canChangePriority = hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"]);
   const canChangeStatus = hasAnyPermission(user, ["tickets_change_status", "tickets_admin"]);
   const canManageAttachments = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
+  const canCreateKnowledge = hasAnyPermission(user, ["knowledge_create", "knowledge_admin"]);
   const canSeeAllTickets = hasGlobalTicketView(user);
 
-  if (!hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"])) {
-    return <Navigate replace to="/app/dashboard" />;
-  }
+  const tiUsers = useMemo(() => users.filter((candidate) => normalizeText(candidate.department) === "ti"), [users]);
+
+  useEffect(() => {
+    setSearch(searchParams.get("q") || "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1" && canCreateTicket) {
+      setShowCreateForm(true);
+      setCreateForm(getFreshCreateForm());
+      setCreateKnowledgeQuery("");
+    }
+  }, [canCreateTicket, searchParams]);
+
+  const filteredTickets = useMemo(() => {
+    let currentTickets = searchTickets(search, tickets);
+
+    if (statusFilter !== "Todos") {
+      currentTickets = currentTickets.filter((ticket) => normalizeText(ticket.status) === normalizeText(statusFilter));
+    }
+    if (priorityFilter !== "Todas") {
+      currentTickets = currentTickets.filter((ticket) => normalizeText(ticket.priority) === normalizeText(priorityFilter));
+    }
+    if (slaFilter === "Vence em 1h") {
+      currentTickets = currentTickets.filter((ticket) => ticket.dueSoon);
+    }
+    if (slaFilter === "Vencido") {
+      currentTickets = currentTickets.filter((ticket) => ticket.isOverdue);
+    }
+    if (slaFilter === "Critico sem tecnico") {
+      currentTickets = currentTickets.filter((ticket) => ticket.criticalWaitingTechnician);
+    }
+    if (slaFilter === "Sem tecnico") {
+      currentTickets = currentTickets.filter((ticket) => ticket.unassigned);
+    }
+
+    return currentTickets;
+  }, [priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
+
+  const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
+  const linkedArticles = useMemo(
+    () =>
+      detailTicket
+        ? knowledgeArticles.filter((article) => (detailTicket.knowledgeArticleIds || []).includes(article.id))
+        : [],
+    [detailTicket, knowledgeArticles],
+  );
+  const articleSuggestions = useMemo(
+    () =>
+      normalizeText(knowledgeQuery)
+        ? searchKnowledgeArticles(knowledgeQuery, knowledgeArticles).filter((article) => article.status === "Ativo").slice(0, 6)
+        : [],
+    [knowledgeArticles, knowledgeQuery, searchKnowledgeArticles],
+  );
+  const createArticleSuggestions = useMemo(
+    () =>
+      normalizeText(createKnowledgeQuery)
+        ? searchKnowledgeArticles(createKnowledgeQuery, knowledgeArticles).filter((article) => article.status === "Ativo").slice(0, 6)
+        : [],
+    [createKnowledgeQuery, knowledgeArticles, searchKnowledgeArticles],
+  );
+
+  const watcherSuggestions = useMemo(() => {
+    const query = normalizeText(watcherQuery);
+    if (!query) return [];
+    return users
+      .filter((candidate) => candidate.id !== user?.id)
+      .filter((candidate) => !createForm.watchers.some((watcher) => watcher.id === candidate.id))
+      .filter((candidate) =>
+        [candidate.name, candidate.email, candidate.team, candidate.department].some((value) => normalizeText(value).includes(query)),
+      )
+      .slice(0, 6);
+  }, [createForm.watchers, user?.id, users, watcherQuery]);
 
   useEffect(() => {
     if (!detailTicket) {
@@ -208,17 +221,20 @@ function TicketsPage() {
       status: detailTicket.status,
       queue: detailTicket.queue,
       requester: detailTicket.requester,
+      requesterEmail: detailTicket.requesterEmail || "",
       assignee: detailTicket.assignee,
       source: detailTicket.source,
       category: detailTicket.category,
       location: detailTicket.location || "",
-      urgency: detailTicket.urgency || "Média",
-      impact: detailTicket.impact || "Média",
+      priority: detailTicket.priority,
+      urgency: detailTicket.urgency || detailTicket.priority,
+      impact: detailTicket.impact || detailTicket.priority,
       openedAt: toLocalDatetimeInput(detailTicket.openedAt),
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
+      knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
     });
-  }, [detailTicket, toLocalDatetimeInput]);
+  }, [detailTicket]);
 
   useEffect(() => {
     if (!showCreateForm) return undefined;
@@ -229,77 +245,54 @@ function TicketsPage() {
       }
     };
 
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        setShowCreateForm(false);
-      }
-    };
-
     document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
-    };
+    return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [showCreateForm]);
 
-  useEffect(() => {
-    if (!detailTicketId) return undefined;
+  if (!hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"])) {
+    return <Navigate replace to="/app/dashboard" />;
+  }
 
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        setDetailTicketId(null);
-      }
-    };
+  const updateCreateField = (field) => (event) => setCreateForm((current) => ({ ...current, [field]: event.target.value }));
+  const updateDetailField = (field) => (event) => setDetailForm((current) => ({ ...current, [field]: event.target.value }));
 
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [detailTicketId]);
-
-  const updateCreateField = (field) => (event) =>
-    setCreateForm((current) => ({ ...current, [field]: event.target.value }));
-
-  const updateDetailField = (field) => (event) =>
-    setDetailForm((current) => ({ ...current, [field]: event.target.value }));
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    const nextParams = new URLSearchParams(searchParams);
+    if (value.trim()) nextParams.set("q", value);
+    else nextParams.delete("q");
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const handleCreateAttachments = async (event) => {
     const nextFiles = Array.from(event.target.files || []);
     if (!nextFiles.length) return;
-
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
-    setCreateForm((current) => ({
-      ...current,
-      attachments: [...current.attachments, ...attachments],
-    }));
+    setCreateForm((current) => ({ ...current, attachments: [...current.attachments, ...attachments] }));
     event.target.value = "";
   };
 
   const handleOpenCreateModal = () => {
     setCreateForm(getFreshCreateForm());
     setWatcherQuery("");
+    setCreateKnowledgeQuery("");
     setShowCreateForm(true);
   };
 
   const handleCloseCreateModal = () => {
     setShowCreateForm(false);
     setWatcherQuery("");
+    setCreateKnowledgeQuery("");
     setCreateForm(getFreshCreateForm());
   };
 
   const handleAddWatcher = (candidate) => {
-    setCreateForm((current) => ({
-      ...current,
-      watchers: [...current.watchers, candidate],
-    }));
+    setCreateForm((current) => ({ ...current, watchers: [...current.watchers, candidate] }));
     setWatcherQuery("");
   };
 
   const handleRemoveWatcher = (watcherId) => {
-    setCreateForm((current) => ({
-      ...current,
-      watchers: current.watchers.filter((watcher) => watcher.id !== watcherId),
-    }));
+    setCreateForm((current) => ({ ...current, watchers: current.watchers.filter((watcher) => watcher.id !== watcherId) }));
   };
 
   const handleCreateSubmit = (event) => {
@@ -345,7 +338,6 @@ function TicketsPage() {
   const handleDetailAttachments = async (event) => {
     const nextFiles = Array.from(event.target.files || []);
     if (!nextFiles.length || !detailTicket) return;
-
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
     addTicketAttachments(detailTicket.id, attachments);
     pushToast("Anexos adicionados", `${attachments.length} arquivo(s) vinculados`);
@@ -356,153 +348,117 @@ function TicketsPage() {
     <div className="ticket-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">Chamados</span>
-          <h2>Chamados</h2>
+          <span className="eyebrow">Helpdesk</span>
+          <h2>Fila de chamados</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
             <strong>{tickets.length}</strong>
-            <span>tickets registrados</span>
+            <span>tickets visiveis</span>
           </div>
           <div className="insight-chip">
-            <strong>{tiUsers.length}</strong>
-            <span>técnicos de TI</span>
+            <strong>{allTickets.filter((ticket) => ticket.dueSoon || ticket.isOverdue).length}</strong>
+            <span>alertas de SLA</span>
           </div>
           <div className="insight-chip">
-            <strong>{filteredTickets.length}</strong>
-            <span>itens no recorte atual</span>
+            <strong>{users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
+            <span>tecnicos TI</span>
           </div>
         </div>
-        {!canSeeAllTickets ? <p className="module-caption">Visualização restrita aos seus próprios chamados.</p> : null}
+        {!canSeeAllTickets ? <p className="module-caption">Visualizacao restrita aos seus proprios chamados.</p> : null}
       </section>
 
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
-            <h2>Fila de chamados</h2>
+            <h2>Listagem operacional</h2>
           </div>
           <div className="toolbar">
             <div className="view-toggle">
-              <button
-                className={`filter-pill interactive-button${viewMode === "list" ? " is-active" : ""}`}
-                onClick={() => setViewMode("list")}
-                type="button"
-              >
+              <button className={`filter-pill interactive-button${viewMode === "list" ? " is-active" : ""}`} onClick={() => setViewMode("list")} type="button">
                 Lista
-              </button>
-              <button
-                className={`filter-pill interactive-button${viewMode === "kanban" ? " is-active" : ""}`}
-                onClick={() => setViewMode("kanban")}
-                type="button"
-              >
-                Kanban
               </button>
             </div>
             {canCreateTicket ? (
               <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
-                + Criar chamado
+                Abrir chamado
               </button>
             ) : null}
           </div>
         </div>
 
-        <div className="toolbar glpi-filter-bar glpi-toolbar-stack">
-          {["Todos", "Incidente", "Requisição", "Aguardando usuário", "Reaberto", "Próximos do SLA"].map((item) => (
-            <button
-              key={item}
-              className={`filter-pill interactive-button${filter === item ? " is-active" : ""}`}
-              onClick={() => setFilter(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-          <input
-            className="toolbar-search"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por título, fila, solicitante ou técnico"
-            value={search}
-          />
+        <div className="dashboard-filter-shell compact-filter-shell">
+          <div className="dashboard-filter-grid">
+            <label>
+              <span>Busca global</span>
+              <input className="toolbar-search" onChange={(event) => handleSearchChange(event.target.value)} placeholder="Numero, usuario, email, tecnico, status, prioridade, titulo ou descricao" value={search} />
+            </label>
+            <label>
+              <span>Status</span>
+              <select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+                <option>Todos</option>
+                {TICKET_STATUSES.map((status) => (
+                  <option key={status}>{status}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Prioridade</span>
+              <select onChange={(event) => setPriorityFilter(event.target.value)} value={priorityFilter}>
+                <option>Todas</option>
+                {PRIORITY_LEVELS.map((priority) => (
+                  <option key={priority}>{priority}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>SLA</span>
+              <select onChange={(event) => setSlaFilter(event.target.value)} value={slaFilter}>
+                <option>Todos</option>
+                <option>Vence em 1h</option>
+                <option>Vencido</option>
+                <option>Critico sem tecnico</option>
+                <option>Sem tecnico</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        {viewMode === "list" ? (
-          <div className="ticket-rows ticket-rows-wide">
-            {filteredTickets.length ? (
-              filteredTickets.map((ticket) => (
-                <button
-                  className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}`}
-                  key={ticket.id}
-                  onDoubleClick={() => setDetailTicketId(ticket.id)}
-                  type="button"
-                >
-                  <div className="ticket-row-main">
-                    <div className="ticket-row-title">
-                      <strong>{ticket.id}</strong>
-                      <h3>{ticket.title}</h3>
-                    </div>
-                    <div className="ticket-row-badges">
-                      <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                      <span className="badge badge-neutral">{ticket.status}</span>
-                    </div>
+        <div className="ticket-rows ticket-rows-wide">
+          {filteredTickets.length ? (
+            filteredTickets.map((ticket) => (
+              <button className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}`} key={ticket.id} onClick={() => setDetailTicketId(ticket.id)} type="button">
+                <div className="ticket-row-main">
+                  <div className="ticket-row-title">
+                    <strong>{ticket.id}</strong>
+                    <h3>{ticket.title}</h3>
                   </div>
-                  <div className="ticket-row-meta">
-                    <span>{ticket.requester}</span>
-                    <span>{ticket.queue}</span>
-                    <span>{ticket.assignee}</span>
-                    <span>{ticket.openedAtLabel}</span>
+                  <div className="ticket-row-badges">
+                    <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
+                    <span className={`badge ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                    <span className={`badge ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
                   </div>
-                </button>
-              ))
-            ) : (
-              <div className="empty-state">
-                <strong>Nenhum chamado encontrado.</strong>
-                <span>Ajuste os filtros ou registre um novo chamado.</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="kanban-grid">
-            {kanbanColumns.map((column) => (
-              <section className="kanban-column" key={column.status}>
-                <div className="kanban-column-header">
-                  <strong>{column.status}</strong>
-                  <span>{column.tickets.length}</span>
                 </div>
-                <div className="kanban-column-body">
-                  {column.tickets.map((ticket) => (
-                    <button
-                      className={`kanban-card interactive-button ${getPriorityRowClass(ticket.priority)}`}
-                      key={ticket.id}
-                      onDoubleClick={() => setDetailTicketId(ticket.id)}
-                      type="button"
-                    >
-                      <div className="ticket-top">
-                        <strong>{ticket.id}</strong>
-                        <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                      </div>
-                      <h3>{ticket.title}</h3>
-                      <div className="ticket-meta">
-                        <span>{ticket.requester}</span>
-                        <span>{ticket.assignee}</span>
-                        <span>{ticket.sla}</span>
-                      </div>
-                    </button>
-                  ))}
+                <div className="ticket-row-meta">
+                  <span>{ticket.requester}</span>
+                  <span>{ticket.requesterEmail || "-"}</span>
+                  <span>{ticket.assignee || "Sem tecnico"}</span>
+                  <span>{ticket.queue}</span>
                 </div>
-              </section>
-            ))}
-          </div>
-        )}
+              </button>
+            ))
+          ) : (
+            <div className="empty-state">
+              <strong>Nenhum chamado encontrado.</strong>
+              <span>Ajuste busca, filtros ou registre um novo chamado.</span>
+            </div>
+          )}
+        </div>
       </section>
 
       {showCreateForm ? (
         <div className="ticket-modal-backdrop" onClick={handleCloseCreateModal} role="presentation">
-          <div
-            className="ticket-modal board-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
+          <div className="ticket-modal board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-create-form glpi-ticket-form" onSubmit={handleCreateSubmit}>
               <div className="ticket-modal-header">
                 <div className="form-section-header">
@@ -522,46 +478,60 @@ function TicketsPage() {
                   <span>Tipo</span>
                   <select onChange={updateCreateField("type")} value={createForm.type}>
                     <option>Incidente</option>
-                    <option>Requisição</option>
+                    <option>Requisicao</option>
                     <option>Problema</option>
                   </select>
                 </label>
                 <div className="field-block">
                   <span>Solicitante</span>
                   <div className="requester-stamp">
-                    <strong>{user?.name || "Usuário não identificado"}</strong>
-                    <small>{user ? `${user.email} | ${user.role}` : "Faça login para registrar o solicitante."}</small>
+                    <strong>{user?.name || "Usuario nao identificado"}</strong>
+                    <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
                   </div>
                 </div>
                 <label className="field-block">
-                  <span>Localização</span>
+                  <span>Status</span>
+                  <select onChange={updateCreateField("status")} value={createForm.status}>
+                    {TICKET_STATUSES.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Localizacao</span>
                   <input onChange={updateCreateField("location")} value={createForm.location} />
                 </label>
                 <label className="field-block">
-                  <span>Urgência</span>
+                  <span>Prioridade</span>
+                  <select onChange={updateCreateField("priority")} value={createForm.priority}>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Urgencia</span>
                   <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
-                    <option>Baixa</option>
-                    <option>Média</option>
-                    <option>Alta</option>
-                    <option>Crítica</option>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="field-block">
                   <span>Impacto</span>
                   <select onChange={updateCreateField("impact")} value={createForm.impact}>
-                    <option>Baixa</option>
-                    <option>Média</option>
-                    <option>Alta</option>
-                    <option>Crítica</option>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="field-block">
                   <span>Data e hora da abertura</span>
-                  <input
-                    onChange={updateCreateField("openedAt")}
-                    type="datetime-local"
-                    value={toLocalDatetimeInput(createForm.openedAt)}
-                  />
+                  <input onChange={updateCreateField("openedAt")} type="datetime-local" value={toLocalDatetimeInput(createForm.openedAt)} />
+                </label>
+                <label className="field-block">
+                  <span>Pesquisar artigo</span>
+                  <input onChange={(event) => setCreateKnowledgeQuery(event.target.value)} placeholder="Pesquisar solucao existente" value={createKnowledgeQuery} />
                 </label>
                 <div className="field-block field-span-2" ref={watcherBoxRef}>
                   <span>Observadores</span>
@@ -576,20 +546,11 @@ function TicketsPage() {
                         </span>
                       ))}
                     </div>
-                    <input
-                      onChange={(event) => setWatcherQuery(event.target.value)}
-                      placeholder="Comece a digitar nome, email ou equipe"
-                      value={watcherQuery}
-                    />
+                    <input onChange={(event) => setWatcherQuery(event.target.value)} placeholder="Digite nome, email ou equipe" value={watcherQuery} />
                     {watcherSuggestions.length ? (
                       <div className="watcher-suggestions">
                         {watcherSuggestions.map((candidate) => (
-                          <button
-                            className="watcher-suggestion interactive-button"
-                            key={candidate.id}
-                            onClick={() => handleAddWatcher(candidate)}
-                            type="button"
-                          >
+                          <button className="watcher-suggestion interactive-button" key={candidate.id} onClick={() => handleAddWatcher(candidate)} type="button">
                             <strong>{candidate.name}</strong>
                             <small>{candidate.email} | {candidate.team}</small>
                           </button>
@@ -599,17 +560,50 @@ function TicketsPage() {
                   </div>
                 </div>
                 <label className="field-block field-full">
-                  <span>Descrição</span>
+                  <span>Descricao</span>
                   <textarea onChange={updateCreateField("description")} value={createForm.description} />
                 </label>
               </div>
 
+              {createArticleSuggestions.length ? (
+                <div className="ticket-rows">
+                  {createArticleSuggestions.map((article) => (
+                    <button
+                      className="ticket-row-card interactive-button"
+                      key={article.id}
+                      onClick={() =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          knowledgeArticleIds: [...new Set([...(current.knowledgeArticleIds || []), article.id])],
+                        }))
+                      }
+                      type="button"
+                    >
+                      <div className="ticket-row-main">
+                        <div className="ticket-row-title">
+                          <strong>{article.title}</strong>
+                          <h3>{article.category}</h3>
+                        </div>
+                        <div className="ticket-row-badges">
+                          <span className="badge status-badge-resolvido">Ativo</span>
+                        </div>
+                      </div>
+                      <div className="ticket-row-meta">
+                        <span>{article.solutionApplied}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {createForm.knowledgeArticleIds.length ? (
+                <div className="ticket-row-meta">
+                  <span>{createForm.knowledgeArticleIds.length} artigo(s) vinculado(s) ao novo chamado</span>
+                </div>
+              ) : null}
+
               <div className="attachment-toolbar glpi-subbar">
-                <button
-                  className="ghost-button interactive-button"
-                  onClick={() => createInputRef.current?.click()}
-                  type="button"
-                >
+                <button className="ghost-button interactive-button" onClick={() => createInputRef.current?.click()} type="button">
                   Anexar arquivos
                 </button>
                 <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
@@ -642,12 +636,7 @@ function TicketsPage() {
 
       {detailTicket && detailForm ? (
         <div className="ticket-modal-backdrop" onClick={() => setDetailTicketId(null)} role="presentation">
-          <div
-            className="ticket-modal ticket-modal-large board-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
+          <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-detail-form" onSubmit={handleSaveTicket}>
               <div className="ticket-modal-header">
                 <div>
@@ -658,11 +647,7 @@ function TicketsPage() {
                   </span>
                 </div>
                 <div className="ticket-detail-actions">
-                  <button
-                    className="ghost-button interactive-button"
-                    onClick={() => setDetailTicketId(null)}
-                    type="button"
-                  >
+                  <button className="ghost-button interactive-button" onClick={() => setDetailTicketId(null)} type="button">
                     Fechar
                   </button>
                   {canDeleteTicket ? (
@@ -673,130 +658,211 @@ function TicketsPage() {
                 </div>
               </div>
 
+              <div className="glpi-info-strip">
+                <div>
+                  <span>Prioridade</span>
+                  <strong className={`badge ${getPriorityBadgeClass(detailForm.priority)}`}>{detailForm.priority}</strong>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <strong className={`badge ${getStatusBadgeClass(detailForm.status)}`}>{detailForm.status}</strong>
+                </div>
+                <div>
+                  <span>SLA</span>
+                  <strong className={`badge ${getSlaTone(detailTicket)}`}>{detailTicket.slaLabel}</strong>
+                </div>
+              </div>
+
               <label className="field-block field-full">
                 <span>Titulo</span>
                 <input disabled={!canEditTicket} onChange={updateDetailField("title")} value={detailForm.title} />
               </label>
 
               <div className="detail-grid">
-                {detailFields.map((field) => (
-                  <label className="field-block" key={field.key}>
-                    <span>{field.label}</span>
-                    {field.kind === "select" && field.key === "type" ? (
-                      <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                        <option>Incidente</option>
-                        <option>Requisição</option>
-                        <option>Problema</option>
-                      </select>
-                    ) : null}
-                    {field.kind === "select" && field.key === "status" ? (
-                      <select disabled={!canChangeStatus} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                        <option>Aberto</option>
-                        <option>Em andamento</option>
-                        <option>Aguardando usuário</option>
-                        <option>Reaberto</option>
-                        <option>Resolvido</option>
-                      </select>
-                    ) : null}
-                    {field.kind === "select" && field.key === "queue" ? (
-                      <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                        <option>Service Desk</option>
-                        <option>Infraestrutura</option>
-                        <option>Aplicações</option>
-                        <option>Seguranca</option>
-                      </select>
-                    ) : null}
-                    {field.kind === "select" && field.key === "source" ? (
-                      <select disabled={!canEditTicket} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                        <option>Portal</option>
-                        <option>E-mail</option>
-                        <option>Telefone</option>
-                        <option>Monitoramento</option>
-                      </select>
-                    ) : null}
-                    {field.kind === "select" && (field.key === "urgency" || field.key === "impact") ? (
-                      <select disabled={!canChangePriority} onChange={updateDetailField(field.key)} value={detailForm[field.key]}>
-                        <option>Baixa</option>
-                        <option>Média</option>
-                        <option>Alta</option>
-                        <option>Crítica</option>
-                      </select>
-                    ) : null}
-                    {field.kind === "assignee" ? (
-                      <UserAutocomplete
-                        filterFn={(candidate) => normalizeText(candidate.department) === "ti"}
-                        disabled={!canAssignTicket}
-                        onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
-                        placeholder="Comece a digitar um técnico de TI"
-                        users={tiUsers}
-                        value={detailForm.assignee || ""}
-                      />
-                    ) : null}
-                    {field.kind === "input" ? (
-                      <input
-                        disabled={field.key === "assignee" ? !canAssignTicket : !canEditTicket}
-                        onChange={updateDetailField(field.key)}
-                        value={detailForm[field.key] || ""}
-                      />
-                    ) : null}
-                    {field.kind === "date" ? (
-                      <input disabled={!canEditTicket} onChange={updateDetailField(field.key)} type="date" value={detailForm[field.key] || ""} />
-                    ) : null}
-                    {field.kind === "datetime" ? (
-                      <input
-                        disabled={!canEditTicket}
-                        onChange={updateDetailField(field.key)}
-                        type="datetime-local"
-                        value={detailForm[field.key] || ""}
-                      />
-                    ) : null}
-                  </label>
-                ))}
-              </div>
-
-              <div className="glpi-info-strip">
-                <div>
-                  <span>Prioridade calculada</span>
-                  <strong>{detailTicket.priority}</strong>
-                </div>
-                <div>
-                  <span>SLA</span>
-                  <strong>{detailTicket.sla}</strong>
-                </div>
-                <div>
-                  <span>Ultima atualizacao</span>
-                  <strong>{detailTicket.updatedAt}</strong>
-                </div>
+                <label className="field-block">
+                  <span>Tipo</span>
+                  <select disabled={!canEditTicket} onChange={updateDetailField("type")} value={detailForm.type}>
+                    <option>Incidente</option>
+                    <option>Requisicao</option>
+                    <option>Problema</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Status</span>
+                  <select disabled={!canChangeStatus} onChange={updateDetailField("status")} value={detailForm.status}>
+                    {TICKET_STATUSES.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Fila</span>
+                  <select disabled={!canEditTicket} onChange={updateDetailField("queue")} value={detailForm.queue}>
+                    <option>Service Desk</option>
+                    <option>Infraestrutura</option>
+                    <option>Aplicacoes</option>
+                    <option>Seguranca</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Solicitante</span>
+                  <input disabled={!canEditTicket || !canSeeAllTickets} onChange={updateDetailField("requester")} value={detailForm.requester} />
+                </label>
+                <label className="field-block">
+                  <span>Email solicitante</span>
+                  <input disabled={!canEditTicket || !canSeeAllTickets} onChange={updateDetailField("requesterEmail")} value={detailForm.requesterEmail} />
+                </label>
+                <label className="field-block">
+                  <span>Origem</span>
+                  <select disabled={!canEditTicket} onChange={updateDetailField("source")} value={detailForm.source}>
+                    <option>Portal</option>
+                    <option>E-mail</option>
+                    <option>Telefone</option>
+                    <option>Monitoramento</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Categoria</span>
+                  <input disabled={!canEditTicket} onChange={updateDetailField("category")} value={detailForm.category || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Localizacao</span>
+                  <input disabled={!canEditTicket} onChange={updateDetailField("location")} value={detailForm.location || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Prioridade</span>
+                  <select disabled={!canChangePriority} onChange={updateDetailField("priority")} value={detailForm.priority}>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Urgencia</span>
+                  <select disabled={!canChangePriority} onChange={updateDetailField("urgency")} value={detailForm.urgency}>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Impacto</span>
+                  <select disabled={!canChangePriority} onChange={updateDetailField("impact")} value={detailForm.impact}>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Data limite</span>
+                  <input disabled={!canEditTicket} onChange={updateDetailField("dueDate")} type="date" value={detailForm.dueDate || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Abertura</span>
+                  <input disabled={!canEditTicket} onChange={updateDetailField("openedAt")} type="datetime-local" value={detailForm.openedAt || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Observadores</span>
+                  <input disabled={!canEditTicket} onChange={updateDetailField("watchers")} value={detailForm.watchers || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Tecnico responsavel</span>
+                  <UserAutocomplete
+                    filterFn={(candidate) => normalizeText(candidate.department) === "ti"}
+                    disabled={!canAssignTicket}
+                    onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
+                    placeholder="Comece a digitar um tecnico de TI"
+                    users={tiUsers}
+                    value={detailForm.assignee || ""}
+                  />
+                </label>
               </div>
 
               <label className="field-block field-full">
-                <span>Descrição</span>
+                <span>Descricao</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} value={detailForm.description} />
               </label>
 
               <label className="field-block field-full">
-                <span>Solução / acompanhamento técnico</span>
+                <span>Solucao / acompanhamento tecnico</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
 
-              <div className="ticket-attachment-panel">
+              <section className="ticket-attachment-panel">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Base de conhecimento vinculada</strong>
+                    <span>Pesquise artigos existentes ou transforme a solucao do chamado em artigo reutilizavel.</span>
+                  </div>
+                </div>
+                <input className="toolbar-search" onChange={(event) => setKnowledgeQuery(event.target.value)} placeholder="Pesquisar artigos por problema, solucao ou palavra-chave" value={knowledgeQuery} />
+                {articleSuggestions.length ? (
+                  <div className="ticket-rows">
+                    {articleSuggestions.map((article) => (
+                      <button className="ticket-row-card interactive-button" key={article.id} onClick={() => linkKnowledgeArticleToTicket(detailTicket.id, article.id)} type="button">
+                        <div className="ticket-row-main">
+                          <div className="ticket-row-title">
+                            <strong>{article.title}</strong>
+                            <h3>{article.category}</h3>
+                          </div>
+                          <div className="ticket-row-badges">
+                            <span className={`badge ${article.status === "Ativo" ? "status-badge-resolvido" : "status-badge-reaberto"}`}>{article.status}</span>
+                          </div>
+                        </div>
+                        <div className="ticket-row-meta">
+                          <span>{article.solutionApplied}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {linkedArticles.length ? (
+                  <div className="ticket-rows">
+                    {linkedArticles.map((article) => (
+                      <article className="ticket-row-card" key={article.id}>
+                        <div className="ticket-row-main">
+                          <div className="ticket-row-title">
+                            <strong>{article.title}</strong>
+                            <h3>{article.category}</h3>
+                          </div>
+                          <div className="ticket-row-badges">
+                            <span className={`badge ${article.status === "Ativo" ? "status-badge-resolvido" : "status-badge-reaberto"}`}>{article.status}</span>
+                          </div>
+                        </div>
+                        <div className="ticket-row-meta">
+                          <span>{article.solutionApplied}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Nenhum artigo vinculado.</strong>
+                    <span>Use a busca acima para reaproveitar solucoes registradas.</span>
+                  </div>
+                )}
+                {canCreateKnowledge && detailTicket.resolutionNotes ? (
+                  <div className="ticket-create-actions compact-actions">
+                    <button className="ghost-button interactive-button" onClick={() => createKnowledgeArticleFromTicket(detailTicket.id)} type="button">
+                      Transformar solucao em artigo
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="ticket-attachment-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Anexos</strong>
                     <span>Prints, documentos e evidencias vinculadas ao chamado.</span>
                   </div>
-                {canManageAttachments ? (
-                  <button
-                    className="ghost-button interactive-button"
-                    onClick={() => detailInputRef.current?.click()}
-                    type="button"
-                  >
-                    Adicionar anexos
-                  </button>
-                ) : null}
+                  {canManageAttachments ? (
+                    <button className="ghost-button interactive-button" onClick={() => detailInputRef.current?.click()} type="button">
+                      Adicionar anexos
+                    </button>
+                  ) : null}
                   <input hidden multiple onChange={handleDetailAttachments} ref={detailInputRef} type="file" />
                 </div>
-
                 {detailTicket.attachments?.length ? (
                   <div className="attachment-list">
                     {detailTicket.attachments.map((attachment) => (
@@ -828,15 +894,49 @@ function TicketsPage() {
                 ) : (
                   <div className="empty-state">
                     <strong>Nenhum anexo vinculado.</strong>
-                    <span>Use o botão acima para anexar prints, PDFs, planilhas ou outros arquivos.</span>
+                    <span>Use o botao acima para anexar prints, PDFs, planilhas ou outros arquivos.</span>
                   </div>
                 )}
-              </div>
+              </section>
+
+              <section className="ticket-attachment-panel">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Historico e auditoria</strong>
+                    <span>Registro de alteracoes de status, prioridade, tecnico, solucao, reabertura e eventos de SLA.</span>
+                  </div>
+                </div>
+                {detailTicket.history?.length ? (
+                  <div className="ticket-rows">
+                    {detailTicket.history.map((entry) => (
+                      <article className="ticket-row-card" key={entry.id}>
+                        <div className="ticket-row-main">
+                          <div className="ticket-row-title">
+                            <strong>{entry.message}</strong>
+                            <h3>{entry.actorName || "Sistema"}</h3>
+                          </div>
+                          <div className="ticket-row-badges">
+                            <span className="badge badge-neutral">{entry.type}</span>
+                          </div>
+                        </div>
+                        <div className="ticket-row-meta">
+                          <span>{entry.createdAtLabel}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Nenhum evento registrado.</strong>
+                    <span>As alteracoes deste chamado passarao a aparecer aqui.</span>
+                  </div>
+                )}
+              </section>
 
               <div className="ticket-create-actions">
                 {canEditTicket ? (
                   <button className="primary-button interactive-button" type="submit">
-                    Salvar alterações
+                    Salvar alteracoes
                   </button>
                 ) : null}
               </div>

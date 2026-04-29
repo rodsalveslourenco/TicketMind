@@ -5,6 +5,7 @@ import { Pool } from "pg";
 import initSqlJs from "sql.js";
 import { seedData } from "../src/data/seedData.js";
 import { normalizeRoleName, normalizeUserPermissions } from "../src/data/permissions.js";
+import { normalizeKnowledgeArticle, syncHelpdeskState } from "../src/data/helpdesk.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +54,7 @@ function withDefaults(stored = {}) {
     brands: Array.isArray(stored.brands) ? stored.brands : seedData.brands,
     models: Array.isArray(stored.models) ? stored.models : seedData.models,
     projects: Array.isArray(stored.projects) ? stored.projects : seedData.projects,
+    knowledgeArticles: (Array.isArray(stored.knowledgeArticles) ? stored.knowledgeArticles : seedData.knowledgeArticles).map(normalizeKnowledgeArticle),
     apiConfigs: Array.isArray(stored.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
     reports: Array.isArray(stored.reports) ? stored.reports : seedData.reports,
   };
@@ -110,16 +112,17 @@ async function readSqliteStateRaw() {
 async function writeSqliteState(nextState) {
   const db = await getSqliteDb();
   const normalizedState = withDefaults(nextState);
+  const syncedState = syncHelpdeskState(normalizedState, normalizedState.users || []);
   const now = new Date().toISOString();
 
   db.run("DELETE FROM app_state WHERE id = 1");
   db.run("INSERT INTO app_state (id, data, updated_at) VALUES (?, ?, ?)", [
     1,
-    JSON.stringify(normalizedState),
+    JSON.stringify(syncedState),
     now,
   ]);
   await persistSqliteDb(db);
-  return normalizedState;
+  return syncedState;
 }
 
 function getPgPool() {
@@ -154,6 +157,7 @@ async function writePostgresState(nextState) {
   await ensurePgSchema();
   const pool = getPgPool();
   const normalizedState = withDefaults(nextState);
+  const syncedState = syncHelpdeskState(normalizedState, normalizedState.users || []);
 
   await pool.query(
     `
@@ -163,10 +167,10 @@ async function writePostgresState(nextState) {
         data = EXCLUDED.data,
         updated_at = EXCLUDED.updated_at
     `,
-    [JSON.stringify(normalizedState)],
+    [JSON.stringify(syncedState)],
   );
 
-  return normalizedState;
+  return syncedState;
 }
 
 async function loadBootstrapState() {
@@ -178,16 +182,16 @@ async function loadBootstrapState() {
 export async function readState() {
   if (!isPostgresEnabled()) {
     const sqliteState = await readSqliteStateRaw();
-    if (sqliteState) return withDefaults(sqliteState);
-    const initialState = withDefaults({});
+    if (sqliteState) return syncHelpdeskState(withDefaults(sqliteState), withDefaults(sqliteState).users || []);
+    const initialState = syncHelpdeskState(withDefaults({}), withDefaults({}).users || []);
     await writeSqliteState(initialState);
     return initialState;
   }
 
   const postgresState = await readPostgresStateRaw();
-  if (postgresState) return withDefaults(postgresState);
+  if (postgresState) return syncHelpdeskState(withDefaults(postgresState), withDefaults(postgresState).users || []);
 
-  const initialState = withDefaults(await loadBootstrapState());
+  const initialState = syncHelpdeskState(withDefaults(await loadBootstrapState()), withDefaults(await loadBootstrapState()).users || []);
   await writePostgresState(initialState);
   return initialState;
 }

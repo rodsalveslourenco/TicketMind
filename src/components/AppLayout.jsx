@@ -1,7 +1,8 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
-import { canAccessModule, moduleNavigation } from "../data/permissions";
+import { canAccessModule, hasAnyPermission, moduleNavigation } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 function getInitials(name) {
@@ -16,7 +17,16 @@ function getInitials(name) {
 function AppLayout() {
   const { user, logout } = useAuth();
   const { dismissToast, notifications, summary } = useAppData();
+  const navigate = useNavigate();
+  const [globalSearch, setGlobalSearch] = useState("");
   const availableNavigation = moduleNavigation.filter((item) => canAccessModule(user, item.module));
+  const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
+
+  const handleGlobalSearch = (event) => {
+    event.preventDefault();
+    const query = globalSearch.trim();
+    navigate(query ? `/app/tickets?q=${encodeURIComponent(query)}` : "/app/tickets");
+  };
 
   return (
     <div className="app-shell">
@@ -43,6 +53,12 @@ function AppLayout() {
           ))}
         </nav>
 
+        {canCreateTicket ? (
+          <button className="primary-button interactive-button sidebar-quick-action" onClick={() => navigate("/app/tickets?new=1")} type="button">
+            Abrir chamado
+          </button>
+        ) : null}
+
         <div className="sidebar-card">
           <span className="eyebrow">Resumo operacional</span>
           <strong>{summary.slaCompliance}% no SLA</strong>
@@ -53,16 +69,28 @@ function AppLayout() {
       <div className="workspace">
         <header className="topbar">
           <div>
-            <h1>Central de operações</h1>
+            <h1>Central de operacoes</h1>
           </div>
           <div className="topbar-actions">
+            <form className="topbar-search-form" onSubmit={handleGlobalSearch}>
+              <input
+                className="toolbar-search topbar-search"
+                onChange={(event) => setGlobalSearch(event.target.value)}
+                placeholder="Buscar chamado por numero, usuario, email, tecnico ou titulo"
+                value={globalSearch}
+              />
+              <button className="ghost-button interactive-button" type="submit">
+                Buscar
+              </button>
+            </form>
+            {canCreateTicket ? (
+              <button className="primary-button interactive-button" onClick={() => navigate("/app/tickets?new=1")} type="button">
+                Abrir chamado
+              </button>
+            ) : null}
             <NavLink className="user-badge interactive-button" to="/app/profile">
               <div className="user-avatar">
-                {user?.avatar ? (
-                  <img alt={user.name} className="user-avatar-image" src={user.avatar} />
-                ) : (
-                  <span>{getInitials(user?.name)}</span>
-                )}
+                {user?.avatar ? <img alt={user.name} className="user-avatar-image" src={user.avatar} /> : <span>{getInitials(user?.name)}</span>}
               </div>
               <strong>{user?.name}</strong>
               <span>{user?.role} | {user?.team}</span>

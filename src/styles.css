@@ -1557,6 +1557,31 @@ textarea:focus {
   border: 1px solid #d9e4ef;
 }
 
+.kanban-column-aberto {
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #93c5fd;
+}
+
+.kanban-column-andamento {
+  background: linear-gradient(180deg, #fff7ed 0%, #fed7aa 100%);
+  border-color: #fdba74;
+}
+
+.kanban-column-aguardando {
+  background: linear-gradient(180deg, #fefce8 0%, #fde68a 100%);
+  border-color: #facc15;
+}
+
+.kanban-column-reaberto {
+  background: linear-gradient(180deg, #fef2f2 0%, #fecaca 100%);
+  border-color: #f87171;
+}
+
+.kanban-column-resolvido {
+  background: linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%);
+  border-color: #4ade80;
+}
+
 .kanban-column-header {
   display: flex;
   align-items: center;
@@ -3348,6 +3373,66 @@ textarea:focus {
   color: #166534;
   background: #f0fdf4;
   border-color: #86efac;
+}
+
+.status-badge-aberto {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.status-badge-andamento {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.status-badge-aguardando {
+  color: #854d0e;
+  background: #fefce8;
+  border-color: #fde68a;
+}
+
+.status-badge-reaberto {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.status-badge-resolvido {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.topbar-search-form {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.topbar-search {
+  min-width: 280px;
+}
+
+.sidebar-quick-action {
+  width: 100%;
+  margin: 0 0 1rem;
+}
+
+.compact-kpi-strip {
+  margin-top: 1rem;
+}
+
+.compact-filter-shell {
+  margin: 0 0 1rem;
+}
+
+.table-description {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .priority-line-critica {

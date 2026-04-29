@@ -14,6 +14,8 @@ import ProjectsPage from "./pages/ProjectsPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
 import ProfilePage from "./pages/ProfilePage";
 import KnowledgePage from "./pages/KnowledgePage";
+import HelpdeskOperationsPage from "./pages/HelpdeskOperationsPage";
+import TechniciansPage from "./pages/TechniciansPage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -36,6 +38,8 @@ function App() {
         <Route element={<Navigate replace to={homePath} />} index />
         <Route element={<ProfilePage />} path="profile" />
         <Route element={<ProtectedRoute requiredPermissions={["dashboard_view"]}><DashboardPage /></ProtectedRoute>} path="dashboard" />
+        <Route element={<ProtectedRoute requiredPermissions={["helpdesk_indicators_view", "sla_alerts_view", "tickets_admin"]}><HelpdeskOperationsPage /></ProtectedRoute>} path="helpdesk-operations" />
+        <Route element={<ProtectedRoute requiredPermissions={["technicians_performance_view", "technicians_workload_view", "tickets_admin"]}><TechniciansPage /></ProtectedRoute>} path="helpdesk-technicians" />
         <Route element={<ProtectedRoute requiredPermissions={["tickets_view_own", "tickets_view_all", "tickets_admin"]}><TicketsPage /></ProtectedRoute>} path="tickets" />
         <Route element={<ProtectedRoute requiredPermissions={["assets_view", "assets_admin"]}><AssetsPage /></ProtectedRoute>} path="assets" />
         <Route element={<ProtectedRoute requiredPermissions={["inventory_view", "inventory_admin"]}><InventoryPage /></ProtectedRoute>} path="inventory" />
