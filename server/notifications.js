@@ -42,7 +42,7 @@ function compileTemplate(template, placeholders) {
 }
 
 function createMailTransport(smtpSettings) {
-  const password = decryptSecret(smtpSettings?.password || "");
+  const password = String(smtpSettings?.password || "").trim();
   return nodemailer.createTransport({
     host: smtpSettings?.host,
     port: Number(smtpSettings?.port) || 587,
@@ -56,6 +56,139 @@ function createMailTransport(smtpSettings) {
           }
         : undefined,
   });
+}
+
+async function sendWithResend(config, message) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: config.fromName ? `${config.fromName} <${config.fromEmail}>` : config.fromEmail,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Resend error: ${detail || response.status}`);
+  }
+}
+
+async function sendWithSendGrid(config, message) {
+  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: {
+        email: config.fromEmail,
+        name: config.fromName || undefined,
+      },
+      personalizations: [{ to: message.to.map((email) => ({ email })) }],
+      subject: message.subject,
+      content: [
+        { type: "text/plain", value: message.text },
+        { type: "text/html", value: message.html },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`SendGrid error: ${detail || response.status}`);
+  }
+}
+
+function resolveServiceConfig(stateOrPayload = {}) {
+  const settings = stateOrPayload?.emailServiceSettings || {};
+  const provider = String(settings.provider || process.env.EMAIL_SERVICE_PROVIDER || "resend").trim().toLowerCase();
+  const apiKey =
+    decryptSecret(settings.apiKey || "") ||
+    String(process.env.EMAIL_SERVICE_API_KEY || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY || "").trim();
+  const fromEmail =
+    String(settings.fromEmail || process.env.EMAIL_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || "").trim();
+  const fromName =
+    String(settings.fromName || process.env.EMAIL_FROM_NAME || process.env.RESEND_FROM_NAME || "TicketMind").trim();
+
+  return {
+    provider,
+    apiKey,
+    fromEmail,
+    fromName,
+  };
+}
+
+function resolveSmtpConfig(stateOrPayload = {}) {
+  const settings = stateOrPayload?.smtpSettings || {};
+  return {
+    ...settings,
+    password: decryptSecret(settings.password || ""),
+  };
+}
+
+function isSmtpConfigured(smtpSettings = {}) {
+  return Boolean(String(smtpSettings.host || "").trim() && String(smtpSettings.fromEmail || "").trim() && String(smtpSettings.password || "").trim());
+}
+
+function isServiceConfigured(serviceSettings = {}) {
+  return Boolean(String(serviceSettings.apiKey || "").trim() && String(serviceSettings.fromEmail || "").trim());
+}
+
+async function sendByService(serviceSettings, message) {
+  const provider = normalizeText(serviceSettings.provider);
+  if (provider === "sendgrid") {
+    await sendWithSendGrid(serviceSettings, message);
+    return "Servico: SendGrid";
+  }
+
+  await sendWithResend(serviceSettings, message);
+  return "Servico: Resend";
+}
+
+async function deliverEmail(stateOrPayload, message) {
+  const smtpSettings = resolveSmtpConfig(stateOrPayload);
+  const serviceSettings = resolveServiceConfig(stateOrPayload);
+  const preferredMode = String(stateOrPayload?.smtpSettings?.deliveryMode || "service").trim().toLowerCase();
+
+  if (preferredMode === "smtp" && isSmtpConfigured(smtpSettings)) {
+    const transport = createMailTransport(smtpSettings);
+    await transport.verify();
+    await transport.sendMail({
+      from: smtpSettings.fromName ? `"${smtpSettings.fromName}" <${smtpSettings.fromEmail}>` : smtpSettings.fromEmail,
+      to: message.to.join(", "),
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+    return "SMTP";
+  }
+
+  if (isServiceConfigured(serviceSettings)) {
+    return sendByService(serviceSettings, message);
+  }
+
+  if (isSmtpConfigured(smtpSettings)) {
+    const transport = createMailTransport(smtpSettings);
+    await transport.verify();
+    await transport.sendMail({
+      from: smtpSettings.fromName ? `"${smtpSettings.fromName}" <${smtpSettings.fromEmail}>` : smtpSettings.fromEmail,
+      to: message.to.join(", "),
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+    return "SMTP";
+  }
+
+  throw new Error("Nenhum metodo de envio configurado. Defina o servico padrao ou um SMTP.");
 }
 
 function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
@@ -113,7 +246,7 @@ function resolveEventChanges(previousTicket, nextTicket) {
   return changes;
 }
 
-function buildNotificationLogEntry({ eventKey, ticketId, recipients, status, error = "", dedupeKey, subject }) {
+function buildNotificationLogEntry({ eventKey, ticketId, recipients, status, error = "", dedupeKey, subject, method = "" }) {
   return {
     id: `mail-log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     eventKey,
@@ -121,6 +254,7 @@ function buildNotificationLogEntry({ eventKey, ticketId, recipients, status, err
     recipients,
     status,
     error,
+    method,
     dedupeKey,
     subject: String(subject || ""),
     sentAt: new Date().toISOString(),
@@ -129,6 +263,7 @@ function buildNotificationLogEntry({ eventKey, ticketId, recipients, status, err
 
 export function prepareStateForClient(state) {
   const smtpSettings = state?.smtpSettings || {};
+  const emailServiceSettings = state?.emailServiceSettings || {};
   return {
     ...state,
     smtpSettings: {
@@ -136,15 +271,25 @@ export function prepareStateForClient(state) {
       password: "",
       hasPassword: Boolean(String(smtpSettings.password || "").trim()),
     },
+    emailServiceSettings: {
+      ...emailServiceSettings,
+      apiKey: "",
+      hasApiKey: Boolean(String(emailServiceSettings.apiKey || "").trim()),
+    },
   };
 }
 
 export function mergeIncomingState(previousState = {}, nextState = {}) {
   const previousSmtp = previousState.smtpSettings || {};
+  const previousService = previousState.emailServiceSettings || {};
   const incomingSmtp = nextState.smtpSettings || {};
+  const incomingService = nextState.emailServiceSettings || {};
   const nextPassword = String(incomingSmtp.password || "").trim()
     ? encryptSecret(incomingSmtp.password)
     : String(previousSmtp.password || "").trim();
+  const nextApiKey = String(incomingService.apiKey || "").trim()
+    ? encryptSecret(incomingService.apiKey)
+    : String(previousService.apiKey || "").trim();
 
   return {
     ...nextState,
@@ -154,24 +299,26 @@ export function mergeIncomingState(previousState = {}, nextState = {}) {
       password: nextPassword,
       hasPassword: Boolean(nextPassword),
     },
+    emailServiceSettings: {
+      ...previousService,
+      ...incomingService,
+      apiKey: nextApiKey,
+      hasApiKey: Boolean(nextApiKey),
+    },
   };
 }
 
 export async function sendNotificationTest(payload = {}, persistedState = {}) {
-  const mergedState = mergeIncomingState(persistedState, { smtpSettings: payload.smtpSettings || {} });
-  const smtpSettings = mergedState.smtpSettings || {};
+  const mergedState = mergeIncomingState(persistedState, {
+    smtpSettings: payload.smtpSettings || {},
+    emailServiceSettings: payload.emailServiceSettings || {},
+  });
   const recipients = parseEmails(payload.recipients);
-  if (!smtpSettings.host || !smtpSettings.fromEmail || !recipients.length) {
-    throw new Error("Preencha SMTP, remetente e pelo menos um destinatario para testar.");
+  if (!recipients.length) {
+    throw new Error("Informe pelo menos um destinatario para testar.");
   }
-
-  const transport = createMailTransport(smtpSettings);
-  await transport.verify();
-  await transport.sendMail({
-    from: smtpSettings.fromName
-      ? `"${smtpSettings.fromName}" <${smtpSettings.fromEmail}>`
-      : smtpSettings.fromEmail,
-    to: recipients.join(", "),
+  await deliverEmail(mergedState, {
+    to: recipients,
     subject: String(payload.subject || "Teste de notificacao TicketMind"),
     text: String(payload.body || "Teste de envio realizado com sucesso."),
     html: `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${String(payload.body || "Teste de envio realizado com sucesso.")}</pre>`,
@@ -179,9 +326,6 @@ export async function sendNotificationTest(payload = {}, persistedState = {}) {
 }
 
 export async function processTicketNotifications({ previousState, nextState, persistState, baseUrl }) {
-  const smtpSettings = nextState?.smtpSettings || {};
-  if (!smtpSettings.host || !smtpSettings.fromEmail || !String(smtpSettings.password || "").trim()) return;
-
   const rules = Array.isArray(nextState.notificationRules) ? nextState.notificationRules.filter((rule) => rule.active) : [];
   if (!rules.length) return;
 
@@ -191,9 +335,6 @@ export async function processTicketNotifications({ previousState, nextState, per
   const nextTickets = new Map((nextState?.tickets || []).map((ticket) => [ticket.id, ticket]));
   const existingLogKeys = new Set((nextState.notificationLogs || []).map((log) => log.dedupeKey).filter(Boolean));
   const nextLogs = [...(nextState.notificationLogs || [])];
-
-  const transport = createMailTransport(smtpSettings);
-  await transport.verify();
 
   for (const nextTicket of nextTickets.values()) {
     const previousTicket = previousTickets.get(nextTicket.id) || null;
@@ -223,11 +364,8 @@ export async function processTicketNotifications({ previousState, nextState, per
       if (existingLogKeys.has(dedupeKey)) continue;
 
       try {
-        await transport.sendMail({
-          from: smtpSettings.fromName
-            ? `"${smtpSettings.fromName}" <${smtpSettings.fromEmail}>`
-            : smtpSettings.fromEmail,
-          to: recipients.join(", "),
+        const method = await deliverEmail(nextState, {
+          to: recipients,
           subject,
           text: body,
           html: `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>`,
@@ -240,6 +378,7 @@ export async function processTicketNotifications({ previousState, nextState, per
             status: "Enviado",
             dedupeKey,
             subject,
+            method,
           }),
         );
       } catch (error) {
@@ -252,6 +391,7 @@ export async function processTicketNotifications({ previousState, nextState, per
             error: error instanceof Error ? error.message : "Falha ao enviar email.",
             dedupeKey,
             subject,
+            method: "Falha",
           }),
         );
       }

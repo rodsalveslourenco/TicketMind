@@ -12,6 +12,7 @@ import {
 } from "./permissions";
 import {
   defaultEmailPlaceholders,
+  defaultEmailServiceSettings,
   defaultNavigationSections,
   defaultNotificationEvents,
   defaultPermissionCatalog,
@@ -381,6 +382,15 @@ function hydrateSmtpSettings(storedSettings) {
   };
 }
 
+function hydrateEmailServiceSettings(storedSettings) {
+  return {
+    ...defaultEmailServiceSettings,
+    ...(storedSettings && typeof storedSettings === "object" ? storedSettings : {}),
+    hasApiKey: Boolean(storedSettings?.hasApiKey),
+    apiKey: "",
+  };
+}
+
 function filterTicketsForUser(tickets, user) {
   if (!user) return [];
   if (canViewAllTickets(user)) return tickets;
@@ -423,6 +433,7 @@ function mergeCollections(stored) {
   const notificationRules = hydrateNotificationRules(stored?.notificationRules, notificationEvents);
   const notificationLogs = hydrateNotificationLogs(stored?.notificationLogs);
   const smtpSettings = hydrateSmtpSettings(stored?.smtpSettings);
+  const emailServiceSettings = hydrateEmailServiceSettings(stored?.emailServiceSettings);
 
   const baseState = {
     ...stored,
@@ -436,6 +447,7 @@ function mergeCollections(stored) {
     notificationRules,
     notificationLogs,
     smtpSettings,
+    emailServiceSettings,
     users,
     departments,
     locations,
@@ -1566,6 +1578,7 @@ export function AppDataProvider({ children }) {
       ...current,
       smtpSettings: {
         ...current.smtpSettings,
+        deliveryMode: payload.deliveryMode === "smtp" ? "smtp" : "service",
         host: String(payload.host || "").trim(),
         port: Number(payload.port) || 587,
         secure: Boolean(payload.secure),
@@ -1575,6 +1588,25 @@ export function AppDataProvider({ children }) {
         hasPassword: current.smtpSettings?.hasPassword || Boolean(payload.password),
         fromEmail: String(payload.fromEmail || "").trim(),
         fromName: String(payload.fromName || "").trim(),
+      },
+    }));
+  };
+
+  const saveEmailServiceSettings = (payload) => {
+    if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      emailServiceSettings: {
+        ...current.emailServiceSettings,
+        provider: String(payload.provider || "resend").trim() || "resend",
+        apiKey: String(payload.apiKey || ""),
+        hasApiKey: current.emailServiceSettings?.hasApiKey || Boolean(payload.apiKey),
+        fromEmail: String(payload.fromEmail || "").trim(),
+        fromName: String(payload.fromName || "").trim(),
+      },
+      smtpSettings: {
+        ...current.smtpSettings,
+        deliveryMode: payload.deliveryMode === "smtp" ? "smtp" : current.smtpSettings?.deliveryMode || "service",
       },
     }));
   };
@@ -1600,6 +1632,7 @@ export function AppDataProvider({ children }) {
       notificationRules: data.notificationRules || [],
       notificationLogs: data.notificationLogs || [],
       smtpSettings: data.smtpSettings || defaultSmtpSettings,
+      emailServiceSettings: data.emailServiceSettings || defaultEmailServiceSettings,
       users: data.users || [],
       departments: data.departments || [],
       locations: data.locations || [],
@@ -1662,6 +1695,7 @@ export function AppDataProvider({ children }) {
       deleteEmailLayout,
       saveNotificationRule,
       saveSmtpSettings,
+      saveEmailServiceSettings,
       requestNotificationTest,
       toLocalDatetimeInput,
     }),

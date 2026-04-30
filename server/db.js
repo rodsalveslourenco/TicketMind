@@ -8,6 +8,7 @@ import { normalizeRoleName, normalizeUserPermissions } from "../src/data/permiss
 import { normalizeKnowledgeArticle, syncHelpdeskState } from "../src/data/helpdesk.js";
 import {
   defaultEmailPlaceholders,
+  defaultEmailServiceSettings,
   defaultNavigationSections,
   defaultNotificationEvents,
   defaultPermissionCatalog,
@@ -162,6 +163,10 @@ function buildStateDefaults(stored = {}) {
       stored.smtpSettings && typeof stored.smtpSettings === "object"
         ? { ...defaultSmtpSettings, ...stored.smtpSettings }
         : defaultSmtpSettings,
+    emailServiceSettings:
+      stored.emailServiceSettings && typeof stored.emailServiceSettings === "object"
+        ? { ...defaultEmailServiceSettings, ...stored.emailServiceSettings }
+        : defaultEmailServiceSettings,
     users: Array.isArray(stored.users) ? stored.users : [],
     departments: Array.isArray(stored.departments) ? stored.departments : [],
     locations: Array.isArray(stored.locations) ? stored.locations : [],

@@ -20,12 +20,14 @@ function buildRuleDraft(eventKey, existingRule) {
 function NotificationsPage() {
   const { user } = useAuth();
   const {
+    emailServiceSettings,
     emailLayouts,
     notificationEvents,
     notificationLogs,
     notificationRules,
     pushToast,
     requestNotificationTest,
+    saveEmailServiceSettings,
     saveNotificationRule,
     saveSmtpSettings,
     smtpSettings,
@@ -33,6 +35,7 @@ function NotificationsPage() {
   } = useAppData();
   const [ruleDrafts, setRuleDrafts] = useState({});
   const [smtpDraft, setSmtpDraft] = useState(smtpSettings);
+  const [serviceDraft, setServiceDraft] = useState(emailServiceSettings);
   const [testDraft, setTestDraft] = useState({
     recipients: "",
     subject: "Teste de notificacao TicketMind",
@@ -57,6 +60,10 @@ function NotificationsPage() {
   useEffect(() => {
     setSmtpDraft(smtpSettings);
   }, [smtpSettings]);
+
+  useEffect(() => {
+    setServiceDraft(emailServiceSettings);
+  }, [emailServiceSettings]);
 
   const sortedUsers = useMemo(
     () => users.slice().sort((left, right) => left.name.localeCompare(right.name)),
@@ -107,11 +114,19 @@ function NotificationsPage() {
     pushToast("SMTP atualizado", smtpDraft.host || "Configuracao salva");
   };
 
+  const handleSaveService = (event) => {
+    event.preventDefault();
+    saveEmailServiceSettings(serviceDraft);
+    saveSmtpSettings({ ...smtpDraft, deliveryMode: serviceDraft.deliveryMode || smtpDraft.deliveryMode || "service" });
+    pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico padrao");
+  };
+
   const handleTestEmail = async () => {
     setTesting(true);
     try {
       await requestNotificationTest({
         smtpSettings: smtpDraft,
+        emailServiceSettings: serviceDraft,
         recipients: testDraft.recipients,
         subject: testDraft.subject,
         body: testDraft.body,
@@ -241,8 +256,91 @@ function NotificationsPage() {
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
-            <h2>SMTP</h2>
-            <span>Configure o servidor de envio e valide com um teste.</span>
+            <h2>Entrega de e-mail</h2>
+            <span>Selecione o metodo padrao. Se o SMTP nao estiver configurado, o sistema usa o servico padrao.</span>
+          </div>
+        </div>
+        <div className="glpi-form-grid">
+          <label className="field-block">
+            <span>Tipo de envio</span>
+            <select
+              disabled={!canManage}
+              onChange={(event) => {
+                const deliveryMode = event.target.value === "smtp" ? "smtp" : "service";
+                setSmtpDraft((current) => ({ ...current, deliveryMode }));
+                setServiceDraft((current) => ({ ...current, deliveryMode }));
+              }}
+              value={smtpDraft.deliveryMode || "service"}
+            >
+              <option value="service">Servico padrao</option>
+              <option value="smtp">SMTP personalizado</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="glpi-toolbar">
+          <div>
+            <h2>Servico padrao</h2>
+            <span>Usado no envio basico do sistema e como fallback automatico quando o SMTP nao estiver ativo.</span>
+          </div>
+        </div>
+        <form className="glpi-ticket-form" onSubmit={handleSaveService}>
+          <div className="glpi-form-grid">
+            <label className="field-block">
+              <span>Provedor</span>
+              <select
+                disabled={!canManage}
+                onChange={(event) => setServiceDraft((current) => ({ ...current, provider: event.target.value }))}
+                value={serviceDraft.provider || "resend"}
+              >
+                <option value="resend">Resend</option>
+                <option value="sendgrid">SendGrid</option>
+              </select>
+            </label>
+            <label className="field-block">
+              <span>API key {serviceDraft.hasApiKey ? "(mantida se vazio)" : ""}</span>
+              <input
+                disabled={!canManage}
+                onChange={(event) => setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))}
+                type="password"
+                value={serviceDraft.apiKey || ""}
+              />
+            </label>
+            <label className="field-block">
+              <span>E-mail remetente</span>
+              <input
+                disabled={!canManage}
+                onChange={(event) => setServiceDraft((current) => ({ ...current, fromEmail: event.target.value }))}
+                type="email"
+                value={serviceDraft.fromEmail || ""}
+              />
+            </label>
+            <label className="field-block">
+              <span>Nome do remetente</span>
+              <input
+                disabled={!canManage}
+                onChange={(event) => setServiceDraft((current) => ({ ...current, fromName: event.target.value }))}
+                value={serviceDraft.fromName || ""}
+              />
+            </label>
+          </div>
+          {canManage ? (
+            <div className="ticket-create-actions compact-actions">
+              <button className="primary-button interactive-button" type="submit">
+                Salvar servico
+              </button>
+            </div>
+          ) : null}
+        </form>
+
+        <div className="settings-divider" />
+
+        <div className="glpi-toolbar">
+          <div>
+            <h2>SMTP personalizado</h2>
+            <span>Alternativa opcional para uso dedicado do cliente.</span>
           </div>
         </div>
         <form className="glpi-ticket-form" onSubmit={handleSaveSmtp}>
@@ -333,6 +431,7 @@ function NotificationsPage() {
                 </div>
                 <div className="row-stats row-stats-wrap">
                   <span>{log.recipients.join(", ") || "-"}</span>
+                  <span>{log.method || "-"}</span>
                   <span>{log.status}</span>
                   <span>{log.error || "-"}</span>
                 </div>

@@ -420,6 +420,7 @@ export const defaultEmailPlaceholders = [
 ];
 
 export const defaultSmtpSettings = {
+  deliveryMode: "service",
   host: "",
   port: 587,
   secure: false,
@@ -427,6 +428,14 @@ export const defaultSmtpSettings = {
   username: "",
   password: "",
   hasPassword: false,
+  fromEmail: "",
+  fromName: "",
+};
+
+export const defaultEmailServiceSettings = {
+  provider: "resend",
+  apiKey: "",
+  hasApiKey: false,
   fromEmail: "",
   fromName: "",
 };
