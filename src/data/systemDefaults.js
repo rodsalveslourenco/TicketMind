@@ -433,9 +433,10 @@ export const defaultSmtpSettings = {
 };
 
 export const defaultEmailServiceSettings = {
-  provider: "resend",
+  provider: "formsubmit",
   apiKey: "",
   hasApiKey: false,
+  formSubmitEndpoint: "",
   fromEmail: "",
   fromName: "",
   deliveryMode: "smtp",

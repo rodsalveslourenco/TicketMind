@@ -388,6 +388,7 @@ function hydrateEmailServiceSettings(storedSettings) {
     ...(storedSettings && typeof storedSettings === "object" ? storedSettings : {}),
     hasApiKey: Boolean(storedSettings?.hasApiKey),
     apiKey: "",
+    formSubmitEndpoint: String(storedSettings?.formSubmitEndpoint || "").trim(),
     deliveryMode: storedSettings?.deliveryMode === "service" ? "service" : "smtp",
   };
 }
@@ -1599,9 +1600,10 @@ export function AppDataProvider({ children }) {
       ...current,
       emailServiceSettings: {
         ...current.emailServiceSettings,
-        provider: String(payload.provider || "resend").trim() || "resend",
+        provider: String(payload.provider || "formsubmit").trim() || "formsubmit",
         apiKey: String(payload.apiKey || ""),
         hasApiKey: current.emailServiceSettings?.hasApiKey || Boolean(payload.apiKey),
+        formSubmitEndpoint: String(payload.formSubmitEndpoint || "").trim(),
         fromEmail: String(payload.fromEmail || "").trim(),
         fromName: String(payload.fromName || "").trim(),
         deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",

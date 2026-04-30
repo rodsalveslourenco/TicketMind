@@ -107,9 +107,48 @@ async function sendWithSendGrid(config, message) {
   }
 }
 
+async function sendWithFormSubmit(config, message) {
+  const target = String(config.formSubmitEndpoint || message.to[0] || "").trim();
+  if (!target) {
+    throw new Error("FormSubmit requer um destino configurado ou ao menos um destinatario no envio.");
+  }
+
+  const ccRecipients = message.to.slice(1).join(",");
+  const body = new URLSearchParams({
+    name: config.fromName || "TicketMind",
+    email: config.fromEmail || "no-reply@ticketmind.local",
+    _subject: message.subject,
+    message: message.text,
+    _template: "table",
+  });
+
+  if (ccRecipients) {
+    body.set("_cc", ccRecipients);
+  }
+
+  const response = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(target)}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`FormSubmit error: ${detail || response.status}`);
+  }
+
+  const result = await response.json().catch(() => ({}));
+  if (result && result.success === false) {
+    throw new Error(`FormSubmit error: ${result.message || "envio rejeitado"}`);
+  }
+}
+
 function resolveServiceConfig(stateOrPayload = {}) {
   const settings = stateOrPayload?.emailServiceSettings || {};
-  const provider = String(settings.provider || process.env.EMAIL_SERVICE_PROVIDER || "resend").trim().toLowerCase();
+  const provider = String(settings.provider || process.env.EMAIL_SERVICE_PROVIDER || "formsubmit").trim().toLowerCase();
   const apiKey =
     decryptSecret(settings.apiKey || "") ||
     String(process.env.EMAIL_SERVICE_API_KEY || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY || "").trim();
@@ -117,12 +156,16 @@ function resolveServiceConfig(stateOrPayload = {}) {
     String(settings.fromEmail || process.env.EMAIL_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || "").trim();
   const fromName =
     String(settings.fromName || process.env.EMAIL_FROM_NAME || process.env.RESEND_FROM_NAME || "TicketMind").trim();
+  const formSubmitEndpoint = String(
+    settings.formSubmitEndpoint || process.env.FORM_SUBMIT_ENDPOINT || process.env.FORMSUBMIT_ENDPOINT || "",
+  ).trim();
 
   return {
     provider,
     apiKey,
     fromEmail,
     fromName,
+    formSubmitEndpoint,
     deliveryMode: String(settings.deliveryMode || "").trim().toLowerCase() === "service" ? "service" : "smtp",
   };
 }
@@ -140,11 +183,18 @@ function isSmtpConfigured(smtpSettings = {}) {
 }
 
 function isServiceConfigured(serviceSettings = {}) {
+  if (normalizeText(serviceSettings.provider) === "formsubmit") {
+    return true;
+  }
   return Boolean(String(serviceSettings.apiKey || "").trim() && String(serviceSettings.fromEmail || "").trim());
 }
 
 async function sendByService(serviceSettings, message) {
   const provider = normalizeText(serviceSettings.provider);
+  if (provider === "formsubmit") {
+    await sendWithFormSubmit(serviceSettings, message);
+    return "Servico: FormSubmit";
+  }
   if (provider === "sendgrid") {
     await sendWithSendGrid(serviceSettings, message);
     return "Servico: SendGrid";
@@ -192,7 +242,7 @@ async function deliverEmail(stateOrPayload, message) {
     return "SMTP";
   }
 
-  throw new Error("Nenhum metodo de envio configurado. Defina um SMTP ou um servico com API.");
+  throw new Error("Nenhum metodo de envio configurado. Defina um SMTP ou um servico de envio.");
 }
 
 function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
@@ -279,6 +329,7 @@ export function prepareStateForClient(state) {
       ...emailServiceSettings,
       apiKey: "",
       hasApiKey: Boolean(String(emailServiceSettings.apiKey || "").trim()),
+      formSubmitEndpoint: String(emailServiceSettings.formSubmitEndpoint || "").trim(),
     },
   };
 }
@@ -308,6 +359,7 @@ export function mergeIncomingState(previousState = {}, nextState = {}) {
       ...incomingService,
       apiKey: nextApiKey,
       hasApiKey: Boolean(nextApiKey),
+      formSubmitEndpoint: String(incomingService.formSubmitEndpoint || previousService.formSubmitEndpoint || "").trim(),
     },
   };
 }
