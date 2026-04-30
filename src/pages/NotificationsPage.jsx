@@ -283,7 +283,7 @@ function NotificationsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Servico de envio</h2>
-            <span>Opcional. Pode usar FormSubmit sem API key, ou Resend/SendGrid se preferir.</span>
+            <span>Opcional. Use Resend ou SendGrid se quiser um fallback por provedor externo.</span>
           </div>
         </div>
         <form className="glpi-ticket-form" onSubmit={handleSaveService}>
@@ -293,34 +293,21 @@ function NotificationsPage() {
               <select
                 disabled={!canManage}
                 onChange={(event) => setServiceDraft((current) => ({ ...current, provider: event.target.value }))}
-                value={serviceDraft.provider || "formsubmit"}
+                value={serviceDraft.provider || "resend"}
               >
-                <option value="formsubmit">FormSubmit</option>
                 <option value="resend">Resend</option>
                 <option value="sendgrid">SendGrid</option>
               </select>
             </label>
-            {serviceDraft.provider === "formsubmit" ? (
-              <label className="field-block">
-                <span>Destino FormSubmit</span>
-                <input
-                  disabled={!canManage}
-                  onChange={(event) => setServiceDraft((current) => ({ ...current, formSubmitEndpoint: event.target.value }))}
-                  placeholder="email@dominio.com ou token confirmado"
-                  value={serviceDraft.formSubmitEndpoint || ""}
-                />
-              </label>
-            ) : (
-              <label className="field-block">
-                <span>API key {serviceDraft.hasApiKey ? "(mantida se vazio)" : ""}</span>
-                <input
-                  disabled={!canManage}
-                  onChange={(event) => setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))}
-                  type="password"
-                  value={serviceDraft.apiKey || ""}
-                />
-              </label>
-            )}
+            <label className="field-block">
+              <span>API key {serviceDraft.hasApiKey ? "(mantida se vazio)" : ""}</span>
+              <input
+                disabled={!canManage}
+                onChange={(event) => setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))}
+                type="password"
+                value={serviceDraft.apiKey || ""}
+              />
+            </label>
             <label className="field-block">
               <span>E-mail remetente</span>
               <input
@@ -339,13 +326,6 @@ function NotificationsPage() {
               />
             </label>
           </div>
-          {serviceDraft.provider === "formsubmit" ? (
-            <p>
-              O FormSubmit usa o endpoint <code>https://formsubmit.co/ajax/...</code>. Informe o e-mail ou token confirmado do
-              FormSubmit. Se esse campo ficar vazio, o sistema usa o primeiro destinatario do envio. No primeiro envio, o
-              destino pode precisar de confirmacao por e-mail.
-            </p>
-          ) : null}
           {canManage ? (
             <div className="ticket-create-actions compact-actions">
               <button className="primary-button interactive-button" type="submit">
