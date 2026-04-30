@@ -77,6 +77,7 @@ function normalizeLocationRecord(record = {}, departments = []) {
 }
 
 function normalizeUserRecord(record = {}, departments = []) {
+  const nowIso = new Date().toISOString();
   const departmentId = String(record.departmentId || "").trim();
   const departmentName = String(record.department || "").trim();
   const matchedDepartment =
@@ -99,6 +100,8 @@ function normalizeUserRecord(record = {}, departments = []) {
     department: matchedDepartment?.name || departmentName,
     avatar: String(record.avatar || "").trim(),
     permissions: normalizeUserPermissions(record.permissions || {}, record),
+    createdAt: String(record.createdAt || nowIso),
+    updatedAt: String(record.updatedAt || nowIso),
   };
 
   return normalizedRecord;
