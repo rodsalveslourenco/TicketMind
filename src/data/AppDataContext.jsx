@@ -1377,6 +1377,18 @@ export function AppDataProvider({ children }) {
     }));
   };
 
+  const deleteKnowledgeArticle = (articleId) => {
+    if (!hasAnyPermission(user, ["knowledge_delete", "knowledge_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      knowledgeArticles: current.knowledgeArticles.filter((article) => article.id !== articleId),
+      tickets: current.tickets.map((ticket) => ({
+        ...ticket,
+        knowledgeArticleIds: (ticket.knowledgeArticleIds || []).filter((linkedArticleId) => linkedArticleId !== articleId),
+      })),
+    }));
+  };
+
   const createKnowledgeArticleFromTicket = (ticketId, payload = {}) => {
     if (!hasAnyPermission(user, ["knowledge_create", "knowledge_admin"])) return null;
     let articleId = null;
@@ -1689,6 +1701,7 @@ export function AppDataProvider({ children }) {
       addKnowledgeArticle,
       updateKnowledgeArticle,
       toggleKnowledgeArticleStatus,
+      deleteKnowledgeArticle,
       createKnowledgeArticleFromTicket,
       linkKnowledgeArticleToTicket,
       saveApiConfig,

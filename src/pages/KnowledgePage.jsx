@@ -14,7 +14,7 @@ const defaultForm = {
 };
 
 function KnowledgePage() {
-  const { addKnowledgeArticle, knowledgeArticles, searchKnowledgeArticles, toggleKnowledgeArticleStatus, updateKnowledgeArticle } = useAppData();
+  const { addKnowledgeArticle, deleteKnowledgeArticle, knowledgeArticles, searchKnowledgeArticles, toggleKnowledgeArticleStatus, updateKnowledgeArticle } = useAppData();
   const { user } = useAuth();
   const [form, setForm] = useState(defaultForm);
   const [search, setSearch] = useState("");
@@ -23,6 +23,7 @@ function KnowledgePage() {
   const canCreateArticle = hasAnyPermission(user, ["knowledge_create", "knowledge_admin"]);
   const canEditArticle = hasAnyPermission(user, ["knowledge_edit", "knowledge_admin"]);
   const canToggleArticle = hasAnyPermission(user, ["knowledge_inactivate", "knowledge_admin"]);
+  const canDeleteArticle = hasAnyPermission(user, ["knowledge_delete", "knowledge_admin"]);
 
   const filteredArticles = useMemo(() => searchKnowledgeArticles(search, knowledgeArticles), [knowledgeArticles, search, searchKnowledgeArticles]);
 
@@ -55,6 +56,14 @@ function KnowledgePage() {
       keywords: article.keywords,
       status: article.status,
     });
+  };
+
+  const handleDelete = (article) => {
+    if (!window.confirm(`Excluir o artigo "${article.title}"?`)) return;
+    if (editingId === article.id) {
+      resetForm();
+    }
+    deleteKnowledgeArticle(article.id);
   };
 
   return (
@@ -153,6 +162,11 @@ function KnowledgePage() {
                   {canToggleArticle ? (
                     <button className="ghost-button interactive-button" onClick={() => toggleKnowledgeArticleStatus(article.id)} type="button">
                       {article.status === "Ativo" ? "Inativar" : "Reativar"}
+                    </button>
+                  ) : null}
+                  {canDeleteArticle ? (
+                    <button className="ghost-button interactive-button" onClick={() => handleDelete(article)} type="button">
+                      Excluir
                     </button>
                   ) : null}
                 </div>
