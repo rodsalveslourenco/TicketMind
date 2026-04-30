@@ -17,8 +17,11 @@ const defaultForm = {
   model: "",
   owner: "",
   status: "Ativo",
+  locationId: "",
   criticality: "Média",
   location: "",
+  locationDepartmentId: "",
+  locationDepartment: "",
   serial: "",
   assetTag: "",
   ram: "",
@@ -154,6 +157,7 @@ function AssetsPage() {
     assets,
     brands,
     deleteAsset,
+    locations,
     models,
     pushToast,
     updateAsset,
@@ -223,6 +227,10 @@ function AssetsPage() {
       ),
     [catalogAssetType, models, resolvedBrandId],
   );
+  const availableLocations = useMemo(
+    () => locations.filter((location) => location.status === "Ativo" || location.id === form.locationId),
+    [form.locationId, locations],
+  );
 
   const filteredAssets = useMemo(() => {
     const normalizedSearch = normalizeText(search);
@@ -240,6 +248,7 @@ function AssetsPage() {
               asset.owner,
               asset.status,
               asset.location,
+              asset.locationDepartment,
               asset.serial,
               asset.assetTag,
               asset.imei,
@@ -306,6 +315,7 @@ function AssetsPage() {
   };
 
   const buildPayload = () => {
+    const selectedLocation = locations.find((location) => location.id === form.locationId);
     const payload = {
       ...form,
       name: form.name.trim(),
@@ -314,7 +324,10 @@ function AssetsPage() {
       modelId: form.modelId,
       model: form.model.trim(),
       owner: form.owner.trim(),
-      location: form.location.trim(),
+      locationId: selectedLocation?.id || form.locationId,
+      location: selectedLocation?.name || form.location.trim(),
+      locationDepartmentId: selectedLocation?.departmentId || form.locationDepartmentId,
+      locationDepartment: selectedLocation?.department || form.locationDepartment,
       serial: form.serial.trim(),
       assetTag: form.assetTag.trim(),
       ram: form.ram.trim(),
@@ -600,7 +613,7 @@ function AssetsPage() {
               <strong>Marca</strong>
               <strong>Modelo</strong>
               <strong>Configuração</strong>
-              <strong>Serie</strong>
+              <strong>Localizacao</strong>
               <strong>Usuário</strong>
             </div>
             {currentAssets.map((asset) => (
@@ -614,7 +627,7 @@ function AssetsPage() {
                 <span>{asset.manufacturer}</span>
                 <span>{asset.model}</span>
                 <span>{getAssetConfiguration(asset)}</span>
-                <span>{asset.serial}</span>
+                <span>{asset.location}{asset.locationDepartment ? ` | ${asset.locationDepartment}` : ""}</span>
                 <span>{asset.owner}</span>
               </button>
             ))}
@@ -769,7 +782,28 @@ function AssetsPage() {
                 </label>
                 <label className="field-block">
                   <span>Localização</span>
-                  <input disabled={!canMoveAsset && Boolean(editingId)} onChange={updateField("location")} value={form.location} />
+                  <select
+                    disabled={!canMoveAsset && Boolean(editingId)}
+                    onChange={(event) => {
+                      const selectedLocation = locations.find((location) => location.id === event.target.value);
+                      setForm((current) => ({
+                        ...current,
+                        locationId: selectedLocation?.id || "",
+                        location: selectedLocation?.name || "",
+                        locationDepartmentId: selectedLocation?.departmentId || "",
+                        locationDepartment: selectedLocation?.department || "",
+                      }));
+                    }}
+                    value={form.locationId}
+                  >
+                    <option value="">Sem localizacao</option>
+                    {availableLocations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                        {location.department ? ` | ${location.department}` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="field-block">
                   <span>Número de série</span>

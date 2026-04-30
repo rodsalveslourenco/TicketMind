@@ -51,21 +51,173 @@ function nextId(prefix, list) {
   return `${prefix}-${list.length + 1}-${Date.now().toString(36)}`;
 }
 
+function normalizeCode(value, fallback = "") {
+  const baseValue = String(value || fallback || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim();
+  const normalized = baseValue
+    .split(/\s+/)
+    .filter(Boolean)
+    .join("-")
+    .toUpperCase();
+  return normalized || fallback || "SEM-CODIGO";
+}
+
+function findDepartmentMatch(departments, payload = {}) {
+  const departmentId = String(payload.departmentId || "").trim();
+  const departmentName = String(payload.department || payload.name || "").trim();
+  if (departmentId) {
+    const byId = departments.find((department) => department.id === departmentId);
+    if (byId) return byId;
+  }
+  if (!departmentName) return null;
+  return (
+    departments.find(
+      (department) =>
+        normalizeText(department.name) === normalizeText(departmentName) ||
+        normalizeText(department.code) === normalizeText(departmentName),
+    ) || null
+  );
+}
+
+function sanitizeDepartmentPayload(payload, currentDepartment = {}) {
+  const nowIso = new Date().toISOString();
+  const name = String(payload.name || payload.department || currentDepartment.name || "").trim();
+  const code = normalizeCode(payload.code || currentDepartment.code || name, "DEP");
+  return {
+    code,
+    name,
+    status: String(payload.status || currentDepartment.status || "Ativo").trim() || "Ativo",
+    createdAt: payload.createdAt || currentDepartment.createdAt || nowIso,
+    updatedAt: payload.updatedAt || currentDepartment.updatedAt || nowIso,
+  };
+}
+
+function hydrateDepartments(storedDepartments, users, currentUser) {
+  const registry = new Map();
+
+  const registerDepartment = (entry) => {
+    if (!entry) return;
+    const payload = typeof entry === "string" ? { name: entry } : entry;
+    const sanitized = sanitizeDepartmentPayload(payload, payload);
+    if (!sanitized.name) return;
+    const key = normalizeText(sanitized.name) || normalizeText(sanitized.code);
+    registry.set(key, {
+      id: payload.id || `dep-${registry.size + 1}`,
+      ...sanitized,
+    });
+  };
+
+  (Array.isArray(seedData.departments) ? seedData.departments : []).forEach(registerDepartment);
+  (Array.isArray(storedDepartments) ? storedDepartments : []).forEach(registerDepartment);
+  (Array.isArray(users) ? users : []).forEach((candidate) => registerDepartment(candidate.department));
+  registerDepartment(currentUser?.department);
+
+  return Array.from(registry.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function syncUserDepartment(candidate, departments) {
+  const departmentMatch = findDepartmentMatch(departments, candidate);
+  return {
+    ...candidate,
+    departmentId: departmentMatch?.id || String(candidate.departmentId || "").trim(),
+    department: departmentMatch?.name || String(candidate.department || "").trim(),
+  };
+}
+
+function sanitizeLocationPayload(payload, departments, currentLocation = {}) {
+  const nowIso = new Date().toISOString();
+  const name = String(payload.name || payload.location || currentLocation.name || "").trim();
+  const departmentMatch = findDepartmentMatch(departments, {
+    departmentId: payload.departmentId || currentLocation.departmentId,
+    department: payload.department || currentLocation.department,
+  });
+
+  return {
+    code: normalizeCode(payload.code || currentLocation.code || name, "LOC"),
+    name,
+    departmentId: departmentMatch?.id || String(payload.departmentId || currentLocation.departmentId || "").trim(),
+    department: departmentMatch?.name || String(payload.department || currentLocation.department || "").trim(),
+    status: String(payload.status || currentLocation.status || "Ativo").trim() || "Ativo",
+    createdAt: payload.createdAt || currentLocation.createdAt || nowIso,
+    updatedAt: payload.updatedAt || currentLocation.updatedAt || nowIso,
+  };
+}
+
+function hydrateLocations(storedLocations, assets, tickets, departments) {
+  const registry = new Map();
+
+  const registerLocation = (entry) => {
+    if (!entry) return;
+    const payload = typeof entry === "string" ? { name: entry } : entry;
+    const sanitized = sanitizeLocationPayload(payload, departments, payload);
+    if (!sanitized.name) return;
+    const key = normalizeText(sanitized.name);
+    registry.set(key, {
+      id: payload.id || `loc-${registry.size + 1}`,
+      ...sanitized,
+    });
+  };
+
+  (Array.isArray(seedData.locations) ? seedData.locations : []).forEach(registerLocation);
+  (Array.isArray(storedLocations) ? storedLocations : []).forEach(registerLocation);
+  (Array.isArray(assets) ? assets : []).forEach((asset) => registerLocation(asset.location));
+  (Array.isArray(tickets) ? tickets : []).forEach((ticket) => registerLocation(ticket.location));
+
+  return Array.from(registry.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function syncAssetLocation(asset, locations) {
+  const locationId = String(asset.locationId || "").trim();
+  const locationName = String(asset.location || "").trim();
+  const locationMatch =
+    (locationId ? locations.find((location) => location.id === locationId) : null) ||
+    locations.find((location) => normalizeText(location.name) === normalizeText(locationName));
+
+  return {
+    ...asset,
+    locationId: locationMatch?.id || locationId,
+    location: locationMatch?.name || locationName,
+    locationDepartmentId: locationMatch?.departmentId || String(asset.locationDepartmentId || "").trim(),
+    locationDepartment: locationMatch?.department || String(asset.locationDepartment || "").trim(),
+  };
+}
+
 function resolveAssetType(type) {
   const normalized = normalizeText(type).trim();
   return assetTypeOptions.find((item) => normalizeText(item).trim() === normalized) || "Outros";
 }
 
-function sanitizeUserPayload(payload) {
+function sanitizeUserPayload(payload, departments = []) {
+  const departmentMatch = findDepartmentMatch(departments, payload);
   return {
     name: String(payload.name || "").trim(),
     email: String(payload.email || "").trim().toLowerCase(),
     password: payload.password || "admin0123",
     role: normalizeRoleName(payload.role),
     team: String(payload.team || "").trim(),
-    department: String(payload.department || "").trim(),
+    departmentId: departmentMatch?.id || String(payload.departmentId || "").trim(),
+    department: departmentMatch?.name || String(payload.department || "").trim(),
     avatar: String(payload.avatar || "").trim(),
     permissions: normalizeUserPermissions(payload.permissions || defaultUserPermissions, payload),
+  };
+}
+
+function sanitizeAssetPayload(payload, locations = []) {
+  const locationId = String(payload.locationId || "").trim();
+  const locationName = String(payload.location || "").trim();
+  const locationMatch =
+    (locationId ? locations.find((location) => location.id === locationId) : null) ||
+    locations.find((location) => normalizeText(location.name) === normalizeText(locationName));
+
+  return {
+    ...payload,
+    locationId: locationMatch?.id || locationId,
+    location: locationMatch?.name || locationName,
+    locationDepartmentId: locationMatch?.departmentId || String(payload.locationDepartmentId || "").trim(),
+    locationDepartment: locationMatch?.department || String(payload.locationDepartment || "").trim(),
   };
 }
 
@@ -130,20 +282,32 @@ function canAccessTicket(ticket, user) {
 }
 
 function mergeCollections(stored) {
-  const users = hydrateUsers(stored?.users);
-  const currentUser =
+  const rawUsers = hydrateUsers(stored?.users);
+  const baseCurrentUser =
     (stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null) ??
-    users.find((candidate) => candidate.email === seedData.currentUser.email) ??
+    rawUsers.find((candidate) => candidate.email === seedData.currentUser.email) ??
     { ...seedData.currentUser, password: "admin0123" };
+  const departments = hydrateDepartments(stored?.departments, rawUsers, baseCurrentUser);
+  const users = rawUsers.map((candidate) => syncUserDepartment(candidate, departments));
+  const currentUser = syncUserDepartment(baseCurrentUser, departments);
+  const locations = hydrateLocations(
+    stored?.locations,
+    Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
+    Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
+    departments,
+  );
+  const assets = (Array.isArray(stored?.assets) ? stored.assets : seedData.assets).map((asset) => syncAssetLocation(asset, locations));
 
   const baseState = {
     ...seedData,
     ...stored,
     currentUser,
     users,
+    departments,
+    locations,
     queues: Array.isArray(stored?.queues) ? stored.queues : seedData.queues,
     tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
-    assets: Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
+    assets,
     brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
     models: Array.isArray(stored?.models) ? stored.models : seedData.models,
     projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
@@ -649,7 +813,10 @@ export function AppDataProvider({ children }) {
     if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
     let createdUser = null;
     applyState((current) => {
-      createdUser = { id: nextId("u", current.users || []), ...sanitizeUserPayload(payload) };
+      createdUser = {
+        id: nextId("u", current.users || []),
+        ...sanitizeUserPayload(payload, current.departments || []),
+      };
       return { ...current, users: [createdUser, ...(current.users || [])] };
     });
     return createdUser;
@@ -661,7 +828,7 @@ export function AppDataProvider({ children }) {
       let nextCurrentUser = null;
       const nextUsers = current.users.map((candidate) => {
         if (candidate.id !== userId) return candidate;
-        const sanitizedPayload = sanitizeUserPayload(payload);
+        const sanitizedPayload = sanitizeUserPayload(payload, current.departments || []);
         const permissionsChanged =
           JSON.stringify(candidate.permissions || {}) !== JSON.stringify(sanitizedPayload.permissions || {});
         const passwordChanged = String(candidate.password || "") !== String(sanitizedPayload.password || "");
@@ -671,6 +838,7 @@ export function AppDataProvider({ children }) {
           email: sanitizedPayload.email,
           role: sanitizedPayload.role,
           team: sanitizedPayload.team,
+          departmentId: sanitizedPayload.departmentId,
           department: sanitizedPayload.department,
           avatar: sanitizedPayload.avatar,
           ...(passwordChanged && hasAnyPermission(user, ["users_reset_password", "users_admin"])
@@ -710,11 +878,91 @@ export function AppDataProvider({ children }) {
     }));
   };
 
+  const addDepartment = (payload) => {
+    if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
+    let createdDepartment = null;
+    applyState((current) => {
+      const nowIso = new Date().toISOString();
+      createdDepartment = {
+        id: nextId("dep", current.departments || []),
+        ...sanitizeDepartmentPayload(
+          {
+            ...payload,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          payload,
+        ),
+      };
+      return { ...current, departments: [createdDepartment, ...(current.departments || [])] };
+    });
+    return createdDepartment;
+  };
+
+  const updateDepartment = (departmentId, payload) => {
+    if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
+    applyState((current) => {
+      const nowIso = new Date().toISOString();
+      const nextDepartments = current.departments.map((department) =>
+        department.id === departmentId
+          ? {
+              ...department,
+              ...sanitizeDepartmentPayload(
+                {
+                  ...department,
+                  ...payload,
+                  createdAt: department.createdAt,
+                  updatedAt: nowIso,
+                },
+                department,
+              ),
+            }
+          : department,
+      );
+      const nextCurrentUser = syncUserDepartment(current.currentUser, nextDepartments);
+      if (nextCurrentUser?.id === user?.id) {
+        setSessionUser(nextCurrentUser);
+      }
+      return {
+        ...current,
+        departments: nextDepartments,
+        users: current.users.map((candidate) => syncUserDepartment(candidate, nextDepartments)),
+        currentUser: nextCurrentUser,
+        locations: current.locations.map((location) =>
+          location.departmentId === departmentId
+            ? {
+                ...location,
+                ...sanitizeLocationPayload(
+                  { ...location, departmentId, department: payload.name || location.department, updatedAt: nowIso },
+                  nextDepartments,
+                  location,
+                ),
+              }
+            : location,
+        ),
+      };
+    });
+  };
+
+  const deleteDepartment = (departmentId) => {
+    if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      departments: current.departments.filter((department) => department.id !== departmentId),
+    }));
+  };
+
   const addAsset = (payload) => {
     if (!hasAnyPermission(user, ["assets_create", "assets_admin"])) return;
     applyState((current) => ({
       ...current,
-      assets: [{ id: nextId("asset", current.assets || []), ...payload }, ...(current.assets || [])],
+      assets: [
+        {
+          id: nextId("asset", current.assets || []),
+          ...sanitizeAssetPayload(payload, current.locations || []),
+        },
+        ...(current.assets || []),
+      ],
     }));
   };
 
@@ -724,15 +972,33 @@ export function AppDataProvider({ children }) {
       ...current,
       assets: current.assets.map((asset) => {
         if (asset.id !== assetId) return asset;
+        const sanitizedPayload = sanitizeAssetPayload(payload, current.locations || []);
         const nextOwner =
-          payload.owner !== asset.owner && !hasAnyPermission(user, ["assets_link_users", "assets_admin"])
+          sanitizedPayload.owner !== asset.owner && !hasAnyPermission(user, ["assets_link_users", "assets_admin"])
             ? asset.owner
-            : payload.owner;
+            : sanitizedPayload.owner;
         const nextLocation =
-          payload.location !== asset.location && !hasAnyPermission(user, ["assets_move", "assets_admin"])
+          sanitizedPayload.location !== asset.location && !hasAnyPermission(user, ["assets_move", "assets_admin"])
             ? asset.location
-            : payload.location;
-        return { ...asset, ...payload, owner: nextOwner, location: nextLocation };
+            : sanitizedPayload.location;
+        return {
+          ...asset,
+          ...sanitizedPayload,
+          owner: nextOwner,
+          location: nextLocation,
+          locationId:
+            nextLocation !== sanitizedPayload.location
+              ? asset.locationId
+              : sanitizedPayload.locationId,
+          locationDepartmentId:
+            nextLocation !== sanitizedPayload.location
+              ? asset.locationDepartmentId
+              : sanitizedPayload.locationDepartmentId,
+          locationDepartment:
+            nextLocation !== sanitizedPayload.location
+              ? asset.locationDepartment
+              : sanitizedPayload.locationDepartment,
+        };
       }),
     }));
   };
@@ -742,6 +1008,65 @@ export function AppDataProvider({ children }) {
     applyState((current) => ({
       ...current,
       assets: current.assets.filter((asset) => asset.id !== assetId),
+    }));
+  };
+
+  const addLocation = (payload) => {
+    if (!hasAnyPermission(user, ["assets_create", "assets_admin"])) return null;
+    let createdLocation = null;
+    applyState((current) => {
+      const nowIso = new Date().toISOString();
+      createdLocation = {
+        id: nextId("loc", current.locations || []),
+        ...sanitizeLocationPayload(
+          {
+            ...payload,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          current.departments || [],
+          payload,
+        ),
+      };
+      return { ...current, locations: [createdLocation, ...(current.locations || [])] };
+    });
+    return createdLocation;
+  };
+
+  const updateLocation = (locationId, payload) => {
+    if (!hasAnyPermission(user, ["assets_edit", "assets_admin"])) return;
+    applyState((current) => {
+      const nowIso = new Date().toISOString();
+      const nextLocations = current.locations.map((location) =>
+        location.id === locationId
+          ? {
+              ...location,
+              ...sanitizeLocationPayload(
+                {
+                  ...location,
+                  ...payload,
+                  createdAt: location.createdAt,
+                  updatedAt: nowIso,
+                },
+                current.departments || [],
+                location,
+              ),
+            }
+          : location,
+      );
+      return {
+        ...current,
+        locations: nextLocations,
+        assets: current.assets.map((asset) => syncAssetLocation(asset, nextLocations)),
+      };
+    });
+  };
+
+  const deleteLocation = (locationId) => {
+    if (!hasAnyPermission(user, ["assets_delete", "assets_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      locations: current.locations.filter((location) => location.id !== locationId),
     }));
   };
 
@@ -994,6 +1319,8 @@ export function AppDataProvider({ children }) {
       summary,
       queues: queueStats,
       users: data.users || [],
+      departments: data.departments || [],
+      locations: data.locations || [],
       tickets: visibleTickets,
       allTickets,
       operationalTickets,
@@ -1024,9 +1351,15 @@ export function AppDataProvider({ children }) {
       updateUser,
       updateOwnProfile,
       deleteUser,
+      addDepartment,
+      updateDepartment,
+      deleteDepartment,
       addAsset,
       updateAsset,
       deleteAsset,
+      addLocation,
+      updateLocation,
+      deleteLocation,
       addBrand,
       updateBrand,
       deleteBrand,

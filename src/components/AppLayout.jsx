@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
-import { canAccessModule, hasAnyPermission, moduleNavigation } from "../data/permissions";
+import { canAccessModule, hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 function getInitials(name) {
@@ -14,12 +14,61 @@ function getInitials(name) {
     .join("") || "U";
 }
 
+const SIDEBAR_STATE_KEY = "ticketmind.sidebar.sections";
+
 const navigationSections = [
-  { title: "Dashboard", modules: ["dashboard", "helpdesk_operations", "helpdesk_technicians"] },
-  { title: "Atendimento", modules: ["tickets", "knowledge"] },
-  { title: "Operacoes Helpdesk", modules: ["assets", "inventory", "brands_models", "projects"] },
-  { title: "Configuracoes", modules: ["api_rest", "users"] },
+  {
+    key: "dashboard",
+    title: "Dashboard",
+    collapsible: false,
+    items: [{ to: "/app/dashboard", label: "Dashboard", module: "dashboard", icon: "dashboard" }],
+  },
+  {
+    key: "attendance",
+    title: "Atendimento",
+    collapsible: true,
+    items: [
+      { to: "/app/tickets", label: "Chamados", module: "tickets", icon: "tickets" },
+      { to: "/app/knowledge", label: "Base de Conhecimento", module: "knowledge", icon: "knowledge" },
+    ],
+  },
+  {
+    key: "operations",
+    title: "Operacoes Helpdesk",
+    collapsible: true,
+    items: [
+      { to: "/app/helpdesk-operations", label: "Indicadores", module: "helpdesk_operations", icon: "helpdesk_operations" },
+      { to: "/app/assets", label: "Ativos", module: "assets", icon: "assets" },
+      { to: "/app/locations", label: "Localizacoes", module: "assets", icon: "assets" },
+      { to: "/app/inventory", label: "Inventario", module: "inventory", icon: "inventory" },
+      { to: "/app/brands-models", label: "Marcas e Modelos", module: "brands_models", icon: "brands_models" },
+      { to: "/app/projects", label: "Projetos", module: "projects", icon: "projects" },
+    ],
+  },
+  {
+    key: "technicians",
+    title: "Tecnicos",
+    collapsible: true,
+    items: [{ to: "/app/helpdesk-technicians", label: "Painel tecnico", module: "helpdesk_technicians", icon: "helpdesk_technicians" }],
+  },
+  {
+    key: "settings",
+    title: "Configuracoes",
+    collapsible: true,
+    items: [
+      { to: "/app/api-rest", label: "API REST", module: "api_rest", icon: "api_rest" },
+      { to: "/app/users", label: "Usuarios", module: "users", icon: "users" },
+      { to: "/app/departments", label: "Departamentos", module: "users", icon: "users" },
+    ],
+  },
 ];
+
+const defaultExpandedSections = {
+  attendance: true,
+  operations: true,
+  technicians: true,
+  settings: true,
+};
 
 const navigationIcons = {
   dashboard: (
@@ -85,22 +134,47 @@ function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [globalSearch, setGlobalSearch] = useState("");
-  const availableNavigation = moduleNavigation.filter((item) => canAccessModule(user, item.module));
+  const [expandedSections, setExpandedSections] = useState(() => {
+    try {
+      const storedValue = window.localStorage.getItem(SIDEBAR_STATE_KEY);
+      return storedValue ? { ...defaultExpandedSections, ...JSON.parse(storedValue) } : defaultExpandedSections;
+    } catch (error) {
+      return defaultExpandedSections;
+    }
+  });
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
-  const groupedNavigation = navigationSections
-    .map((section) => ({
-      ...section,
-      items: section.modules
-        .map((moduleKey) => availableNavigation.find((item) => item.module === moduleKey))
-        .filter(Boolean),
-    }))
-    .filter((section) => section.items.length);
-  const currentPage = availableNavigation.find((item) => location.pathname.startsWith(item.to));
+  const groupedNavigation = useMemo(
+    () =>
+      navigationSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => canAccessModule(user, item.module)),
+        }))
+        .filter((section) => section.items.length),
+    [user],
+  );
+  const availableNavigation = useMemo(() => groupedNavigation.flatMap((section) => section.items), [groupedNavigation]);
+  const currentPage = useMemo(
+    () =>
+      availableNavigation
+        .slice()
+        .sort((left, right) => right.to.length - left.to.length)
+        .find((item) => location.pathname.startsWith(item.to)),
+    [availableNavigation, location.pathname],
+  );
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(expandedSections));
+  }, [expandedSections]);
 
   const handleGlobalSearch = (event) => {
     event.preventDefault();
     const query = globalSearch.trim();
     navigate(query ? `/app/tickets?q=${encodeURIComponent(query)}` : "/app/tickets");
+  };
+
+  const toggleSection = (sectionKey) => {
+    setExpandedSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }));
   };
 
   return (
@@ -118,16 +192,31 @@ function AppLayout() {
 
         <nav className="sidebar-nav">
           {groupedNavigation.map((section) => (
-            <div className="sidebar-nav-group" key={section.title}>
-              <span className="sidebar-group-title">{section.title}</span>
-              <div className="sidebar-group-links">
+            <div
+              className={`sidebar-nav-group${section.items.some((item) => location.pathname.startsWith(item.to)) ? " is-current" : ""}`}
+              key={section.key}
+            >
+              <div className="sidebar-group-header">
+                <span className="sidebar-group-title">{section.title}</span>
+                {section.collapsible ? (
+                  <button
+                    aria-expanded={expandedSections[section.key]}
+                    className="sidebar-group-toggle interactive-button"
+                    onClick={() => toggleSection(section.key)}
+                    type="button"
+                  >
+                    <span className={`sidebar-group-chevron${expandedSections[section.key] ? " is-open" : ""}`}>⌄</span>
+                  </button>
+                ) : null}
+              </div>
+              <div className={`sidebar-group-links${section.collapsible && !expandedSections[section.key] ? " is-collapsed" : ""}`}>
                 {section.items.map((item) => (
                   <NavLink
                     key={item.to}
                     className={({ isActive }) => `nav-link interactive-button${isActive ? " is-active" : ""}`}
                     to={item.to}
                   >
-                    <span className="nav-link-icon">{navigationIcons[item.module]}</span>
+                    <span className="nav-link-icon">{navigationIcons[item.icon]}</span>
                     <span>{item.label}</span>
                   </NavLink>
                 ))}

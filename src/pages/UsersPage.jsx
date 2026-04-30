@@ -17,7 +17,8 @@ const defaultUserForm = {
   password: "admin0123",
   role: "Solicitante Interno",
   team: "",
-  department: "TI",
+  departmentId: "",
+  department: "",
   avatar: "",
   permissions: getRolePermissions("Solicitante Interno"),
 };
@@ -54,7 +55,7 @@ function readImageFileAsDataUrl(file) {
 
 function UsersPage() {
   const { user } = useAuth();
-  const { addUser, deleteUser, pushToast, updateUser, users } = useAppData();
+  const { addUser, deleteUser, departments, pushToast, updateUser, users } = useAppData();
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailUserId, setDetailUserId] = useState(null);
@@ -62,7 +63,7 @@ function UsersPage() {
   const [editingUserId, setEditingUserId] = useState(null);
   const [revealedUserIds, setRevealedUserIds] = useState([]);
 
-  const canRevealPasswords = user?.department === "TI";
+  const canRevealPasswords = normalizeText(user?.department) === "ti";
   const canViewUsers = hasAnyPermission(user, ["users_view", "users_admin"]);
   const canCreateUsers = hasAnyPermission(user, ["users_create", "users_admin"]);
   const canEditUsers = hasAnyPermission(user, ["users_edit", "users_admin"]);
@@ -92,9 +93,22 @@ function UsersPage() {
   }, [search, users]);
 
   const detailUser = users.find((candidate) => candidate.id === detailUserId) ?? null;
+  const availableDepartments = useMemo(
+    () => departments.filter((department) => department.status === "Ativo" || department.id === form.departmentId),
+    [departments, form.departmentId],
+  );
 
   const updateField = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
+  };
+
+  const updateDepartmentField = (event) => {
+    const nextDepartment = departments.find((department) => department.id === event.target.value);
+    setForm((current) => ({
+      ...current,
+      departmentId: nextDepartment?.id || "",
+      department: nextDepartment?.name || event.target.value || "",
+    }));
   };
 
   const updateRoleField = (event) => {
@@ -129,6 +143,7 @@ function UsersPage() {
       password: candidate.password || "admin0123",
       role: normalizeRoleName(candidate.role),
       team: candidate.team,
+      departmentId: candidate.departmentId || "",
       department: candidate.department,
       avatar: candidate.avatar || "",
       permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
@@ -239,7 +254,7 @@ function UsersPage() {
             <span>usuários no recorte</span>
           </div>
           <div className="insight-chip">
-            <strong>{orderedUsers.filter((candidate) => candidate.department === "TI").length}</strong>
+            <strong>{orderedUsers.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
             <span>usuários TI</span>
           </div>
           <div className="insight-chip">
@@ -388,12 +403,13 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Departamento</span>
-                  <select onChange={updateField("department")} value={form.department}>
-                    <option>TI</option>
-                    <option>RH</option>
-                    <option>Financeiro</option>
-                    <option>Operações</option>
-                    <option>Comercial</option>
+                  <select onChange={updateDepartmentField} value={form.departmentId}>
+                    <option value="">Sem departamento</option>
+                    {availableDepartments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
@@ -506,12 +522,13 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Departamento</span>
-                  <select disabled={!canEditUsers} onChange={updateField("department")} value={form.department}>
-                    <option>TI</option>
-                    <option>RH</option>
-                    <option>Financeiro</option>
-                    <option>Operações</option>
-                    <option>Comercial</option>
+                  <select disabled={!canEditUsers} onChange={updateDepartmentField} value={form.departmentId}>
+                    <option value="">Sem departamento</option>
+                    {availableDepartments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
