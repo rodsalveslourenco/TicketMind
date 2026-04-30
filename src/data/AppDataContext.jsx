@@ -561,6 +561,15 @@ export function AppDataProvider({ children }) {
     });
   };
 
+  const persistStateImmediately = async (nextState) => {
+    const persistedState = await requestJson("/api/state", {
+      method: "PUT",
+      body: JSON.stringify(nextState),
+    });
+    setData(mergeCollections(persistedState));
+    return persistedState;
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1585,12 +1594,12 @@ export function AppDataProvider({ children }) {
     return savedRuleId;
   };
 
-  const saveSmtpSettings = (payload) => {
+  const saveSmtpSettings = async (payload) => {
     if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
-    applyState((current) => ({
-      ...current,
+    const nextState = {
+      ...data,
       smtpSettings: {
-        ...current.smtpSettings,
+        ...data.smtpSettings,
         deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
         host: String(payload.host || "").trim(),
         port: Number(payload.port) || 587,
@@ -1598,27 +1607,29 @@ export function AppDataProvider({ children }) {
         requireTls: payload.requireTls !== false,
         username: String(payload.username || "").trim(),
         password: String(payload.password || ""),
-        hasPassword: current.smtpSettings?.hasPassword || Boolean(payload.password),
+        hasPassword: data.smtpSettings?.hasPassword || Boolean(payload.password),
         fromEmail: String(payload.fromEmail || "").trim(),
         fromName: String(payload.fromName || "").trim(),
       },
-    }));
+    };
+    return persistStateImmediately(nextState);
   };
 
-  const saveEmailServiceSettings = (payload) => {
+  const saveEmailServiceSettings = async (payload) => {
     if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
-    applyState((current) => ({
-      ...current,
+    const nextState = {
+      ...data,
       emailServiceSettings: {
-        ...current.emailServiceSettings,
+        ...data.emailServiceSettings,
         provider: String(payload.provider || "resend").trim() || "resend",
         apiKey: String(payload.apiKey || ""),
-        hasApiKey: current.emailServiceSettings?.hasApiKey || Boolean(payload.apiKey),
+        hasApiKey: data.emailServiceSettings?.hasApiKey || Boolean(payload.apiKey),
         fromEmail: String(payload.fromEmail || "").trim(),
         fromName: String(payload.fromName || "").trim(),
         deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
       },
-    }));
+    };
+    return persistStateImmediately(nextState);
   };
 
   const requestNotificationTest = async (payload) => {
@@ -1637,11 +1648,7 @@ export function AppDataProvider({ children }) {
       },
     };
 
-    const persistedState = await requestJson("/api/state", {
-      method: "PUT",
-      body: JSON.stringify(nextState),
-    });
-    setData(mergeCollections(persistedState));
+    await persistStateImmediately(nextState);
 
     return requestJson("/api/notifications/test", {
       method: "POST",

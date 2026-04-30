@@ -108,18 +108,26 @@ function NotificationsPage() {
     pushToast("Notificacao atualizada", notificationEvents.find((event) => event.key === eventKey)?.label || eventKey);
   };
 
-  const handleSaveSmtp = (event) => {
+  const handleSaveSmtp = async (event) => {
     event.preventDefault();
     setSmtpDraft((current) => ({ ...current, deliveryMode: "smtp" }));
     setServiceDraft((current) => ({ ...current, deliveryMode: "smtp" }));
-    saveSmtpSettings({ ...smtpDraft, deliveryMode: "smtp" });
-    pushToast("SMTP atualizado", smtpDraft.host || "Configuracao salva");
+    try {
+      await saveSmtpSettings({ ...smtpDraft, deliveryMode: "smtp" });
+      pushToast("SMTP atualizado", smtpDraft.host || "Configuracao salva");
+    } catch (error) {
+      pushToast("Falha ao salvar SMTP", error.message, "warning");
+    }
   };
 
-  const handleSaveService = (event) => {
+  const handleSaveService = async (event) => {
     event.preventDefault();
-    saveEmailServiceSettings(serviceDraft);
-    pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico de envio");
+    try {
+      await saveEmailServiceSettings(serviceDraft);
+      pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico de envio");
+    } catch (error) {
+      pushToast("Falha ao salvar servico", error.message, "warning");
+    }
   };
 
   const handleTestEmail = async () => {
