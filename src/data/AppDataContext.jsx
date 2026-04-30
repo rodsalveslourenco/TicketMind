@@ -388,6 +388,7 @@ function hydrateEmailServiceSettings(storedSettings) {
     ...(storedSettings && typeof storedSettings === "object" ? storedSettings : {}),
     hasApiKey: Boolean(storedSettings?.hasApiKey),
     apiKey: "",
+    deliveryMode: storedSettings?.deliveryMode === "service" ? "service" : "smtp",
   };
 }
 
@@ -1578,7 +1579,7 @@ export function AppDataProvider({ children }) {
       ...current,
       smtpSettings: {
         ...current.smtpSettings,
-        deliveryMode: payload.deliveryMode === "smtp" ? "smtp" : "service",
+        deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
         host: String(payload.host || "").trim(),
         port: Number(payload.port) || 587,
         secure: Boolean(payload.secure),
@@ -1603,10 +1604,11 @@ export function AppDataProvider({ children }) {
         hasApiKey: current.emailServiceSettings?.hasApiKey || Boolean(payload.apiKey),
         fromEmail: String(payload.fromEmail || "").trim(),
         fromName: String(payload.fromName || "").trim(),
+        deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
       },
       smtpSettings: {
         ...current.smtpSettings,
-        deliveryMode: payload.deliveryMode === "smtp" ? "smtp" : current.smtpSettings?.deliveryMode || "service",
+        deliveryMode: payload.deliveryMode === "service" ? "service" : current.smtpSettings?.deliveryMode || "smtp",
       },
     }));
   };

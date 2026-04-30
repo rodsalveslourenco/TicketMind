@@ -123,6 +123,7 @@ function resolveServiceConfig(stateOrPayload = {}) {
     apiKey,
     fromEmail,
     fromName,
+    deliveryMode: String(settings.deliveryMode || "").trim().toLowerCase() === "service" ? "service" : "smtp",
   };
 }
 
@@ -156,7 +157,10 @@ async function sendByService(serviceSettings, message) {
 async function deliverEmail(stateOrPayload, message) {
   const smtpSettings = resolveSmtpConfig(stateOrPayload);
   const serviceSettings = resolveServiceConfig(stateOrPayload);
-  const preferredMode = String(stateOrPayload?.smtpSettings?.deliveryMode || "service").trim().toLowerCase();
+  const preferredMode =
+    String(stateOrPayload?.smtpSettings?.deliveryMode || stateOrPayload?.emailServiceSettings?.deliveryMode || "smtp")
+      .trim()
+      .toLowerCase();
 
   if (preferredMode === "smtp" && isSmtpConfigured(smtpSettings)) {
     const transport = createMailTransport(smtpSettings);
@@ -188,7 +192,7 @@ async function deliverEmail(stateOrPayload, message) {
     return "SMTP";
   }
 
-  throw new Error("Nenhum metodo de envio configurado. Defina o servico padrao ou um SMTP.");
+  throw new Error("Nenhum metodo de envio configurado. Defina um SMTP ou um servico com API.");
 }
 
 function buildPlaceholders(state, ticket, eventLabel, baseUrl) {

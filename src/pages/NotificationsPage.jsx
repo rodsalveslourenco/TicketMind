@@ -117,8 +117,8 @@ function NotificationsPage() {
   const handleSaveService = (event) => {
     event.preventDefault();
     saveEmailServiceSettings(serviceDraft);
-    saveSmtpSettings({ ...smtpDraft, deliveryMode: serviceDraft.deliveryMode || smtpDraft.deliveryMode || "service" });
-    pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico padrao");
+    saveSmtpSettings({ ...smtpDraft, deliveryMode: serviceDraft.deliveryMode || smtpDraft.deliveryMode || "smtp" });
+    pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico opcional");
   };
 
   const handleTestEmail = async () => {
@@ -257,7 +257,7 @@ function NotificationsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Entrega de e-mail</h2>
-            <span>Selecione o metodo padrao. Se o SMTP nao estiver configurado, o sistema usa o servico padrao.</span>
+            <span>Selecione o metodo principal. O padrao agora e SMTP, sem depender de API.</span>
           </div>
         </div>
         <div className="glpi-form-grid">
@@ -266,14 +266,14 @@ function NotificationsPage() {
             <select
               disabled={!canManage}
               onChange={(event) => {
-                const deliveryMode = event.target.value === "smtp" ? "smtp" : "service";
+                const deliveryMode = event.target.value === "service" ? "service" : "smtp";
                 setSmtpDraft((current) => ({ ...current, deliveryMode }));
                 setServiceDraft((current) => ({ ...current, deliveryMode }));
               }}
-              value={smtpDraft.deliveryMode || "service"}
+              value={smtpDraft.deliveryMode || "smtp"}
             >
-              <option value="service">Servico padrao</option>
-              <option value="smtp">SMTP personalizado</option>
+              <option value="smtp">SMTP padrao (sem API)</option>
+              <option value="service">Servico com API</option>
             </select>
           </label>
         </div>
@@ -282,8 +282,8 @@ function NotificationsPage() {
 
         <div className="glpi-toolbar">
           <div>
-            <h2>Servico padrao</h2>
-            <span>Usado no envio basico do sistema e como fallback automatico quando o SMTP nao estiver ativo.</span>
+            <h2>Servico com API</h2>
+            <span>Opcional. Use apenas se quiser um fallback por provedor externo como Resend ou SendGrid.</span>
           </div>
         </div>
         <form className="glpi-ticket-form" onSubmit={handleSaveService}>
@@ -339,8 +339,8 @@ function NotificationsPage() {
 
         <div className="glpi-toolbar">
           <div>
-            <h2>SMTP personalizado</h2>
-            <span>Alternativa opcional para uso dedicado do cliente.</span>
+            <h2>SMTP padrao</h2>
+            <span>Metodo principal de envio. Funciona com contas SMTP comuns, sem API key.</span>
           </div>
         </div>
         <form className="glpi-ticket-form" onSubmit={handleSaveSmtp}>
