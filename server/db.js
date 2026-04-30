@@ -137,14 +137,90 @@ function buildStateDefaults(stored = {}) {
   };
 }
 
+function createUniqueIdResolver(prefix) {
+  const usedIds = new Set();
+  return (preferredId) => {
+    const normalizedId = String(preferredId || "").trim();
+    if (normalizedId && !usedIds.has(normalizedId)) {
+      usedIds.add(normalizedId);
+      return normalizedId;
+    }
+
+    let nextIndex = Math.max(usedIds.size + 1, 1);
+    let candidate = `${prefix}-${nextIndex}`;
+    while (usedIds.has(candidate)) {
+      nextIndex += 1;
+      candidate = `${prefix}-${nextIndex}`;
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
+}
+
+function sanitizeDepartmentCollection(records = []) {
+  const registry = new Map();
+  const resolveId = createUniqueIdResolver("dep");
+
+  records.forEach((record) => {
+    const normalized = normalizeDepartmentRecord(record);
+    if (!normalized.name) return;
+
+    const key = normalizeText(normalized.name) || normalizeText(normalized.code);
+    if (registry.has(key)) return;
+
+    registry.set(key, {
+      ...normalized,
+      id: resolveId(normalized.id),
+    });
+  });
+
+  return Array.from(registry.values());
+}
+
+function sanitizeLocationCollection(records = [], departments = []) {
+  const registry = new Map();
+  const resolveId = createUniqueIdResolver("loc");
+
+  records.forEach((record) => {
+    const normalized = normalizeLocationRecord(record, departments);
+    if (!normalized.name) return;
+
+    const key = normalizeText(normalized.name);
+    if (registry.has(key)) return;
+
+    registry.set(key, {
+      ...normalized,
+      id: resolveId(normalized.id),
+    });
+  });
+
+  return Array.from(registry.values());
+}
+
+function sanitizeUserCollection(records = [], departments = []) {
+  const registry = new Map();
+  const resolveId = createUniqueIdResolver("u");
+
+  records.forEach((record) => {
+    const normalized = normalizeUserRecord(record, departments);
+    if (!normalized.email) return;
+
+    const key = normalizeText(normalized.email);
+    if (registry.has(key)) return;
+
+    registry.set(key, {
+      ...normalized,
+      id: resolveId(normalized.id),
+    });
+  });
+
+  return Array.from(registry.values());
+}
+
 function buildCombinedState(appStateRaw = {}, collections = {}) {
-  const departments = (collections.departments || []).map(normalizeDepartmentRecord).filter((department) => department.id && department.name);
-  const locations = (collections.locations || [])
-    .map((location) => normalizeLocationRecord(location, departments))
-    .filter((location) => location.id && location.name);
-  const users = (collections.users || [])
-    .map((user) => normalizeUserRecord(user, departments))
-    .filter((user) => user.id && user.email);
+  const departments = sanitizeDepartmentCollection(collections.departments || []);
+  const locations = sanitizeLocationCollection(collections.locations || [], departments);
+  const users = sanitizeUserCollection(collections.users || [], departments);
 
   const state = buildStateDefaults({
     ...appStateRaw,
@@ -170,6 +246,7 @@ function stripNormalizedCollections(state = {}) {
 
 function deriveDepartments(records = {}) {
   const registry = new Map();
+  const resolveId = createUniqueIdResolver("dep");
   const addDepartment = (entry) => {
     const normalized = normalizeDepartmentRecord(entry);
     if (!normalized.name) return;
@@ -177,7 +254,7 @@ function deriveDepartments(records = {}) {
     if (!registry.has(key)) {
       registry.set(key, {
         ...normalized,
-        id: normalized.id || `dep-${registry.size + 1}`,
+        id: resolveId(normalized.id),
       });
     }
   };
@@ -191,6 +268,7 @@ function deriveDepartments(records = {}) {
 
 function deriveLocations(records = {}, departments = []) {
   const registry = new Map();
+  const resolveId = createUniqueIdResolver("loc");
   const addLocation = (entry) => {
     const normalized = normalizeLocationRecord(entry, departments);
     if (!normalized.name) return;
@@ -198,7 +276,7 @@ function deriveLocations(records = {}, departments = []) {
     if (!registry.has(key)) {
       registry.set(key, {
         ...normalized,
-        id: normalized.id || `loc-${registry.size + 1}`,
+        id: resolveId(normalized.id),
       });
     }
   };
@@ -211,16 +289,9 @@ function deriveLocations(records = {}, departments = []) {
 }
 
 function deriveUsers(records = {}, departments = []) {
+  const resolveId = createUniqueIdResolver("u");
   return (records.users || [])
-    .map((user, index) =>
-      normalizeUserRecord(
-        {
-          ...user,
-          id: user.id || `u-${String(index + 1).padStart(3, "0")}`,
-        },
-        departments,
-      ),
-    )
+    .map((user) => normalizeUserRecord({ ...user, id: resolveId(user.id) }, departments))
     .filter((user) => user.id && user.email);
 }
 
