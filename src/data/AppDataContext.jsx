@@ -9,7 +9,6 @@ import {
   normalizeRoleName,
   normalizeUserPermissions,
 } from "./permissions";
-import { seedData } from "./seedData";
 import { assetTypeOptions } from "./assetCatalog";
 import {
   appendHistory,
@@ -33,12 +32,8 @@ import {
 
 const AppDataContext = createContext(null);
 
-function buildDefaultUsers() {
-  return seedData.users.map((candidate) => ({ ...candidate, password: "admin0123" }));
-}
-
 function hydrateUsers(users) {
-  const baseUsers = Array.isArray(users) ? users : buildDefaultUsers();
+  const baseUsers = Array.isArray(users) ? users : [];
   return baseUsers.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
@@ -95,27 +90,14 @@ function sanitizeDepartmentPayload(payload, currentDepartment = {}) {
   };
 }
 
-function hydrateDepartments(storedDepartments, users, currentUser) {
-  const registry = new Map();
-
-  const registerDepartment = (entry) => {
-    if (!entry) return;
-    const payload = typeof entry === "string" ? { name: entry } : entry;
-    const sanitized = sanitizeDepartmentPayload(payload, payload);
-    if (!sanitized.name) return;
-    const key = normalizeText(sanitized.name) || normalizeText(sanitized.code);
-    registry.set(key, {
-      id: payload.id || `dep-${registry.size + 1}`,
-      ...sanitized,
-    });
-  };
-
-  (Array.isArray(seedData.departments) ? seedData.departments : []).forEach(registerDepartment);
-  (Array.isArray(storedDepartments) ? storedDepartments : []).forEach(registerDepartment);
-  (Array.isArray(users) ? users : []).forEach((candidate) => registerDepartment(candidate.department));
-  registerDepartment(currentUser?.department);
-
-  return Array.from(registry.values()).sort((left, right) => left.name.localeCompare(right.name));
+function hydrateDepartments(storedDepartments) {
+  return (Array.isArray(storedDepartments) ? storedDepartments : [])
+    .map((department) => ({
+      id: String(department.id || "").trim(),
+      ...sanitizeDepartmentPayload(department, department),
+    }))
+    .filter((department) => department.id && department.name)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function syncUserDepartment(candidate, departments) {
@@ -146,27 +128,14 @@ function sanitizeLocationPayload(payload, departments, currentLocation = {}) {
   };
 }
 
-function hydrateLocations(storedLocations, assets, tickets, departments) {
-  const registry = new Map();
-
-  const registerLocation = (entry) => {
-    if (!entry) return;
-    const payload = typeof entry === "string" ? { name: entry } : entry;
-    const sanitized = sanitizeLocationPayload(payload, departments, payload);
-    if (!sanitized.name) return;
-    const key = normalizeText(sanitized.name);
-    registry.set(key, {
-      id: payload.id || `loc-${registry.size + 1}`,
-      ...sanitized,
-    });
-  };
-
-  (Array.isArray(seedData.locations) ? seedData.locations : []).forEach(registerLocation);
-  (Array.isArray(storedLocations) ? storedLocations : []).forEach(registerLocation);
-  (Array.isArray(assets) ? assets : []).forEach((asset) => registerLocation(asset.location));
-  (Array.isArray(tickets) ? tickets : []).forEach((ticket) => registerLocation(ticket.location));
-
-  return Array.from(registry.values()).sort((left, right) => left.name.localeCompare(right.name));
+function hydrateLocations(storedLocations, departments) {
+  return (Array.isArray(storedLocations) ? storedLocations : [])
+    .map((location) => ({
+      id: String(location.id || "").trim(),
+      ...sanitizeLocationPayload(location, departments, location),
+    }))
+    .filter((location) => location.id && location.name)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function syncAssetLocation(asset, locations) {
@@ -283,37 +252,28 @@ function canAccessTicket(ticket, user) {
 
 function mergeCollections(stored) {
   const rawUsers = hydrateUsers(stored?.users);
-  const baseCurrentUser =
-    (stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null) ??
-    rawUsers.find((candidate) => candidate.email === seedData.currentUser.email) ??
-    { ...seedData.currentUser, password: "admin0123" };
-  const departments = hydrateDepartments(stored?.departments, rawUsers, baseCurrentUser);
+  const baseCurrentUser = stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null;
+  const departments = hydrateDepartments(stored?.departments);
   const users = rawUsers.map((candidate) => syncUserDepartment(candidate, departments));
-  const currentUser = syncUserDepartment(baseCurrentUser, departments);
-  const locations = hydrateLocations(
-    stored?.locations,
-    Array.isArray(stored?.assets) ? stored.assets : seedData.assets,
-    Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
-    departments,
-  );
-  const assets = (Array.isArray(stored?.assets) ? stored.assets : seedData.assets).map((asset) => syncAssetLocation(asset, locations));
+  const currentUser = baseCurrentUser ? syncUserDepartment(baseCurrentUser, departments) : null;
+  const locations = hydrateLocations(stored?.locations, departments);
+  const assets = (Array.isArray(stored?.assets) ? stored.assets : []).map((asset) => syncAssetLocation(asset, locations));
 
   const baseState = {
-    ...seedData,
     ...stored,
     currentUser,
     users,
     departments,
     locations,
-    queues: Array.isArray(stored?.queues) ? stored.queues : seedData.queues,
-    tickets: Array.isArray(stored?.tickets) ? stored.tickets : seedData.tickets,
+    queues: Array.isArray(stored?.queues) ? stored.queues : [],
+    tickets: Array.isArray(stored?.tickets) ? stored.tickets : [],
     assets,
-    brands: Array.isArray(stored?.brands) ? stored.brands : seedData.brands,
-    models: Array.isArray(stored?.models) ? stored.models : seedData.models,
-    projects: (Array.isArray(stored?.projects) ? stored.projects : seedData.projects).map(sanitizeProjectPayload),
-    knowledgeArticles: (Array.isArray(stored?.knowledgeArticles) ? stored.knowledgeArticles : seedData.knowledgeArticles).map(normalizeKnowledgeArticle),
-    apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : seedData.apiConfigs,
-    reports: Array.isArray(stored?.reports) ? stored.reports : seedData.reports,
+    brands: Array.isArray(stored?.brands) ? stored.brands : [],
+    models: Array.isArray(stored?.models) ? stored.models : [],
+    projects: (Array.isArray(stored?.projects) ? stored.projects : []).map(sanitizeProjectPayload),
+    knowledgeArticles: (Array.isArray(stored?.knowledgeArticles) ? stored.knowledgeArticles : []).map(normalizeKnowledgeArticle),
+    apiConfigs: Array.isArray(stored?.apiConfigs) ? stored.apiConfigs : [],
+    reports: Array.isArray(stored?.reports) ? stored.reports : [],
   };
 
   return syncHelpdeskState(baseState, users);
