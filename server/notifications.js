@@ -1,6 +1,14 @@
 import nodemailer from "nodemailer";
 import { decryptSecret, encryptSecret } from "./security.js";
 
+function safeDecryptSecret(value) {
+  try {
+    return decryptSecret(value || "");
+  } catch {
+    return "";
+  }
+}
+
 function normalizeText(value) {
   return String(value || "")
     .normalize("NFD")
@@ -111,7 +119,7 @@ function resolveServiceConfig(stateOrPayload = {}) {
   const settings = stateOrPayload?.emailServiceSettings || {};
   const provider = String(settings.provider || process.env.EMAIL_SERVICE_PROVIDER || "resend").trim().toLowerCase();
   const apiKey =
-    decryptSecret(settings.apiKey || "") ||
+    safeDecryptSecret(settings.apiKey || "") ||
     String(process.env.EMAIL_SERVICE_API_KEY || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY || "").trim();
   const fromEmail =
     String(settings.fromEmail || process.env.EMAIL_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || "").trim();
@@ -131,7 +139,7 @@ function resolveSmtpConfig(stateOrPayload = {}) {
   const settings = stateOrPayload?.smtpSettings || {};
   return {
     ...settings,
-    password: decryptSecret(settings.password || ""),
+    password: safeDecryptSecret(settings.password || ""),
   };
 }
 

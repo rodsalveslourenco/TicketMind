@@ -110,14 +110,15 @@ function NotificationsPage() {
 
   const handleSaveSmtp = (event) => {
     event.preventDefault();
-    saveSmtpSettings(smtpDraft);
+    setSmtpDraft((current) => ({ ...current, deliveryMode: "smtp" }));
+    setServiceDraft((current) => ({ ...current, deliveryMode: "smtp" }));
+    saveSmtpSettings({ ...smtpDraft, deliveryMode: "smtp" });
     pushToast("SMTP atualizado", smtpDraft.host || "Configuracao salva");
   };
 
   const handleSaveService = (event) => {
     event.preventDefault();
     saveEmailServiceSettings(serviceDraft);
-    saveSmtpSettings({ ...smtpDraft, deliveryMode: serviceDraft.deliveryMode || smtpDraft.deliveryMode || "smtp" });
     pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico de envio");
   };
 

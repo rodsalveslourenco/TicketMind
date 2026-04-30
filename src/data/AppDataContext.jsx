@@ -1618,10 +1618,6 @@ export function AppDataProvider({ children }) {
         fromName: String(payload.fromName || "").trim(),
         deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
       },
-      smtpSettings: {
-        ...current.smtpSettings,
-        deliveryMode: payload.deliveryMode === "service" ? "service" : current.smtpSettings?.deliveryMode || "smtp",
-      },
     }));
   };
 
