@@ -1627,6 +1627,26 @@ export function AppDataProvider({ children }) {
 
   const requestNotificationTest = async (payload) => {
     if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
+    const nextState = {
+      ...data,
+      smtpSettings: {
+        ...data.smtpSettings,
+        ...(payload.smtpSettings || {}),
+        hasPassword: data.smtpSettings?.hasPassword || Boolean(payload.smtpSettings?.password),
+      },
+      emailServiceSettings: {
+        ...data.emailServiceSettings,
+        ...(payload.emailServiceSettings || {}),
+        hasApiKey: data.emailServiceSettings?.hasApiKey || Boolean(payload.emailServiceSettings?.apiKey),
+      },
+    };
+
+    const persistedState = await requestJson("/api/state", {
+      method: "PUT",
+      body: JSON.stringify(nextState),
+    });
+    setData(mergeCollections(persistedState));
+
     return requestJson("/api/notifications/test", {
       method: "POST",
       body: JSON.stringify(payload),
