@@ -477,8 +477,8 @@ function DashboardPage() {
             placeholder="Buscar por numero do chamado, usuario, tecnico, fila ou assunto"
             value={search}
           />
-          <Link className="primary-button interactive-button" to="/app/tickets">
-            Abrir chamado
+          <Link className="ghost-button interactive-button" to="/app/tickets">
+            Ver chamados
           </Link>
         </div>
         <div className="glpi-form-grid dashboard-filter-grid">

@@ -21,6 +21,13 @@ const defaultCreateForm = {
   knowledgeArticleIds: [],
 };
 
+const priorityLegend = [
+  { label: "Critico", value: "Critica", className: "priority-line-critica" },
+  { label: "Alto", value: "Alta", className: "priority-line-alta" },
+  { label: "Medio", value: "Media", className: "priority-line-media" },
+  { label: "Baixo", value: "Baixa", className: "priority-line-baixa" },
+];
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -372,6 +379,7 @@ function TicketsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Listagem operacional</h2>
+            <span>Priorize a fila por impacto, acompanhe SLA e abra novos chamados sem perder contexto.</span>
           </div>
           <div className="toolbar">
             <div className="view-toggle">
@@ -427,7 +435,12 @@ function TicketsPage() {
         <div className="ticket-rows ticket-rows-wide">
           {filteredTickets.length ? (
             filteredTickets.map((ticket) => (
-              <button className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}`} key={ticket.id} onClick={() => setDetailTicketId(ticket.id)} type="button">
+              <button
+                className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
+                key={ticket.id}
+                onClick={() => setDetailTicketId(ticket.id)}
+                type="button"
+              >
                 <div className="ticket-row-main">
                   <div className="ticket-row-title">
                     <strong>{ticket.id}</strong>
@@ -435,8 +448,8 @@ function TicketsPage() {
                   </div>
                   <div className="ticket-row-badges">
                     <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                    <span className={`badge ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
-                    <span className={`badge ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
+                    <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                    <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
                   </div>
                 </div>
                 <div className="ticket-row-meta">
@@ -453,6 +466,16 @@ function TicketsPage() {
               <span>Ajuste busca, filtros ou registre um novo chamado.</span>
             </div>
           )}
+        </div>
+
+        <div className="priority-legend" aria-label="Legenda de prioridades">
+          {priorityLegend.map((item) => (
+            <div className="priority-legend-item" key={item.value}>
+              <span className={`priority-legend-swatch ${item.className}`} />
+              <strong>{item.label}</strong>
+              <span>{item.value}</span>
+            </div>
+          ))}
         </div>
       </section>
 

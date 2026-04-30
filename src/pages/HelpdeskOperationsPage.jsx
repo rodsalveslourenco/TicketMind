@@ -21,7 +21,7 @@ function HelpdeskOperationsPage() {
             <span>Dados reais da fila atual, usando os chamados persistidos no sistema.</span>
           </div>
           <Link className="ghost-button interactive-button" to="/app/tickets">
-            Abrir chamado
+            Ver chamados
           </Link>
         </div>
 
