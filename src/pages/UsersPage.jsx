@@ -7,21 +7,21 @@ import {
   hasAnyPermission,
   normalizeRoleName,
   normalizeUserPermissions,
-  permissionGroups,
-  roleProfiles,
 } from "../data/permissions";
 
-const defaultUserForm = {
-  name: "",
-  email: "",
-  password: "admin0123",
-  role: "Solicitante Interno",
-  team: "",
-  departmentId: "",
-  department: "",
-  avatar: "",
-  permissions: getRolePermissions("Solicitante Interno"),
-};
+function createDefaultUserForm(permissionCatalog, permissionProfiles) {
+  return {
+    name: "",
+    email: "",
+    password: "admin0123",
+    role: "Solicitante Interno",
+    team: "",
+    departmentId: "",
+    department: "",
+    avatar: "",
+    permissions: getRolePermissions("Solicitante Interno", permissionProfiles, permissionCatalog),
+  };
+}
 
 function maskPassword(password) {
   return "*".repeat(Math.max(String(password || "").length, 8));
@@ -55,11 +55,11 @@ function readImageFileAsDataUrl(file) {
 
 function UsersPage() {
   const { user } = useAuth();
-  const { addUser, deleteUser, departments, pushToast, updateUser, users } = useAppData();
+  const { addUser, deleteUser, departments, permissionCatalog, permissionProfiles, pushToast, updateUser, users } = useAppData();
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailUserId, setDetailUserId] = useState(null);
-  const [form, setForm] = useState(defaultUserForm);
+  const [form, setForm] = useState(() => createDefaultUserForm(permissionCatalog, permissionProfiles));
   const [editingUserId, setEditingUserId] = useState(null);
   const [revealedUserIds, setRevealedUserIds] = useState([]);
 
@@ -116,7 +116,7 @@ function UsersPage() {
     setForm((current) => ({
       ...current,
       role: nextRole,
-      permissions: getRolePermissions(nextRole),
+      permissions: getRolePermissions(nextRole, permissionProfiles, permissionCatalog),
     }));
   };
 
@@ -131,7 +131,7 @@ function UsersPage() {
   };
 
   const resetForm = () => {
-    setForm(defaultUserForm);
+    setForm(createDefaultUserForm(permissionCatalog, permissionProfiles));
     setEditingUserId(null);
   };
 
@@ -146,7 +146,7 @@ function UsersPage() {
       departmentId: candidate.departmentId || "",
       department: candidate.department,
       avatar: candidate.avatar || "",
-      permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
+      permissions: normalizeUserPermissions(candidate.permissions || {}, candidate, permissionCatalog, permissionProfiles),
     });
   };
 
@@ -208,7 +208,7 @@ function UsersPage() {
     setShowCreateModal(true);
   };
 
-  const selectedRoleProfile = roleProfiles.find((profile) => profile.name === form.role) || roleProfiles[0];
+  const selectedRoleProfile = permissionProfiles.find((profile) => profile.name === form.role) || permissionProfiles[0];
 
   const openDetailModal = (candidate) => {
     populateForm(candidate);
@@ -333,7 +333,7 @@ function UsersPage() {
                   ) : null}
                 </div>
                 <div className="permissions-inline">
-                  {permissionGroups
+                  {permissionCatalog
                     .flatMap((group) => group.permissions)
                     .filter((permission) => candidate.permissions?.[permission.key])
                     .slice(0, 4)
@@ -390,7 +390,7 @@ function UsersPage() {
                 <label className="field-block">
                   <span>Perfil</span>
                   <select onChange={updateRoleField} value={form.role}>
-                    {roleProfiles.map((profile) => (
+                    {permissionProfiles.map((profile) => (
                       <option key={profile.name} value={profile.name}>
                         {profile.name}
                       </option>
@@ -417,13 +417,16 @@ function UsersPage() {
                 <strong>Escopo do perfil</strong>
                 <span>{selectedRoleProfile.description}</span>
               </div>
-              <div className="permissions-panel">
-                {permissionGroups.map((group) => (
-                  <section className="permission-group" key={group.module}>
-                    <strong>{group.label}</strong>
-                    <div className="permissions-list">
+              <div className="permissions-panel permissions-panel-refined">
+                {permissionCatalog.map((group) => (
+                  <section className="permission-group permission-group-refined" key={group.module}>
+                    <div className="permission-group-head">
+                      <strong>{group.label}</strong>
+                      <span>{group.description}</span>
+                    </div>
+                    <div className="permissions-list permissions-list-compact">
                       {group.permissions.map((permission) => (
-                        <label className="permission-item" key={permission.key}>
+                        <label className="permission-item permission-item-compact" key={permission.key}>
                           <input
                             checked={Boolean(form.permissions[permission.key])}
                             disabled={!canManagePermissions}
@@ -509,7 +512,7 @@ function UsersPage() {
                 <label className="field-block">
                   <span>Perfil</span>
                   <select disabled={!canEditUsers} onChange={updateRoleField} value={form.role}>
-                    {roleProfiles.map((profile) => (
+                    {permissionProfiles.map((profile) => (
                       <option key={profile.name} value={profile.name}>
                         {profile.name}
                       </option>
@@ -536,13 +539,16 @@ function UsersPage() {
                 <strong>Escopo do perfil</strong>
                 <span>{selectedRoleProfile.description}</span>
               </div>
-              <div className="permissions-panel">
-                {permissionGroups.map((group) => (
-                  <section className="permission-group" key={group.module}>
-                    <strong>{group.label}</strong>
-                    <div className="permissions-list">
+              <div className="permissions-panel permissions-panel-refined">
+                {permissionCatalog.map((group) => (
+                  <section className="permission-group permission-group-refined" key={group.module}>
+                    <div className="permission-group-head">
+                      <strong>{group.label}</strong>
+                      <span>{group.description}</span>
+                    </div>
+                    <div className="permissions-list permissions-list-compact">
                       {group.permissions.map((permission) => (
-                        <label className="permission-item" key={permission.key}>
+                        <label className="permission-item permission-item-compact" key={permission.key}>
                           <input
                             checked={Boolean(form.permissions[permission.key])}
                             disabled={!canManagePermissions}

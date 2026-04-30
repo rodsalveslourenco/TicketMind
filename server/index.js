@@ -2,6 +2,12 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readState, sanitizeSessionUser, writeState } from "./db.js";
+import {
+  mergeIncomingState,
+  prepareStateForClient,
+  processTicketNotifications,
+  sendNotificationTest,
+} from "./notifications.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,11 +59,35 @@ app.get("/api/auth/session/:userId", async (request, response) => {
 });
 
 app.get("/api/state", async (_request, response) => {
-  response.json(await readState());
+  response.json(prepareStateForClient(await readState()));
 });
 
 app.put("/api/state", async (request, response) => {
-  response.json(await writeState(request.body || {}));
+  const previousState = await readState();
+  const mergedState = mergeIncomingState(previousState, request.body || {});
+  const persistedState = await writeState(mergedState);
+  response.json(prepareStateForClient(persistedState));
+
+  void processTicketNotifications({
+    previousState,
+    nextState: persistedState,
+    persistState: writeState,
+    baseUrl: process.env.APP_PUBLIC_URL || "",
+  }).catch((error) => {
+    console.error("notification processing failed", error);
+  });
+});
+
+app.post("/api/notifications/test", async (request, response) => {
+  try {
+    const persistedState = await readState();
+    await sendNotificationTest(request.body || {}, persistedState);
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao testar envio de email.",
+    });
+  }
 });
 
 app.use(express.static(distPath));

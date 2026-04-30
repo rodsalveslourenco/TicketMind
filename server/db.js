@@ -6,6 +6,14 @@ import initSqlJs from "sql.js";
 import { seedData } from "../src/data/seedData.js";
 import { normalizeRoleName, normalizeUserPermissions } from "../src/data/permissions.js";
 import { normalizeKnowledgeArticle, syncHelpdeskState } from "../src/data/helpdesk.js";
+import {
+  defaultEmailPlaceholders,
+  defaultNavigationSections,
+  defaultNotificationEvents,
+  defaultPermissionCatalog,
+  defaultPermissionProfiles,
+  defaultSmtpSettings,
+} from "../src/data/systemDefaults.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,7 +84,12 @@ function normalizeLocationRecord(record = {}, departments = []) {
   };
 }
 
-function normalizeUserRecord(record = {}, departments = []) {
+function normalizeUserRecord(
+  record = {},
+  departments = [],
+  permissionCatalog = defaultPermissionCatalog,
+  permissionProfiles = defaultPermissionProfiles,
+) {
   const nowIso = new Date().toISOString();
   const departmentId = String(record.departmentId || "").trim();
   const departmentName = String(record.department || "").trim();
@@ -99,7 +112,7 @@ function normalizeUserRecord(record = {}, departments = []) {
     departmentId: matchedDepartment?.id || departmentId,
     department: matchedDepartment?.name || departmentName,
     avatar: String(record.avatar || "").trim(),
-    permissions: normalizeUserPermissions(record.permissions || {}, record),
+    permissions: normalizeUserPermissions(record.permissions || {}, record, permissionCatalog, permissionProfiles),
     createdAt: String(record.createdAt || nowIso),
     updatedAt: String(record.updatedAt || nowIso),
   };
@@ -122,6 +135,33 @@ function buildStateDefaults(stored = {}) {
     ...staticSeedState,
     ...stored,
     currentUser,
+    permissionCatalog:
+      Array.isArray(stored.permissionCatalog) && stored.permissionCatalog.length
+        ? stored.permissionCatalog
+        : defaultPermissionCatalog,
+    permissionProfiles:
+      Array.isArray(stored.permissionProfiles) && stored.permissionProfiles.length
+        ? stored.permissionProfiles
+        : defaultPermissionProfiles,
+    navigationSections:
+      Array.isArray(stored.navigationSections) && stored.navigationSections.length
+        ? stored.navigationSections
+        : defaultNavigationSections,
+    notificationEvents:
+      Array.isArray(stored.notificationEvents) && stored.notificationEvents.length
+        ? stored.notificationEvents
+        : defaultNotificationEvents,
+    emailPlaceholders:
+      Array.isArray(stored.emailPlaceholders) && stored.emailPlaceholders.length
+        ? stored.emailPlaceholders
+        : defaultEmailPlaceholders,
+    emailLayouts: Array.isArray(stored.emailLayouts) ? stored.emailLayouts : [],
+    notificationRules: Array.isArray(stored.notificationRules) ? stored.notificationRules : [],
+    notificationLogs: Array.isArray(stored.notificationLogs) ? stored.notificationLogs : [],
+    smtpSettings:
+      stored.smtpSettings && typeof stored.smtpSettings === "object"
+        ? { ...defaultSmtpSettings, ...stored.smtpSettings }
+        : defaultSmtpSettings,
     users: Array.isArray(stored.users) ? stored.users : [],
     departments: Array.isArray(stored.departments) ? stored.departments : [],
     locations: Array.isArray(stored.locations) ? stored.locations : [],
@@ -197,12 +237,17 @@ function sanitizeLocationCollection(records = [], departments = []) {
   return Array.from(registry.values());
 }
 
-function sanitizeUserCollection(records = [], departments = []) {
+function sanitizeUserCollection(
+  records = [],
+  departments = [],
+  permissionCatalog = defaultPermissionCatalog,
+  permissionProfiles = defaultPermissionProfiles,
+) {
   const registry = new Map();
   const resolveId = createUniqueIdResolver("u");
 
   records.forEach((record) => {
-    const normalized = normalizeUserRecord(record, departments);
+    const normalized = normalizeUserRecord(record, departments, permissionCatalog, permissionProfiles);
     if (!normalized.email) return;
 
     const key = normalizeText(normalized.email);
@@ -218,9 +263,17 @@ function sanitizeUserCollection(records = [], departments = []) {
 }
 
 function buildCombinedState(appStateRaw = {}, collections = {}) {
+  const permissionCatalog =
+    Array.isArray(appStateRaw?.permissionCatalog) && appStateRaw.permissionCatalog.length
+      ? appStateRaw.permissionCatalog
+      : defaultPermissionCatalog;
+  const permissionProfiles =
+    Array.isArray(appStateRaw?.permissionProfiles) && appStateRaw.permissionProfiles.length
+      ? appStateRaw.permissionProfiles
+      : defaultPermissionProfiles;
   const departments = sanitizeDepartmentCollection(collections.departments || []);
   const locations = sanitizeLocationCollection(collections.locations || [], departments);
-  const users = sanitizeUserCollection(collections.users || [], departments);
+  const users = sanitizeUserCollection(collections.users || [], departments, permissionCatalog, permissionProfiles);
 
   const state = buildStateDefaults({
     ...appStateRaw,
@@ -229,7 +282,7 @@ function buildCombinedState(appStateRaw = {}, collections = {}) {
     locations,
     currentUser:
       appStateRaw?.currentUser && typeof appStateRaw.currentUser === "object"
-        ? normalizeUserRecord(appStateRaw.currentUser, departments)
+        ? normalizeUserRecord(appStateRaw.currentUser, departments, permissionCatalog, permissionProfiles)
         : null,
   });
 

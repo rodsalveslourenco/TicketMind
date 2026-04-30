@@ -16,53 +16,6 @@ function getInitials(name) {
 
 const SIDEBAR_STATE_KEY = "ticketmind.sidebar.sections";
 
-const navigationSections = [
-  {
-    key: "dashboard",
-    title: "Dashboard",
-    collapsible: false,
-    items: [{ to: "/app/dashboard", label: "Dashboard", module: "dashboard", icon: "dashboard" }],
-  },
-  {
-    key: "attendance",
-    title: "Atendimento",
-    collapsible: true,
-    items: [
-      { to: "/app/tickets", label: "Chamados", module: "tickets", icon: "tickets" },
-      { to: "/app/knowledge", label: "Base de Conhecimento", module: "knowledge", icon: "knowledge" },
-    ],
-  },
-  {
-    key: "operations",
-    title: "Operacoes Helpdesk",
-    collapsible: true,
-    items: [
-      { to: "/app/helpdesk-operations", label: "Indicadores", module: "helpdesk_operations", icon: "helpdesk_operations" },
-      { to: "/app/assets", label: "Ativos", module: "assets", icon: "assets" },
-      { to: "/app/locations", label: "Localizacoes", module: "assets", icon: "assets" },
-      { to: "/app/inventory", label: "Inventario", module: "inventory", icon: "inventory" },
-      { to: "/app/brands-models", label: "Marcas e Modelos", module: "brands_models", icon: "brands_models" },
-      { to: "/app/projects", label: "Projetos", module: "projects", icon: "projects" },
-    ],
-  },
-  {
-    key: "technicians",
-    title: "Tecnicos",
-    collapsible: true,
-    items: [{ to: "/app/helpdesk-technicians", label: "Painel tecnico", module: "helpdesk_technicians", icon: "helpdesk_technicians" }],
-  },
-  {
-    key: "settings",
-    title: "Configuracoes",
-    collapsible: true,
-    items: [
-      { to: "/app/api-rest", label: "API REST", module: "api_rest", icon: "api_rest" },
-      { to: "/app/users", label: "Usuarios", module: "users", icon: "users" },
-      { to: "/app/departments", label: "Departamentos", module: "users", icon: "users" },
-    ],
-  },
-];
-
 const defaultExpandedSections = {
   attendance: true,
   operations: true,
@@ -126,11 +79,21 @@ const navigationIcons = {
       <path d="M7 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm6 1a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM2 16a5 5 0 0 1 10 0v1H2v-1Zm11-1a4 4 0 0 1 5 2h-5v-2Z" />
     </svg>
   ),
+  notifications: (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M10 3a4 4 0 0 1 4 4v2.6c0 .8.3 1.6.8 2.2l1.2 1.4V15H4v-1.8l1.2-1.4c.5-.6.8-1.4.8-2.2V7a4 4 0 0 1 4-4Zm0 14a2.5 2.5 0 0 0 2.4-2H7.6A2.5 2.5 0 0 0 10 17Z" />
+    </svg>
+  ),
+  email_layouts: (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M3 4h14v12H3V4Zm2 2v1.2l5 3.5 5-3.5V6H5Zm10 8V9.1l-5 3.5-5-3.5V14h10Z" />
+    </svg>
+  ),
 };
 
 function AppLayout() {
   const { user, logout } = useAuth();
-  const { dismissToast, notifications, summary } = useAppData();
+  const { dismissToast, notifications, summary, navigationSections, permissionCatalog } = useAppData();
   const location = useLocation();
   const navigate = useNavigate();
   const [globalSearch, setGlobalSearch] = useState("");
@@ -148,10 +111,10 @@ function AppLayout() {
       navigationSections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => canAccessModule(user, item.module)),
+          items: section.items.filter((item) => canAccessModule(user, item.module, permissionCatalog)),
         }))
         .filter((section) => section.items.length),
-    [user],
+    [navigationSections, permissionCatalog, user],
   );
   const availableNavigation = useMemo(() => groupedNavigation.flatMap((section) => section.items), [groupedNavigation]);
   const currentPage = useMemo(
@@ -216,7 +179,7 @@ function AppLayout() {
                     className={({ isActive }) => `nav-link interactive-button${isActive ? " is-active" : ""}`}
                     to={item.to}
                   >
-                    <span className="nav-link-icon">{navigationIcons[item.icon]}</span>
+                    <span className="nav-link-icon">{navigationIcons[item.icon] || navigationIcons.dashboard}</span>
                     <span>{item.label}</span>
                   </NavLink>
                 ))}

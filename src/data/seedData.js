@@ -1,8 +1,8 @@
-import {
-  adminPermissions,
-  analystPermissions,
-  defaultPermissions,
-} from "./permissions.js";
+import { buildEmptyPermissions, getRolePermissions } from "./permissions.js";
+
+const adminPermissions = getRolePermissions("Administrador da Plataforma");
+const analystPermissions = getRolePermissions("Analista de Service Desk");
+const defaultPermissions = buildEmptyPermissions();
 
 export const seedData = {
   currentUser: {

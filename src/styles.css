@@ -3930,3 +3930,156 @@ textarea:focus {
     justify-content: center;
   }
 }
+
+.settings-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.settings-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-card {
+  padding: 1rem 1.1rem;
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.settings-card-head span,
+.permission-group-head span,
+.settings-template-preview p,
+.settings-template-preview pre,
+.recipient-option small {
+  color: var(--text-muted, #667085);
+}
+
+.settings-template-preview {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.settings-template-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font: inherit;
+}
+
+.recipient-picker {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.recipient-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+}
+
+.recipient-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.recipient-option span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.92rem;
+}
+
+.settings-divider {
+  height: 1px;
+  margin: 1rem 0;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.settings-log-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.settings-log-row {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.settings-placeholder-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.placeholder-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.email-layout-body {
+  min-height: 220px;
+}
+
+.permissions-panel-refined {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.permission-group-refined {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fbfcfd;
+}
+
+.permission-group-head {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.75rem;
+}
+
+.permissions-list-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.55rem 0.85rem;
+}
+
+.permission-item-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+}
+
+.permission-item-compact input,
+.recipient-option input,
+.inline-toggle input {
+  width: 14px;
+  height: 14px;
+}

@@ -2,13 +2,22 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { requestJson } from "../lib/api";
 import {
+  buildEmptyPermissions,
+  getRolePermissions,
   canViewAllTickets,
   canViewOwnTickets,
-  defaultPermissions as defaultUserPermissions,
   hasAnyPermission,
   normalizeRoleName,
   normalizeUserPermissions,
 } from "./permissions";
+import {
+  defaultEmailPlaceholders,
+  defaultNavigationSections,
+  defaultNotificationEvents,
+  defaultPermissionCatalog,
+  defaultPermissionProfiles,
+  defaultSmtpSettings,
+} from "./systemDefaults";
 import { assetTypeOptions } from "./assetCatalog";
 import {
   appendHistory,
@@ -32,13 +41,13 @@ import {
 
 const AppDataContext = createContext(null);
 
-function hydrateUsers(users) {
+function hydrateUsers(users, permissionCatalog, permissionProfiles) {
   const baseUsers = Array.isArray(users) ? users : [];
   return baseUsers.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
     role: normalizeRoleName(candidate.role),
-    permissions: normalizeUserPermissions(candidate.permissions || {}, candidate),
+    permissions: normalizeUserPermissions(candidate.permissions || {}, candidate, permissionCatalog, permissionProfiles),
   }));
 }
 
@@ -159,7 +168,7 @@ function resolveAssetType(type) {
   return assetTypeOptions.find((item) => normalizeText(item).trim() === normalized) || "Outros";
 }
 
-function sanitizeUserPayload(payload, departments = []) {
+function sanitizeUserPayload(payload, departments = [], permissionCatalog = defaultPermissionCatalog, permissionProfiles = defaultPermissionProfiles) {
   const departmentMatch = findDepartmentMatch(departments, payload);
   return {
     name: String(payload.name || "").trim(),
@@ -170,7 +179,12 @@ function sanitizeUserPayload(payload, departments = []) {
     departmentId: departmentMatch?.id || String(payload.departmentId || "").trim(),
     department: departmentMatch?.name || String(payload.department || "").trim(),
     avatar: String(payload.avatar || "").trim(),
-    permissions: normalizeUserPermissions(payload.permissions || defaultUserPermissions, payload),
+    permissions: normalizeUserPermissions(
+      payload.permissions || getRolePermissions(payload.role, permissionProfiles, permissionCatalog),
+      payload,
+      permissionCatalog,
+      permissionProfiles,
+    ),
   };
 }
 
@@ -238,6 +252,135 @@ function sanitizeProjectPayload(payload) {
   };
 }
 
+function hydratePermissionCatalog(storedCatalog) {
+  const catalog = Array.isArray(storedCatalog) && storedCatalog.length ? storedCatalog : defaultPermissionCatalog;
+  return catalog
+    .map((module) => ({
+      ...module,
+      module: String(module.module || "").trim(),
+      label: String(module.label || "").trim(),
+      description: String(module.description || "").trim(),
+      accessKeys: Array.isArray(module.accessKeys) ? module.accessKeys.filter(Boolean) : [],
+      permissions: (Array.isArray(module.permissions) ? module.permissions : []).map((permission) => ({
+        key: String(permission.key || "").trim(),
+        label: String(permission.label || "").trim(),
+        action: String(permission.action || "view").trim(),
+      })),
+    }))
+    .filter((module) => module.module && module.permissions.length);
+}
+
+function hydratePermissionProfiles(storedProfiles) {
+  const profiles = Array.isArray(storedProfiles) && storedProfiles.length ? storedProfiles : defaultPermissionProfiles;
+  return profiles.map((profile) => ({
+    ...profile,
+    id: String(profile.id || profile.name || "").trim(),
+    name: normalizeRoleName(profile.name),
+    description: String(profile.description || "").trim(),
+    permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
+  }));
+}
+
+function hydrateNavigationSections(storedSections) {
+  const sections = Array.isArray(storedSections) && storedSections.length ? storedSections : defaultNavigationSections;
+  return sections
+    .map((section) => ({
+      ...section,
+      key: String(section.key || "").trim(),
+      title: String(section.title || "").trim(),
+      collapsible: Boolean(section.collapsible),
+      order: Number(section.order) || 0,
+      items: (Array.isArray(section.items) ? section.items : []).map((item) => ({
+        to: String(item.to || "").trim(),
+        label: String(item.label || "").trim(),
+        module: String(item.module || "").trim(),
+        icon: String(item.icon || "dashboard").trim(),
+      })),
+    }))
+    .filter((section) => section.key && section.items.length)
+    .sort((left, right) => left.order - right.order);
+}
+
+function hydrateNotificationEvents(storedEvents) {
+  const events = Array.isArray(storedEvents) && storedEvents.length ? storedEvents : defaultNotificationEvents;
+  return events.map((event) => ({
+    key: String(event.key || "").trim(),
+    label: String(event.label || "").trim(),
+    description: String(event.description || "").trim(),
+  }));
+}
+
+function hydrateEmailPlaceholders(storedPlaceholders) {
+  const placeholders =
+    Array.isArray(storedPlaceholders) && storedPlaceholders.length ? storedPlaceholders : defaultEmailPlaceholders;
+  return placeholders.map((placeholder) => ({
+    key: String(placeholder.key || "").trim(),
+    label: String(placeholder.label || "").trim(),
+  }));
+}
+
+function hydrateEmailLayouts(storedLayouts, notificationEvents) {
+  const validEventKeys = new Set(notificationEvents.map((event) => event.key));
+  return (Array.isArray(storedLayouts) ? storedLayouts : [])
+    .map((layout) => ({
+      id: String(layout.id || "").trim(),
+      name: String(layout.name || "").trim(),
+      eventKey: validEventKeys.has(layout.eventKey) ? layout.eventKey : "",
+      subject: String(layout.subject || "").trim(),
+      body: String(layout.body || "").trim(),
+      status: String(layout.status || "Ativo").trim() || "Ativo",
+      createdAt: String(layout.createdAt || ""),
+      updatedAt: String(layout.updatedAt || ""),
+    }))
+    .filter((layout) => layout.id && layout.name);
+}
+
+function hydrateNotificationRules(storedRules, notificationEvents) {
+  const validEventKeys = new Set(notificationEvents.map((event) => event.key));
+  return (Array.isArray(storedRules) ? storedRules : [])
+    .map((rule) => ({
+      id: String(rule.id || "").trim(),
+      eventKey: validEventKeys.has(rule.eventKey) ? rule.eventKey : "",
+      active: rule.active !== false,
+      recipientUserIds: Array.isArray(rule.recipientUserIds) ? rule.recipientUserIds.filter(Boolean) : [],
+      externalEmails: Array.isArray(rule.externalEmails)
+        ? rule.externalEmails.filter(Boolean)
+        : String(rule.externalEmails || "")
+            .split(/[,\n;]/)
+            .map((item) => item.trim())
+            .filter(Boolean),
+      layoutId: String(rule.layoutId || "").trim(),
+      createdAt: String(rule.createdAt || ""),
+      updatedAt: String(rule.updatedAt || ""),
+    }))
+    .filter((rule) => rule.id && rule.eventKey);
+}
+
+function hydrateNotificationLogs(storedLogs) {
+  return (Array.isArray(storedLogs) ? storedLogs : [])
+    .map((log) => ({
+      id: String(log.id || "").trim(),
+      eventKey: String(log.eventKey || "").trim(),
+      ticketId: String(log.ticketId || "").trim(),
+      recipients: Array.isArray(log.recipients) ? log.recipients.filter(Boolean) : [],
+      status: String(log.status || "").trim(),
+      error: String(log.error || "").trim(),
+      dedupeKey: String(log.dedupeKey || "").trim(),
+      sentAt: String(log.sentAt || "").trim(),
+      subject: String(log.subject || "").trim(),
+    }))
+    .filter((log) => log.id);
+}
+
+function hydrateSmtpSettings(storedSettings) {
+  return {
+    ...defaultSmtpSettings,
+    ...(storedSettings && typeof storedSettings === "object" ? storedSettings : {}),
+    hasPassword: Boolean(storedSettings?.hasPassword),
+    password: "",
+  };
+}
+
 function filterTicketsForUser(tickets, user) {
   if (!user) return [];
   if (canViewAllTickets(user)) return tickets;
@@ -251,17 +394,48 @@ function canAccessTicket(ticket, user) {
 }
 
 function mergeCollections(stored) {
-  const rawUsers = hydrateUsers(stored?.users);
+  const permissionCatalog = hydratePermissionCatalog(stored?.permissionCatalog);
+  const permissionProfiles = hydratePermissionProfiles(stored?.permissionProfiles);
+  const navigationSections = hydrateNavigationSections(stored?.navigationSections);
+  const notificationEvents = hydrateNotificationEvents(stored?.notificationEvents);
+  const emailPlaceholders = hydrateEmailPlaceholders(stored?.emailPlaceholders);
+  const rawUsers = hydrateUsers(stored?.users, permissionCatalog, permissionProfiles);
   const baseCurrentUser = stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null;
   const departments = hydrateDepartments(stored?.departments);
   const users = rawUsers.map((candidate) => syncUserDepartment(candidate, departments));
-  const currentUser = baseCurrentUser ? syncUserDepartment(baseCurrentUser, departments) : null;
+  const currentUser = baseCurrentUser
+    ? syncUserDepartment(
+        {
+          ...baseCurrentUser,
+          permissions: normalizeUserPermissions(
+            baseCurrentUser.permissions || {},
+            baseCurrentUser,
+            permissionCatalog,
+            permissionProfiles,
+          ),
+        },
+        departments,
+      )
+    : null;
   const locations = hydrateLocations(stored?.locations, departments);
   const assets = (Array.isArray(stored?.assets) ? stored.assets : []).map((asset) => syncAssetLocation(asset, locations));
+  const emailLayouts = hydrateEmailLayouts(stored?.emailLayouts, notificationEvents);
+  const notificationRules = hydrateNotificationRules(stored?.notificationRules, notificationEvents);
+  const notificationLogs = hydrateNotificationLogs(stored?.notificationLogs);
+  const smtpSettings = hydrateSmtpSettings(stored?.smtpSettings);
 
   const baseState = {
     ...stored,
     currentUser,
+    permissionCatalog,
+    permissionProfiles,
+    navigationSections,
+    notificationEvents,
+    emailPlaceholders,
+    emailLayouts,
+    notificationRules,
+    notificationLogs,
+    smtpSettings,
     users,
     departments,
     locations,
@@ -775,7 +949,12 @@ export function AppDataProvider({ children }) {
     applyState((current) => {
       createdUser = {
         id: nextId("u", current.users || []),
-        ...sanitizeUserPayload(payload, current.departments || []),
+        ...sanitizeUserPayload(
+          payload,
+          current.departments || [],
+          current.permissionCatalog || defaultPermissionCatalog,
+          current.permissionProfiles || defaultPermissionProfiles,
+        ),
       };
       return { ...current, users: [createdUser, ...(current.users || [])] };
     });
@@ -788,7 +967,12 @@ export function AppDataProvider({ children }) {
       let nextCurrentUser = null;
       const nextUsers = current.users.map((candidate) => {
         if (candidate.id !== userId) return candidate;
-        const sanitizedPayload = sanitizeUserPayload(payload, current.departments || []);
+        const sanitizedPayload = sanitizeUserPayload(
+          payload,
+          current.departments || [],
+          current.permissionCatalog || defaultPermissionCatalog,
+          current.permissionProfiles || defaultPermissionProfiles,
+        );
         const permissionsChanged =
           JSON.stringify(candidate.permissions || {}) !== JSON.stringify(sanitizedPayload.permissions || {});
         const passwordChanged = String(candidate.password || "") !== String(sanitizedPayload.password || "");
@@ -1274,10 +1458,148 @@ export function AppDataProvider({ children }) {
     }));
   };
 
+  const saveEmailLayout = (payload, layoutId) => {
+    if (!hasAnyPermission(user, ["email_layouts_manage", "users_admin"])) return null;
+    const nowIso = new Date().toISOString();
+    let savedLayoutId = layoutId || null;
+
+    applyState((current) => {
+      const sanitizedPayload = {
+        name: String(payload.name || "").trim(),
+        eventKey: String(payload.eventKey || "").trim(),
+        subject: String(payload.subject || "").trim(),
+        body: String(payload.body || "").trim(),
+        status: String(payload.status || "Ativo").trim() || "Ativo",
+      };
+
+      if (layoutId) {
+        return {
+          ...current,
+          emailLayouts: current.emailLayouts.map((layout) =>
+            layout.id === layoutId
+              ? { ...layout, ...sanitizedPayload, updatedAt: nowIso }
+              : layout,
+          ),
+        };
+      }
+
+      savedLayoutId = nextId("layout", current.emailLayouts || []);
+      return {
+        ...current,
+        emailLayouts: [
+          {
+            id: savedLayoutId,
+            ...sanitizedPayload,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          ...(current.emailLayouts || []),
+        ],
+      };
+    });
+
+    return savedLayoutId;
+  };
+
+  const deleteEmailLayout = (layoutId) => {
+    if (!hasAnyPermission(user, ["email_layouts_delete", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      emailLayouts: current.emailLayouts.filter((layout) => layout.id !== layoutId),
+      notificationRules: current.notificationRules.map((rule) =>
+        rule.layoutId === layoutId ? { ...rule, layoutId: "", updatedAt: new Date().toISOString() } : rule,
+      ),
+    }));
+  };
+
+  const saveNotificationRule = (payload, ruleId) => {
+    if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return null;
+    const nowIso = new Date().toISOString();
+    let savedRuleId = ruleId || null;
+
+    applyState((current) => {
+      const sanitizedPayload = {
+        eventKey: String(payload.eventKey || "").trim(),
+        active: payload.active !== false,
+        recipientUserIds: Array.isArray(payload.recipientUserIds) ? payload.recipientUserIds.filter(Boolean) : [],
+        externalEmails: Array.isArray(payload.externalEmails)
+          ? payload.externalEmails.filter(Boolean)
+          : String(payload.externalEmails || "")
+              .split(/[,\n;]/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+        layoutId: String(payload.layoutId || "").trim(),
+      };
+
+      if (ruleId) {
+        return {
+          ...current,
+          notificationRules: current.notificationRules.map((rule) =>
+            rule.id === ruleId
+              ? { ...rule, ...sanitizedPayload, updatedAt: nowIso }
+              : rule,
+          ),
+        };
+      }
+
+      savedRuleId = nextId("notif", current.notificationRules || []);
+      return {
+        ...current,
+        notificationRules: [
+          {
+            id: savedRuleId,
+            ...sanitizedPayload,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          ...(current.notificationRules || []),
+        ],
+      };
+    });
+
+    return savedRuleId;
+  };
+
+  const saveSmtpSettings = (payload) => {
+    if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      smtpSettings: {
+        ...current.smtpSettings,
+        host: String(payload.host || "").trim(),
+        port: Number(payload.port) || 587,
+        secure: Boolean(payload.secure),
+        requireTls: payload.requireTls !== false,
+        username: String(payload.username || "").trim(),
+        password: String(payload.password || ""),
+        hasPassword: current.smtpSettings?.hasPassword || Boolean(payload.password),
+        fromEmail: String(payload.fromEmail || "").trim(),
+        fromName: String(payload.fromName || "").trim(),
+      },
+    }));
+  };
+
+  const requestNotificationTest = async (payload) => {
+    if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
+    return requestJson("/api/notifications/test", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  };
+
   const value = useMemo(
     () => ({
       summary,
       queues: queueStats,
+      permissionCatalog: data.permissionCatalog || [],
+      permissionProfiles: data.permissionProfiles || [],
+      navigationSections: data.navigationSections || [],
+      notificationEvents: data.notificationEvents || [],
+      emailPlaceholders: data.emailPlaceholders || [],
+      emailLayouts: data.emailLayouts || [],
+      notificationRules: data.notificationRules || [],
+      notificationLogs: data.notificationLogs || [],
+      smtpSettings: data.smtpSettings || defaultSmtpSettings,
       users: data.users || [],
       departments: data.departments || [],
       locations: data.locations || [],
@@ -1336,6 +1658,11 @@ export function AppDataProvider({ children }) {
       linkKnowledgeArticleToTicket,
       saveApiConfig,
       deleteApiConfig,
+      saveEmailLayout,
+      deleteEmailLayout,
+      saveNotificationRule,
+      saveSmtpSettings,
+      requestNotificationTest,
       toLocalDatetimeInput,
     }),
     [

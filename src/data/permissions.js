@@ -1,168 +1,8 @@
-export const permissionGroups = [
-  {
-    module: "dashboard",
-    label: "Dashboard",
-    viewPermissions: ["dashboard_view"],
-    permissions: [{ key: "dashboard_view", label: "Visualizar" }],
-  },
-  {
-    module: "helpdesk_operations",
-    label: "Operacoes Helpdesk",
-    viewPermissions: ["helpdesk_indicators_view", "tickets_admin"],
-    permissions: [
-      { key: "helpdesk_indicators_view", label: "Visualizar indicadores" },
-      { key: "sla_alerts_view", label: "Visualizar alertas SLA" },
-    ],
-  },
-  {
-    module: "helpdesk_technicians",
-    label: "Gestao Tecnicos",
-    viewPermissions: ["technicians_performance_view", "technicians_workload_view", "tickets_admin"],
-    permissions: [
-      { key: "technicians_performance_view", label: "Visualizar performance de tecnicos" },
-      { key: "technicians_workload_view", label: "Visualizar carga de trabalho" },
-    ],
-  },
-  {
-    module: "tickets",
-    label: "Chamados",
-    viewPermissions: ["tickets_view_own", "tickets_view_all", "tickets_admin"],
-    permissions: [
-      { key: "tickets_view_own", label: "Visualizar próprios chamados" },
-      { key: "tickets_view_all", label: "Visualizar todos chamados" },
-      { key: "tickets_create", label: "Criar chamado" },
-      { key: "tickets_edit", label: "Editar chamado" },
-      { key: "tickets_delete", label: "Excluir chamado" },
-      { key: "tickets_close", label: "Encerrar chamado" },
-      { key: "tickets_reopen", label: "Reabrir chamado" },
-      { key: "tickets_change_priority", label: "Alterar prioridade" },
-      { key: "tickets_change_status", label: "Alterar status" },
-      { key: "tickets_assign", label: "Atribuir chamado" },
-      { key: "tickets_export", label: "Exportar chamados" },
-      { key: "tickets_admin", label: "Administrar chamados" },
-    ],
-  },
-  {
-    module: "assets",
-    label: "Ativos",
-    viewPermissions: ["assets_view", "assets_admin"],
-    permissions: [
-      { key: "assets_view", label: "Visualizar" },
-      { key: "assets_create", label: "Criar" },
-      { key: "assets_edit", label: "Editar" },
-      { key: "assets_delete", label: "Excluir" },
-      { key: "assets_move", label: "Movimentar ativos" },
-      { key: "assets_link_users", label: "Vincular usuários" },
-      { key: "assets_export", label: "Exportar" },
-      { key: "assets_admin", label: "Administrar" },
-    ],
-  },
-  {
-    module: "inventory",
-    label: "Inventário",
-    viewPermissions: ["inventory_view", "inventory_admin"],
-    permissions: [
-      { key: "inventory_view", label: "Visualizar" },
-      { key: "inventory_create", label: "Criar inventário" },
-      { key: "inventory_edit", label: "Editar inventário" },
-      { key: "inventory_delete", label: "Excluir inventário" },
-      { key: "inventory_move_stock", label: "Movimentar estoque" },
-      { key: "inventory_export", label: "Exportar" },
-      { key: "inventory_admin", label: "Administrar" },
-    ],
-  },
-  {
-    module: "brands_models",
-    label: "Marcas e Modelos",
-    viewPermissions: ["brands_models_view", "brands_models_admin"],
-    permissions: [
-      { key: "brands_models_view", label: "Visualizar" },
-      { key: "brands_models_create", label: "Criar" },
-      { key: "brands_models_edit", label: "Editar" },
-      { key: "brands_models_delete", label: "Excluir" },
-      { key: "brands_models_admin", label: "Administrar" },
-    ],
-  },
-  {
-    module: "projects",
-    label: "Projetos",
-    viewPermissions: ["projects_view", "projects_admin"],
-    permissions: [
-      { key: "projects_view", label: "Visualizar" },
-      { key: "projects_create", label: "Criar" },
-      { key: "projects_edit", label: "Editar" },
-      { key: "projects_delete", label: "Excluir" },
-      { key: "projects_manage_tasks", label: "Gerenciar tarefas" },
-      { key: "projects_export", label: "Exportar" },
-      { key: "projects_admin", label: "Administrar" },
-    ],
-  },
-  {
-    module: "knowledge",
-    label: "Base de Conhecimento",
-    viewPermissions: ["knowledge_view", "knowledge_admin"],
-    permissions: [
-      { key: "knowledge_view", label: "Visualizar" },
-      { key: "knowledge_create", label: "Criar artigo" },
-      { key: "knowledge_edit", label: "Editar artigo" },
-      { key: "knowledge_inactivate", label: "Inativar artigo" },
-      { key: "knowledge_delete", label: "Excluir artigo" },
-      { key: "knowledge_admin", label: "Administrar base" },
-    ],
-  },
-  {
-    module: "api_rest",
-    label: "API REST",
-    viewPermissions: ["api_rest_view", "api_rest_admin"],
-    permissions: [
-      { key: "api_rest_view", label: "Visualizar" },
-      { key: "api_rest_generate_tokens", label: "Gerar tokens" },
-      { key: "api_rest_revoke_tokens", label: "Revogar tokens" },
-      { key: "api_rest_configure_integrations", label: "Configurar integrações" },
-      { key: "api_rest_admin", label: "Administrar API" },
-    ],
-  },
-  {
-    module: "users",
-    label: "Usuários",
-    viewPermissions: ["users_view", "users_admin"],
-    permissions: [
-      { key: "users_view", label: "Visualizar" },
-      { key: "users_create", label: "Criar usuário" },
-      { key: "users_edit", label: "Editar usuário" },
-      { key: "users_delete", label: "Excluir usuário" },
-      { key: "users_reset_password", label: "Resetar senha" },
-      { key: "users_manage_permissions", label: "Gerenciar permissões" },
-      { key: "users_admin", label: "Administrar usuários" },
-    ],
-  },
-];
-
-export const moduleNavigation = [
-  { to: "/app/dashboard", label: "Dashboard", module: "dashboard" },
-  { to: "/app/helpdesk-operations", label: "Operacoes Helpdesk", module: "helpdesk_operations" },
-  { to: "/app/helpdesk-technicians", label: "Tecnicos", module: "helpdesk_technicians" },
-  { to: "/app/tickets", label: "Chamados", module: "tickets" },
-  { to: "/app/assets", label: "Ativos", module: "assets" },
-  { to: "/app/inventory", label: "Inventário", module: "inventory" },
-  { to: "/app/brands-models", label: "Marcas e Modelos", module: "brands_models" },
-  { to: "/app/projects", label: "Projetos", module: "projects" },
-  { to: "/app/knowledge", label: "Base de Conhecimento", module: "knowledge" },
-  { to: "/app/api-rest", label: "API REST", module: "api_rest" },
-  { to: "/app/users", label: "Usuários", module: "users" },
-];
-
-const allPermissionKeys = permissionGroups.flatMap((group) => group.permissions.map((permission) => permission.key));
-
-function buildPermissionMap() {
-  return allPermissionKeys.reduce((accumulator, key) => ({ ...accumulator, [key]: false }), {});
-}
-
-export const emptyPermissions = buildPermissionMap();
-
-function setPermissions(keys) {
-  return keys.reduce((accumulator, key) => ({ ...accumulator, [key]: true }), { ...emptyPermissions });
-}
+import {
+  defaultNavigationSections,
+  defaultPermissionCatalog,
+  defaultPermissionProfiles,
+} from "./systemDefaults.js";
 
 const roleAliases = {
   Administrador: "Administrador da Plataforma",
@@ -178,185 +18,62 @@ export function normalizeRoleName(role) {
   return roleAliases[sanitizedRole] || sanitizedRole || "Solicitante Interno";
 }
 
-export const roleProfiles = [
-  {
-    name: "Administrador da Plataforma",
-    description: "Controle total da plataforma, acessos, configuracoes e operacao.",
-    permissions: setPermissions(allPermissionKeys),
-  },
-  {
-    name: "Gestor de TI",
-    description: "Acompanha a operacao, gerencia chamados, ativos, projetos e usuarios.",
-    permissions: setPermissions([
-      "dashboard_view",
-      "helpdesk_indicators_view",
-      "sla_alerts_view",
-      "technicians_performance_view",
-      "technicians_workload_view",
-      "tickets_view_own",
-      "tickets_view_all",
-      "tickets_create",
-      "tickets_edit",
-      "tickets_close",
-      "tickets_reopen",
-      "tickets_change_priority",
-      "tickets_change_status",
-      "tickets_assign",
-      "tickets_export",
-      "assets_view",
-      "assets_create",
-      "assets_edit",
-      "assets_move",
-      "assets_link_users",
-      "assets_export",
-      "inventory_view",
-      "inventory_create",
-      "inventory_edit",
-      "inventory_move_stock",
-      "inventory_export",
-      "brands_models_view",
-      "brands_models_create",
-      "brands_models_edit",
-      "projects_view",
-      "projects_create",
-      "projects_edit",
-      "projects_manage_tasks",
-      "projects_export",
-      "knowledge_view",
-      "knowledge_create",
-      "knowledge_edit",
-      "knowledge_inactivate",
-      "knowledge_delete",
-      "api_rest_view",
-      "api_rest_generate_tokens",
-      "api_rest_revoke_tokens",
-      "users_view",
-      "users_create",
-      "users_edit",
-      "users_reset_password",
-    ]),
-  },
-  {
-    name: "Analista de Service Desk",
-    description: "Opera a fila de atendimento, tratamento, atribuicao e fechamento de chamados.",
-    permissions: setPermissions([
-      "dashboard_view",
-      "helpdesk_indicators_view",
-      "sla_alerts_view",
-      "technicians_performance_view",
-      "technicians_workload_view",
-      "tickets_view_own",
-      "tickets_view_all",
-      "tickets_create",
-      "tickets_edit",
-      "tickets_close",
-      "tickets_reopen",
-      "tickets_change_priority",
-      "tickets_change_status",
-      "tickets_assign",
-      "tickets_export",
-      "assets_view",
-      "inventory_view",
-      "knowledge_view",
-      "knowledge_create",
-      "projects_view",
-    ]),
-  },
-  {
-    name: "Especialista de Infraestrutura",
-    description: "Atua em incidentes tecnicos e administra ativos, inventario e catalogo tecnico.",
-    permissions: setPermissions([
-      "dashboard_view",
-      "helpdesk_indicators_view",
-      "sla_alerts_view",
-      "technicians_performance_view",
-      "technicians_workload_view",
-      "tickets_view_own",
-      "tickets_view_all",
-      "tickets_create",
-      "tickets_edit",
-      "tickets_close",
-      "tickets_reopen",
-      "tickets_change_priority",
-      "tickets_change_status",
-      "tickets_assign",
-      "assets_view",
-      "assets_create",
-      "assets_edit",
-      "assets_move",
-      "assets_link_users",
-      "assets_export",
-      "inventory_view",
-      "inventory_create",
-      "inventory_edit",
-      "inventory_move_stock",
-      "inventory_export",
-      "brands_models_view",
-      "brands_models_create",
-      "brands_models_edit",
-      "knowledge_view",
-      "projects_view",
-    ]),
-  },
-  {
-    name: "Gestor de Area",
-    description: "Acompanha chamados da area, indicadores e projetos, sem administracao tecnica.",
-    permissions: setPermissions([
-      "dashboard_view",
-      "helpdesk_indicators_view",
-      "tickets_view_own",
-      "tickets_create",
-      "knowledge_view",
-      "projects_view",
-    ]),
-  },
-  {
-    name: "Solicitante Interno",
-    description: "Abre e acompanha os proprios chamados.",
-    permissions: setPermissions(["dashboard_view", "tickets_view_own", "tickets_create"]),
-  },
-];
+export function listPermissionKeys(permissionCatalog = defaultPermissionCatalog) {
+  return Array.from(
+    new Set(
+      (Array.isArray(permissionCatalog) ? permissionCatalog : []).flatMap((group) =>
+        (Array.isArray(group.permissions) ? group.permissions : []).map((permission) => permission.key),
+      ),
+    ),
+  );
+}
 
-export function getRoleProfile(role) {
+export function buildEmptyPermissions(permissionCatalog = defaultPermissionCatalog) {
+  return listPermissionKeys(permissionCatalog).reduce((accumulator, key) => ({ ...accumulator, [key]: false }), {});
+}
+
+export function buildPermissionsFromKeys(keys = [], permissionCatalog = defaultPermissionCatalog) {
+  const permissionMap = buildEmptyPermissions(permissionCatalog);
+  if (keys === "ALL") {
+    return Object.keys(permissionMap).reduce((accumulator, key) => ({ ...accumulator, [key]: true }), {});
+  }
+
+  return (Array.isArray(keys) ? keys : []).reduce((accumulator, key) => {
+    if (!(key in accumulator)) return accumulator;
+    return { ...accumulator, [key]: true };
+  }, permissionMap);
+}
+
+export function getRoleProfile(role, permissionProfiles = defaultPermissionProfiles) {
   const normalizedRole = normalizeRoleName(role);
-  return roleProfiles.find((profile) => profile.name === normalizedRole) || roleProfiles[roleProfiles.length - 1];
+  return (
+    (Array.isArray(permissionProfiles) ? permissionProfiles : []).find((profile) => profile.name === normalizedRole) ||
+    defaultPermissionProfiles[defaultPermissionProfiles.length - 1]
+  );
 }
 
-export function getRolePermissions(role) {
-  return { ...getRoleProfile(role).permissions };
+export function getRolePermissions(
+  role,
+  permissionProfiles = defaultPermissionProfiles,
+  permissionCatalog = defaultPermissionCatalog,
+) {
+  const profile = getRoleProfile(role, permissionProfiles);
+  return buildPermissionsFromKeys(profile?.permissions || [], permissionCatalog);
 }
 
-export function hasPermission(user, permissionKey) {
-  return Boolean(user?.permissions?.[permissionKey]);
-}
-
-export function hasAnyPermission(user, permissionKeys) {
-  return permissionKeys.some((permissionKey) => hasPermission(user, permissionKey));
-}
-
-export function canAccessModule(user, moduleKey) {
-  const permissionGroup = permissionGroups.find((group) => group.module === moduleKey);
-  if (!permissionGroup) return false;
-  return hasAnyPermission(user, permissionGroup.viewPermissions);
-}
-
-export function canViewOwnTickets(user) {
-  return hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"]);
-}
-
-export function canViewAllTickets(user) {
-  return user?.department === "TI" && hasAnyPermission(user, ["tickets_view_all", "tickets_admin"]);
-}
-
-export function getUserHomePath(user) {
-  return moduleNavigation.find((item) => canAccessModule(user, item.module))?.to || "/app/dashboard";
-}
-
-export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
-  const nextPermissions = { ...getRolePermissions(user.role) };
+export function normalizeUserPermissions(
+  rawPermissions = {},
+  user = {},
+  permissionCatalog = defaultPermissionCatalog,
+  permissionProfiles = defaultPermissionProfiles,
+) {
+  const nextPermissions = {
+    ...getRolePermissions(user.role, permissionProfiles, permissionCatalog),
+  };
+  const permissionKeys = listPermissionKeys(permissionCatalog);
   let hasExplicitPermission = false;
 
-  allPermissionKeys.forEach((key) => {
+  permissionKeys.forEach((key) => {
     if (rawPermissions[key] !== undefined) {
       nextPermissions[key] = Boolean(rawPermissions[key]);
       hasExplicitPermission = true;
@@ -381,9 +98,7 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
 
   if (rawPermissions.tickets_view) {
     nextPermissions.tickets_view_own = true;
-    if (user.department === "TI") {
-      nextPermissions.tickets_view_all = true;
-    }
+    if (user.department === "TI") nextPermissions.tickets_view_all = true;
   }
 
   if (rawPermissions.tickets_manage) {
@@ -398,7 +113,7 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "tickets_assign",
       "tickets_export",
     ].forEach((key) => {
-      nextPermissions[key] = true;
+      if (key in nextPermissions) nextPermissions[key] = true;
     });
   }
 
@@ -414,13 +129,13 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "users_manage_permissions",
       "users_admin",
     ].forEach((key) => {
-      nextPermissions[key] = true;
+      if (key in nextPermissions) nextPermissions[key] = true;
     });
   }
 
   if (rawPermissions.assets_view) {
-    nextPermissions.assets_view = true;
-    nextPermissions.inventory_view = true;
+    if ("assets_view" in nextPermissions) nextPermissions.assets_view = true;
+    if ("inventory_view" in nextPermissions) nextPermissions.inventory_view = true;
   }
 
   if (rawPermissions.assets_manage) {
@@ -446,11 +161,11 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "brands_models_delete",
       "brands_models_admin",
     ].forEach((key) => {
-      nextPermissions[key] = true;
+      if (key in nextPermissions) nextPermissions[key] = true;
     });
   }
 
-  if (rawPermissions.projects_view) nextPermissions.projects_view = true;
+  if (rawPermissions.projects_view && "projects_view" in nextPermissions) nextPermissions.projects_view = true;
 
   if (rawPermissions.projects_manage) {
     [
@@ -462,11 +177,11 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "projects_export",
       "projects_admin",
     ].forEach((key) => {
-      nextPermissions[key] = true;
+      if (key in nextPermissions) nextPermissions[key] = true;
     });
   }
 
-  if (rawPermissions.knowledge_view) nextPermissions.knowledge_view = true;
+  if (rawPermissions.knowledge_view && "knowledge_view" in nextPermissions) nextPermissions.knowledge_view = true;
 
   if (rawPermissions.knowledge_manage) {
     [
@@ -477,11 +192,11 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "knowledge_delete",
       "knowledge_admin",
     ].forEach((key) => {
-      nextPermissions[key] = true;
+      if (key in nextPermissions) nextPermissions[key] = true;
     });
   }
 
-  if (rawPermissions.api_view) nextPermissions.api_rest_view = true;
+  if (rawPermissions.api_view && "api_rest_view" in nextPermissions) nextPermissions.api_rest_view = true;
 
   if (rawPermissions.api_manage) {
     [
@@ -491,36 +206,54 @@ export function normalizeUserPermissions(rawPermissions = {}, user = {}) {
       "api_rest_configure_integrations",
       "api_rest_admin",
     ].forEach((key) => {
-      nextPermissions[key] = true;
+      if (key in nextPermissions) nextPermissions[key] = true;
     });
   }
 
   return nextPermissions;
 }
 
-export const defaultPermissions = setPermissions(["dashboard_view", "tickets_view_own"]);
+export function hasPermission(user, permissionKey) {
+  return Boolean(user?.permissions?.[permissionKey]);
+}
 
-export const analystPermissions = setPermissions([
-  "dashboard_view",
-  "helpdesk_indicators_view",
-  "sla_alerts_view",
-  "technicians_performance_view",
-  "technicians_workload_view",
-  "tickets_view_own",
-  "tickets_view_all",
-  "tickets_create",
-  "tickets_edit",
-  "tickets_delete",
-  "tickets_close",
-  "tickets_reopen",
-  "tickets_change_priority",
-  "tickets_change_status",
-  "tickets_assign",
-  "tickets_export",
-  "assets_view",
-  "inventory_view",
-  "knowledge_view",
-  "projects_view",
-]);
+export function hasAnyPermission(user, permissionKeys = []) {
+  return (Array.isArray(permissionKeys) ? permissionKeys : []).some((permissionKey) => hasPermission(user, permissionKey));
+}
 
-export const adminPermissions = setPermissions(allPermissionKeys);
+export function getModuleConfig(moduleKey, permissionCatalog = defaultPermissionCatalog) {
+  return (Array.isArray(permissionCatalog) ? permissionCatalog : []).find((module) => module.module === moduleKey) || null;
+}
+
+export function canAccessModule(user, moduleConfigOrKey, permissionCatalog = defaultPermissionCatalog) {
+  const moduleConfig =
+    typeof moduleConfigOrKey === "string"
+      ? getModuleConfig(moduleConfigOrKey, permissionCatalog)
+      : moduleConfigOrKey;
+  if (!moduleConfig) return false;
+  return hasAnyPermission(user, moduleConfig.accessKeys || []);
+}
+
+export function canViewOwnTickets(user) {
+  return hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"]);
+}
+
+export function canViewAllTickets(user) {
+  return normalizeText(user?.department) === "ti" && hasAnyPermission(user, ["tickets_view_all", "tickets_admin"]);
+}
+
+export function getUserHomePath(user, navigationSections = defaultNavigationSections, permissionCatalog = defaultPermissionCatalog) {
+  const availableItem =
+    (Array.isArray(navigationSections) ? navigationSections : [])
+      .flatMap((section) => (Array.isArray(section.items) ? section.items : []))
+      .find((item) => canAccessModule(user, item.module, permissionCatalog)) || null;
+  return availableItem?.to || "/app/dashboard";
+}
+
+export function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}

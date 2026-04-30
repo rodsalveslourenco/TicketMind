@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { useAppData } from "./data/AppDataContext";
 import { getUserHomePath } from "./data/permissions";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
@@ -18,10 +19,13 @@ import HelpdeskOperationsPage from "./pages/HelpdeskOperationsPage";
 import TechniciansPage from "./pages/TechniciansPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import LocationsPage from "./pages/LocationsPage";
+import NotificationsPage from "./pages/NotificationsPage";
+import EmailLayoutsPage from "./pages/EmailLayoutsPage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
-  const homePath = getUserHomePath(user);
+  const { navigationSections, permissionCatalog } = useAppData();
+  const homePath = getUserHomePath(user, navigationSections, permissionCatalog);
 
   return (
     <Routes>
@@ -39,19 +43,21 @@ function App() {
       >
         <Route element={<Navigate replace to={homePath} />} index />
         <Route element={<ProfilePage />} path="profile" />
-        <Route element={<ProtectedRoute requiredPermissions={["dashboard_view"]}><DashboardPage /></ProtectedRoute>} path="dashboard" />
-        <Route element={<ProtectedRoute requiredPermissions={["helpdesk_indicators_view", "sla_alerts_view", "tickets_admin"]}><HelpdeskOperationsPage /></ProtectedRoute>} path="helpdesk-operations" />
-        <Route element={<ProtectedRoute requiredPermissions={["technicians_performance_view", "technicians_workload_view", "tickets_admin"]}><TechniciansPage /></ProtectedRoute>} path="helpdesk-technicians" />
-        <Route element={<ProtectedRoute requiredPermissions={["tickets_view_own", "tickets_view_all", "tickets_admin"]}><TicketsPage /></ProtectedRoute>} path="tickets" />
-        <Route element={<ProtectedRoute requiredPermissions={["assets_view", "assets_admin"]}><AssetsPage /></ProtectedRoute>} path="assets" />
-        <Route element={<ProtectedRoute requiredPermissions={["assets_view", "assets_admin"]}><LocationsPage /></ProtectedRoute>} path="locations" />
-        <Route element={<ProtectedRoute requiredPermissions={["inventory_view", "inventory_admin"]}><InventoryPage /></ProtectedRoute>} path="inventory" />
-        <Route element={<ProtectedRoute requiredPermissions={["brands_models_view", "brands_models_admin"]}><BrandsModelsPage /></ProtectedRoute>} path="brands-models" />
-        <Route element={<ProtectedRoute requiredPermissions={["projects_view", "projects_admin"]}><ProjectsPage /></ProtectedRoute>} path="projects" />
-        <Route element={<ProtectedRoute requiredPermissions={["knowledge_view", "knowledge_admin"]}><KnowledgePage /></ProtectedRoute>} path="knowledge" />
-        <Route element={<ProtectedRoute requiredPermissions={["api_rest_view", "api_rest_admin"]}><ApiConfigPage /></ProtectedRoute>} path="api-rest" />
-        <Route element={<ProtectedRoute requiredPermissions={["users_view", "users_admin"]}><UsersPage /></ProtectedRoute>} path="users" />
-        <Route element={<ProtectedRoute requiredPermissions={["users_view", "users_admin"]}><DepartmentsPage /></ProtectedRoute>} path="departments" />
+        <Route element={<ProtectedRoute moduleKey="dashboard"><DashboardPage /></ProtectedRoute>} path="dashboard" />
+        <Route element={<ProtectedRoute moduleKey="helpdesk_operations"><HelpdeskOperationsPage /></ProtectedRoute>} path="helpdesk-operations" />
+        <Route element={<ProtectedRoute moduleKey="helpdesk_technicians"><TechniciansPage /></ProtectedRoute>} path="helpdesk-technicians" />
+        <Route element={<ProtectedRoute moduleKey="tickets"><TicketsPage /></ProtectedRoute>} path="tickets" />
+        <Route element={<ProtectedRoute moduleKey="assets"><AssetsPage /></ProtectedRoute>} path="assets" />
+        <Route element={<ProtectedRoute moduleKey="assets"><LocationsPage /></ProtectedRoute>} path="locations" />
+        <Route element={<ProtectedRoute moduleKey="inventory"><InventoryPage /></ProtectedRoute>} path="inventory" />
+        <Route element={<ProtectedRoute moduleKey="brands_models"><BrandsModelsPage /></ProtectedRoute>} path="brands-models" />
+        <Route element={<ProtectedRoute moduleKey="projects"><ProjectsPage /></ProtectedRoute>} path="projects" />
+        <Route element={<ProtectedRoute moduleKey="knowledge"><KnowledgePage /></ProtectedRoute>} path="knowledge" />
+        <Route element={<ProtectedRoute moduleKey="api_rest"><ApiConfigPage /></ProtectedRoute>} path="api-rest" />
+        <Route element={<ProtectedRoute moduleKey="users"><UsersPage /></ProtectedRoute>} path="users" />
+        <Route element={<ProtectedRoute moduleKey="users"><DepartmentsPage /></ProtectedRoute>} path="departments" />
+        <Route element={<ProtectedRoute moduleKey="notifications"><NotificationsPage /></ProtectedRoute>} path="notifications" />
+        <Route element={<ProtectedRoute moduleKey="email_layouts"><EmailLayoutsPage /></ProtectedRoute>} path="email-layouts" />
       </Route>
       <Route
         element={<Navigate replace to={isAuthenticated ? homePath : "/login"} />}
