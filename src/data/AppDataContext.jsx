@@ -297,12 +297,18 @@ function sanitizeProjectPayload(payload) {
 
 function hydratePermissionCatalog(storedCatalog) {
   const catalog = Array.isArray(storedCatalog) && storedCatalog.length ? storedCatalog : defaultPermissionCatalog;
-  return catalog
+  const normalizedDefaults = defaultPermissionCatalog.map((module) => ({
+    ...module,
+    module: String(module.module || "").trim(),
+  }));
+  const normalizedStored = catalog
     .map((module) => ({
       ...module,
       module: String(module.module || "").trim(),
       label: String(module.label || "").trim(),
       description: String(module.description || "").trim(),
+      order: Number(module.order) || 0,
+      departmentScope: String(module.departmentScope || "").trim(),
       accessKeys: Array.isArray(module.accessKeys) ? module.accessKeys.filter(Boolean) : [],
       permissions: (Array.isArray(module.permissions) ? module.permissions : []).map((permission) => ({
         key: String(permission.key || "").trim(),
@@ -311,11 +317,32 @@ function hydratePermissionCatalog(storedCatalog) {
       })),
     }))
     .filter((module) => module.module && module.permissions.length);
+
+  return normalizedDefaults
+    .map((defaultModule) => {
+      const storedModule = normalizedStored.find((module) => module.module === defaultModule.module);
+      if (!storedModule) return defaultModule;
+      const mergedPermissions = defaultModule.permissions.map((defaultPermission) => {
+        const storedPermission = storedModule.permissions.find((permission) => permission.key === defaultPermission.key);
+        return storedPermission ? { ...defaultPermission, ...storedPermission } : defaultPermission;
+      });
+      const extraPermissions = storedModule.permissions.filter(
+        (permission) => !mergedPermissions.some((candidate) => candidate.key === permission.key),
+      );
+      return {
+        ...defaultModule,
+        ...storedModule,
+        permissions: [...mergedPermissions, ...extraPermissions],
+        accessKeys: Array.from(new Set([...(defaultModule.accessKeys || []), ...(storedModule.accessKeys || [])])),
+      };
+    })
+    .concat(normalizedStored.filter((module) => !normalizedDefaults.some((candidate) => candidate.module === module.module)))
+    .sort((left, right) => (left.order || 0) - (right.order || 0));
 }
 
 function hydratePermissionProfiles(storedProfiles) {
   const profiles = Array.isArray(storedProfiles) && storedProfiles.length ? storedProfiles : defaultPermissionProfiles;
-  return profiles.map((profile) => ({
+  const normalizedDefaults = defaultPermissionProfiles.map((profile) => ({
     ...profile,
     id: String(profile.id || profile.name || "").trim(),
     name: normalizeRoleName(profile.name),
@@ -323,11 +350,55 @@ function hydratePermissionProfiles(storedProfiles) {
     status: String(profile.status || "Ativo").trim() || "Ativo",
     permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
   }));
+  const normalizedStored = profiles.map((profile) => ({
+    ...profile,
+    id: String(profile.id || profile.name || "").trim(),
+    name: normalizeRoleName(profile.name),
+    description: String(profile.description || "").trim(),
+    status: String(profile.status || "Ativo").trim() || "Ativo",
+    permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
+  }));
+
+  return normalizedDefaults
+    .map((defaultProfile) => {
+      const storedProfile =
+        normalizedStored.find((profile) => profile.id === defaultProfile.id) ||
+        normalizedStored.find((profile) => profile.name === defaultProfile.name) ||
+        null;
+      if (!storedProfile) return defaultProfile;
+      if (storedProfile.permissions === "ALL" || defaultProfile.permissions === "ALL") {
+        return {
+          ...defaultProfile,
+          ...storedProfile,
+          permissions: storedProfile.permissions === "ALL" ? "ALL" : defaultProfile.permissions,
+        };
+      }
+      return {
+        ...defaultProfile,
+        ...storedProfile,
+        permissions: Array.from(new Set([...(defaultProfile.permissions || []), ...(storedProfile.permissions || [])])),
+      };
+    })
+    .concat(normalizedStored.filter((profile) => !normalizedDefaults.some((candidate) => candidate.id === profile.id)))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function hydrateNavigationSections(storedSections) {
   const sections = Array.isArray(storedSections) && storedSections.length ? storedSections : defaultNavigationSections;
-  return sections
+  const normalizedDefaults = defaultNavigationSections.map((section) => ({
+    ...section,
+    key: String(section.key || "").trim(),
+    title: String(section.title || "").trim(),
+    collapsible: Boolean(section.collapsible),
+    order: Number(section.order) || 0,
+    items: (Array.isArray(section.items) ? section.items : []).map((item) => ({
+      to: String(item.to || "").trim(),
+      label: String(item.label || "").trim(),
+      module: String(item.module || "").trim(),
+      icon: String(item.icon || "dashboard").trim(),
+    })),
+  }));
+  const normalizedStored = sections
     .map((section) => ({
       ...section,
       key: String(section.key || "").trim(),
@@ -341,6 +412,26 @@ function hydrateNavigationSections(storedSections) {
         icon: String(item.icon || "dashboard").trim(),
       })),
     }))
+    .filter((section) => section.key && section.items.length);
+
+  return normalizedDefaults
+    .map((defaultSection) => {
+      const storedSection = normalizedStored.find((section) => section.key === defaultSection.key);
+      if (!storedSection) return defaultSection;
+      const mergedItems = defaultSection.items.map((defaultItem) => {
+        const storedItem = storedSection.items.find((item) => item.to === defaultItem.to || item.module === defaultItem.module);
+        return storedItem ? { ...defaultItem, ...storedItem } : defaultItem;
+      });
+      const extraItems = storedSection.items.filter(
+        (item) => !mergedItems.some((candidate) => candidate.to === item.to || candidate.module === item.module),
+      );
+      return {
+        ...defaultSection,
+        ...storedSection,
+        items: [...mergedItems, ...extraItems].filter((item) => item.to !== "/app/locations"),
+      };
+    })
+    .concat(normalizedStored.filter((section) => !normalizedDefaults.some((candidate) => candidate.key === section.key)))
     .filter((section) => section.key && section.items.length)
     .sort((left, right) => left.order - right.order);
 }

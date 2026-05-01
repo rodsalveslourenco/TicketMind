@@ -255,7 +255,6 @@ export const defaultNavigationSections = [
     items: [
       { to: "/app/helpdesk-operations", label: "Indicadores", module: "helpdesk_operations", icon: "helpdesk_operations" },
       { to: "/app/assets", label: "Ativos", module: "assets", icon: "assets" },
-      { to: "/app/locations", label: "Localizacoes", module: "assets", icon: "assets" },
       { to: "/app/inventory", label: "Inventario", module: "inventory", icon: "inventory" },
       { to: "/app/brands-models", label: "Marcas e Modelos", module: "brands_models", icon: "brands_models" },
       { to: "/app/projects", label: "Projetos", module: "projects", icon: "projects" },
