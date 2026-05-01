@@ -23,7 +23,6 @@ const dataDir = process.env.DB_DIR ? path.resolve(process.env.DB_DIR) : path.joi
 const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(dataDir, "ticketmind.sqlite");
 const wasmPath = path.join(rootDir, "node_modules", "sql.js", "dist");
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
-const isProduction = String(process.env.NODE_ENV || "").trim() === "production";
 
 const staticSeedState = {
   ...seedData,
@@ -31,6 +30,11 @@ const staticSeedState = {
   users: [],
   departments: [],
   locations: [],
+};
+
+const bootstrapSeedState = {
+  ...seedData,
+  currentUser: null,
 };
 
 function normalizeCode(value, fallback = "") {
@@ -360,12 +364,42 @@ function buildMigrationCollections(legacyState = {}) {
   return { departments, locations, users };
 }
 
-function buildDevelopmentBootstrapCollections() {
-  const developmentUsers = Array.isArray(seedData.users) ? seedData.users : [];
-  const departments = deriveDepartments({ users: developmentUsers });
-  const locations = deriveLocations({ assets: seedData.assets, tickets: seedData.tickets }, departments);
-  const users = deriveUsers({ users: developmentUsers }, departments);
+function buildSeedBootstrapCollections() {
+  const bootstrapUsers = Array.isArray(seedData.users) ? seedData.users : [];
+  const departments = sanitizeDepartmentCollection(seedData.departments || deriveDepartments({ users: bootstrapUsers }));
+  const locations = sanitizeLocationCollection(
+    seedData.locations?.length ? seedData.locations : deriveLocations({ assets: seedData.assets, tickets: seedData.tickets }, departments),
+    departments,
+  );
+  const users = sanitizeUserCollection(bootstrapUsers, departments);
   return { departments, locations, users };
+}
+
+function hasCollectionRecords(collections = {}) {
+  return Boolean(
+    (Array.isArray(collections.users) && collections.users.length) ||
+      (Array.isArray(collections.departments) && collections.departments.length) ||
+      (Array.isArray(collections.locations) && collections.locations.length),
+  );
+}
+
+function hasLegacyCollectionData(state = {}) {
+  return Boolean(
+    (Array.isArray(state.users) && state.users.length) ||
+      (Array.isArray(state.departments) && state.departments.length) ||
+      (Array.isArray(state.locations) && state.locations.length),
+  );
+}
+
+function resolveBootstrapCollections(legacyState = null) {
+  if (legacyState && Object.keys(legacyState).length) {
+    const migratedCollections = buildMigrationCollections(legacyState);
+    if (hasCollectionRecords(migratedCollections) || hasLegacyCollectionData(legacyState)) {
+      return migratedCollections;
+    }
+  }
+
+  return buildSeedBootstrapCollections();
 }
 
 let sqlitePromise = null;
@@ -886,12 +920,7 @@ async function migrateSqliteCollectionsIfNeeded() {
   if (usersCount || departmentsCount || locationsCount) return;
 
   const legacyState = await readSqliteStateRaw();
-  const collections =
-    legacyState && Object.keys(legacyState).length
-      ? buildMigrationCollections(legacyState)
-      : !isProduction
-        ? buildDevelopmentBootstrapCollections()
-        : { departments: [], locations: [], users: [] };
+  const collections = resolveBootstrapCollections(legacyState);
 
   if (collections.users.length || collections.departments.length || collections.locations.length) {
     await writeSqliteCollections(collections);
@@ -907,12 +936,7 @@ async function migratePostgresCollectionsIfNeeded() {
   if (usersCount || departmentsCount || locationsCount) return;
 
   const legacyState = await readPostgresStateRaw();
-  const collections =
-    legacyState && Object.keys(legacyState).length
-      ? buildMigrationCollections(legacyState)
-      : !isProduction
-        ? buildDevelopmentBootstrapCollections()
-        : { departments: [], locations: [], users: [] };
+  const collections = resolveBootstrapCollections(legacyState);
 
   if (collections.users.length || collections.departments.length || collections.locations.length) {
     await writePostgresCollections(collections);
@@ -922,7 +946,7 @@ async function migratePostgresCollectionsIfNeeded() {
 async function loadBootstrapState() {
   const sqliteState = await readSqliteStateRaw();
   if (sqliteState) return sqliteState;
-  return buildStateDefaults({});
+  return buildStateDefaults(bootstrapSeedState);
 }
 
 async function insertSqliteSystemLog(entry) {
