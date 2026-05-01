@@ -22,6 +22,7 @@ import LocationsPage from "./pages/LocationsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import EmailLayoutsPage from "./pages/EmailLayoutsPage";
 import SystemLogsPage from "./pages/SystemLogsPage";
+import PermissionProfilesPage from "./pages/PermissionProfilesPage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -49,7 +50,7 @@ function App() {
         <Route element={<ProtectedRoute moduleKey="helpdesk_technicians"><TechniciansPage /></ProtectedRoute>} path="helpdesk-technicians" />
         <Route element={<ProtectedRoute moduleKey="tickets"><TicketsPage /></ProtectedRoute>} path="tickets" />
         <Route element={<ProtectedRoute moduleKey="assets"><AssetsPage /></ProtectedRoute>} path="assets" />
-        <Route element={<ProtectedRoute moduleKey="assets"><LocationsPage /></ProtectedRoute>} path="locations" />
+        <Route element={<Navigate replace to="/app/settings/locations" />} path="locations" />
         <Route element={<ProtectedRoute moduleKey="inventory"><InventoryPage /></ProtectedRoute>} path="inventory" />
         <Route element={<ProtectedRoute moduleKey="brands_models"><BrandsModelsPage /></ProtectedRoute>} path="brands-models" />
         <Route element={<ProtectedRoute moduleKey="projects"><ProjectsPage /></ProtectedRoute>} path="projects" />
@@ -57,6 +58,8 @@ function App() {
         <Route element={<ProtectedRoute moduleKey="api_rest"><ApiConfigPage /></ProtectedRoute>} path="api-rest" />
         <Route element={<ProtectedRoute moduleKey="users"><UsersPage /></ProtectedRoute>} path="users" />
         <Route element={<ProtectedRoute moduleKey="users"><DepartmentsPage /></ProtectedRoute>} path="departments" />
+        <Route element={<ProtectedRoute moduleKey="permission_profiles"><PermissionProfilesPage /></ProtectedRoute>} path="permission-profiles" />
+        <Route element={<ProtectedRoute moduleKey="settings_locations"><LocationsPage /></ProtectedRoute>} path="settings/locations" />
         <Route element={<ProtectedRoute moduleKey="notifications"><NotificationsPage /></ProtectedRoute>} path="notifications" />
         <Route element={<ProtectedRoute moduleKey="email_layouts"><EmailLayoutsPage /></ProtectedRoute>} path="email-layouts" />
         <Route element={<ProtectedRoute moduleKey="system_logs"><SystemLogsPage /></ProtectedRoute>} path="system-logs" />

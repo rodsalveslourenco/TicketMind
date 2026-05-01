@@ -38,6 +38,8 @@ function LocationsPage() {
     deleteLocation,
     locations,
     pushToast,
+    setLocationStatus,
+    tickets,
     updateLocation,
   } = useAppData();
   const [search, setSearch] = useState("");
@@ -134,10 +136,12 @@ function LocationsPage() {
   const handleDelete = (location) => {
     if (!canDeleteLocations) return;
     const linkedAssets = assets.filter((asset) => asset.locationId === location.id).length;
-    if (linkedAssets) {
-      pushToast("Exclusao bloqueada", `${linkedAssets} ativo(s) ainda usam esta localizacao.`, "warning");
+    const linkedTickets = tickets.filter((ticket) => ticket.locationId === location.id || normalizeText(ticket.location) === normalizeText(location.name)).length;
+    if (linkedAssets || linkedTickets) {
+      pushToast("Exclusao bloqueada", `${linkedAssets} ativo(s) e ${linkedTickets} chamado(s) ainda usam esta localizacao.`, "warning");
       return;
     }
+    if (!window.confirm(`Excluir a localizacao ${location.name}?`)) return;
     deleteLocation(location.id);
     pushToast("Localizacao removida", location.name);
   };
@@ -146,8 +150,9 @@ function LocationsPage() {
     <div className="users-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">Operacoes Helpdesk</span>
+          <span className="eyebrow">Configuracoes</span>
           <h2>Localizacoes</h2>
+          <p className="module-caption">Cadastro administrativo de localizacoes reutilizadas por ativos e chamados.</p>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -162,6 +167,10 @@ function LocationsPage() {
             <strong>{assets.filter((asset) => asset.locationId).length}</strong>
             <span>ativos vinculados</span>
           </div>
+          <div className="insight-chip">
+            <strong>{locations.filter((location) => location.status === "Inativo").length}</strong>
+            <span>localizacoes inativas</span>
+          </div>
         </div>
       </section>
 
@@ -169,7 +178,7 @@ function LocationsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Cadastro de localizacoes</h2>
-            <span>Vincule cada localizacao a um departamento para padronizar os ativos.</span>
+            <span>Cadastre, ajuste status e remova apenas localizacoes sem vinculos operacionais.</span>
           </div>
           <div className="toolbar">
             <input
@@ -206,6 +215,16 @@ function LocationsPage() {
                 <span>{formatDateTime(location.updatedAt)}</span>
                 <div className="compact-row-actions">
                   <span className="badge badge-neutral">{linkedAssets} ativos</span>
+                  <span className="badge badge-neutral">{tickets.filter((ticket) => ticket.locationId === location.id || normalizeText(ticket.location) === normalizeText(location.name)).length} chamados</span>
+                  {location.status === "Ativo" ? (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => setLocationStatus(location.id, "Inativo")} type="button">
+                      Inativar
+                    </button>
+                  ) : (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => setLocationStatus(location.id, "Ativo")} type="button">
+                      Ativar
+                    </button>
+                  )}
                   {canEditLocations ? (
                     <button className="ghost-button compact-button interactive-button" onClick={() => openEditModal(location)} type="button">
                       Editar

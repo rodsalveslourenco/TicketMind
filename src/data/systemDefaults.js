@@ -133,6 +133,7 @@ export const defaultPermissionCatalog = [
     label: "API REST",
     description: "Integracoes, tokens e configuracoes de API.",
     order: 100,
+    departmentScope: "ti",
     accessKeys: ["api_rest_view", "api_rest_admin"],
     permissions: [
       { key: "api_rest_view", label: "Visualizar", action: "view" },
@@ -147,6 +148,7 @@ export const defaultPermissionCatalog = [
     label: "Usuarios",
     description: "Cadastros, acessos e manutencao de usuarios.",
     order: 110,
+    departmentScope: "ti",
     accessKeys: ["users_view", "users_admin"],
     permissions: [
       { key: "users_view", label: "Visualizar", action: "view" },
@@ -159,10 +161,27 @@ export const defaultPermissionCatalog = [
     ],
   },
   {
+    module: "permission_profiles",
+    label: "Perfis de Permissao",
+    description: "Perfis reutilizaveis com permissoes por modulo, menu e acao.",
+    order: 115,
+    departmentScope: "ti",
+    accessKeys: ["users_manage_permissions", "users_admin"],
+    permissions: [
+      { key: "users_view", label: "Visualizar", action: "view" },
+      { key: "users_create", label: "Criar", action: "create" },
+      { key: "users_edit", label: "Editar", action: "edit" },
+      { key: "users_delete", label: "Excluir", action: "delete" },
+      { key: "users_manage_permissions", label: "Acessar configuracoes", action: "settings" },
+      { key: "users_admin", label: "Administrar", action: "settings" },
+    ],
+  },
+  {
     module: "notifications",
     label: "Notificacoes",
     description: "Regras de envio, SMTP e logs de e-mail.",
     order: 120,
+    departmentScope: "ti",
     accessKeys: ["notifications_view", "notifications_manage"],
     permissions: [
       { key: "notifications_view", label: "Visualizar", action: "view" },
@@ -174,6 +193,7 @@ export const defaultPermissionCatalog = [
     label: "Layouts de E-mail",
     description: "Templates e placeholders de notificacao.",
     order: 130,
+    departmentScope: "ti",
     accessKeys: ["email_layouts_view", "email_layouts_manage"],
     permissions: [
       { key: "email_layouts_view", label: "Visualizar", action: "view" },
@@ -181,6 +201,21 @@ export const defaultPermissionCatalog = [
       { key: "email_layouts_edit", label: "Editar", action: "edit" },
       { key: "email_layouts_delete", label: "Excluir", action: "delete" },
       { key: "email_layouts_manage", label: "Acessar configuracoes", action: "settings" },
+    ],
+  },
+  {
+    module: "settings_locations",
+    label: "Localizacoes",
+    description: "Cadastro administrativo de localizacoes e seus vinculos operacionais.",
+    order: 135,
+    departmentScope: "ti",
+    accessKeys: ["assets_admin"],
+    permissions: [
+      { key: "assets_view", label: "Visualizar", action: "view" },
+      { key: "assets_create", label: "Criar", action: "create" },
+      { key: "assets_edit", label: "Editar", action: "edit" },
+      { key: "assets_delete", label: "Excluir", action: "delete" },
+      { key: "assets_admin", label: "Acessar configuracoes", action: "settings" },
     ],
   },
   {
@@ -241,7 +276,9 @@ export const defaultNavigationSections = [
     items: [
       { to: "/app/api-rest", label: "API REST", module: "api_rest", icon: "api_rest" },
       { to: "/app/users", label: "Usuarios", module: "users", icon: "users" },
+      { to: "/app/permission-profiles", label: "Perfis de Permissao", module: "permission_profiles", icon: "users" },
       { to: "/app/departments", label: "Departamentos", module: "users", icon: "users" },
+      { to: "/app/settings/locations", label: "Localizacoes", module: "settings_locations", icon: "assets" },
       { to: "/app/notifications", label: "Notificacoes", module: "notifications", icon: "notifications" },
       { to: "/app/email-layouts", label: "Layouts de E-mail", module: "email_layouts", icon: "email_layouts" },
       { to: "/app/system-logs", label: "Auditoria e Acessos", module: "system_logs", icon: "system_logs" },
@@ -254,12 +291,14 @@ export const defaultPermissionProfiles = [
     id: "profile-admin",
     name: "Administrador da Plataforma",
     description: "Controle total da plataforma, acessos, configuracoes e operacao.",
+    status: "Ativo",
     permissions: "ALL",
   },
   {
     id: "profile-ti-manager",
     name: "Gestor de TI",
     description: "Acompanha a operacao, gerencia chamados, ativos, projetos, notificacoes e usuarios.",
+    status: "Ativo",
     permissions: [
       "dashboard_view",
       "helpdesk_indicators_view",
@@ -322,6 +361,7 @@ export const defaultPermissionProfiles = [
     id: "profile-analyst",
     name: "Analista de Service Desk",
     description: "Opera a fila de atendimento, atribuicao, acompanhamento e fechamento de chamados.",
+    status: "Ativo",
     permissions: [
       "dashboard_view",
       "helpdesk_indicators_view",
@@ -349,6 +389,7 @@ export const defaultPermissionProfiles = [
     id: "profile-infra",
     name: "Especialista de Infraestrutura",
     description: "Atua em incidentes tecnicos e administra ativos, inventario e catalogo tecnico.",
+    status: "Ativo",
     permissions: [
       "dashboard_view",
       "helpdesk_indicators_view",
@@ -387,6 +428,7 @@ export const defaultPermissionProfiles = [
     id: "profile-area-manager",
     name: "Gestor de Area",
     description: "Acompanha chamados da area, indicadores e projetos, sem administracao tecnica.",
+    status: "Ativo",
     permissions: [
       "dashboard_view",
       "helpdesk_indicators_view",
@@ -400,6 +442,7 @@ export const defaultPermissionProfiles = [
     id: "profile-requester",
     name: "Solicitante Interno",
     description: "Abre e acompanha apenas os proprios chamados.",
+    status: "Ativo",
     permissions: ["dashboard_view", "tickets_view_own", "tickets_create"],
   },
 ];

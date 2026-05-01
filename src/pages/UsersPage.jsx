@@ -2,38 +2,7 @@ import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
-import {
-  getRolePermissions,
-  hasAnyPermission,
-  normalizeRoleName,
-  normalizeUserPermissions,
-} from "../data/permissions";
-
-function createDefaultUserForm(permissionCatalog, permissionProfiles) {
-  return {
-    name: "",
-    email: "",
-    password: "admin0123",
-    role: "Solicitante Interno",
-    team: "",
-    departmentId: "",
-    department: "",
-    avatar: "",
-    permissions: getRolePermissions("Solicitante Interno", permissionProfiles, permissionCatalog),
-  };
-}
-
-function maskPassword(password) {
-  return "*".repeat(Math.max(String(password || "").length, 8));
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
+import { hasAnyPermission, normalizeText } from "../data/permissions";
 
 function getInitials(name) {
   return String(name || "")
@@ -53,15 +22,70 @@ function readImageFileAsDataUrl(file) {
   });
 }
 
+function maskPassword(password) {
+  return "*".repeat(Math.max(String(password || "").length, 8));
+}
+
+function createOverrideMap(permissionCatalog) {
+  const uniqueKeys = Array.from(
+    new Set(
+      permissionCatalog.flatMap((group) => (Array.isArray(group.permissions) ? group.permissions : []).map((permission) => permission.key)),
+    ),
+  );
+  return uniqueKeys.reduce((accumulator, key) => ({ ...accumulator, [key]: false }), {});
+}
+
+function createDefaultUserForm(permissionProfiles, permissionCatalog) {
+  const defaultProfile =
+    permissionProfiles.find((profile) => normalizeText(profile.name) === "solicitante interno") ||
+    permissionProfiles.find((profile) => profile.status !== "Inativo") ||
+    permissionProfiles[0] ||
+    null;
+
+  return {
+    name: "",
+    email: "",
+    password: "admin0123",
+    status: "Ativo",
+    role: defaultProfile?.name || "Solicitante Interno",
+    permissionProfileId: defaultProfile?.id || "",
+    team: "",
+    departmentId: "",
+    department: "",
+    avatar: "",
+    additionalPermissions: createOverrideMap(permissionCatalog),
+    restrictedPermissions: createOverrideMap(permissionCatalog),
+  };
+}
+
+function buildOverrideForm(rawMap = {}, permissionCatalog = []) {
+  return {
+    ...createOverrideMap(permissionCatalog),
+    ...(rawMap || {}),
+  };
+}
+
 function UsersPage() {
   const { user } = useAuth();
-  const { addUser, deleteUser, departments, permissionCatalog, permissionProfiles, pushToast, updateUser, users } = useAppData();
+  const {
+    addUser,
+    deleteUser,
+    departments,
+    duplicateUser,
+    permissionCatalog,
+    permissionProfiles,
+    pushToast,
+    setUserStatus,
+    updateUser,
+    users,
+  } = useAppData();
+
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailUserId, setDetailUserId] = useState(null);
-  const [form, setForm] = useState(() => createDefaultUserForm(permissionCatalog, permissionProfiles));
   const [editingUserId, setEditingUserId] = useState(null);
   const [revealedUserIds, setRevealedUserIds] = useState([]);
+  const [form, setForm] = useState(() => createDefaultUserForm(permissionProfiles, permissionCatalog));
 
   const canRevealPasswords = normalizeText(user?.department) === "ti";
   const canViewUsers = hasAnyPermission(user, ["users_view", "users_admin"]);
@@ -71,19 +95,25 @@ function UsersPage() {
   const canResetPasswords = hasAnyPermission(user, ["users_reset_password", "users_admin"]);
   const canManagePermissions = hasAnyPermission(user, ["users_manage_permissions", "users_admin"]);
 
-  const orderedUsers = useMemo(() => {
-    const normalizedSearch = search
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
+  const activeProfiles = useMemo(
+    () => permissionProfiles.filter((profile) => profile.status !== "Inativo" || profile.id === form.permissionProfileId),
+    [permissionProfiles, form.permissionProfileId],
+  );
 
+  const availableDepartments = useMemo(
+    () => departments.filter((department) => department.status === "Ativo" || department.id === form.departmentId),
+    [departments, form.departmentId],
+  );
+
+  const orderedUsers = useMemo(() => {
+    const normalizedSearch = normalizeText(search);
     return users
       .slice()
       .sort((left, right) => left.name.localeCompare(right.name))
       .filter((candidate) =>
         !normalizedSearch
           ? true
-          : [candidate.name, candidate.email, candidate.team, candidate.role, candidate.department]
+          : [candidate.name, candidate.email, candidate.team, candidate.role, candidate.department, candidate.status]
               .join(" ")
               .normalize("NFD")
               .replace(/[\u0300-\u036f]/g, "")
@@ -92,10 +122,18 @@ function UsersPage() {
       );
   }, [search, users]);
 
-  const detailUser = users.find((candidate) => candidate.id === detailUserId) ?? null;
-  const availableDepartments = useMemo(
-    () => departments.filter((department) => department.status === "Ativo" || department.id === form.departmentId),
-    [departments, form.departmentId],
+  const detailUser = users.find((candidate) => candidate.id === detailUserId) || null;
+  const selectedProfile = permissionProfiles.find((profile) => profile.id === form.permissionProfileId) || permissionProfiles[0] || null;
+
+  const permissionGroups = useMemo(
+    () =>
+      permissionCatalog.map((group) => ({
+        ...group,
+        permissions: (group.permissions || []).filter(
+          (permission, index, collection) => collection.findIndex((candidate) => candidate.key === permission.key) === index,
+        ),
+      })),
+    [permissionCatalog],
   );
 
   const updateField = (field) => (event) => {
@@ -107,47 +145,61 @@ function UsersPage() {
     setForm((current) => ({
       ...current,
       departmentId: nextDepartment?.id || "",
-      department: nextDepartment?.name || event.target.value || "",
+      department: nextDepartment?.name || "",
     }));
   };
 
-  const updateRoleField = (event) => {
-    const nextRole = normalizeRoleName(event.target.value);
+  const updateProfileField = (event) => {
+    const nextProfile = permissionProfiles.find((profile) => profile.id === event.target.value) || null;
     setForm((current) => ({
       ...current,
-      role: nextRole,
-      permissions: getRolePermissions(nextRole, permissionProfiles, permissionCatalog),
+      permissionProfileId: nextProfile?.id || "",
+      role: nextProfile?.name || current.role,
     }));
   };
 
-  const updatePermission = (permissionKey) => (event) => {
+  const updateOverrideField = (overrideField, permissionKey) => (event) => {
     setForm((current) => ({
       ...current,
-      permissions: {
-        ...current.permissions,
+      [overrideField]: {
+        ...current[overrideField],
         [permissionKey]: event.target.checked,
       },
     }));
   };
 
   const resetForm = () => {
-    setForm(createDefaultUserForm(permissionCatalog, permissionProfiles));
+    setForm(createDefaultUserForm(permissionProfiles, permissionCatalog));
     setEditingUserId(null);
   };
 
   const populateForm = (candidate) => {
     setEditingUserId(candidate.id);
     setForm({
-      name: candidate.name,
-      email: candidate.email,
+      name: candidate.name || "",
+      email: candidate.email || "",
       password: candidate.password || "admin0123",
-      role: normalizeRoleName(candidate.role),
-      team: candidate.team,
+      status: candidate.status || "Ativo",
+      role: candidate.role || "",
+      permissionProfileId: candidate.permissionProfileId || "",
+      team: candidate.team || "",
       departmentId: candidate.departmentId || "",
-      department: candidate.department,
+      department: candidate.department || "",
       avatar: candidate.avatar || "",
-      permissions: normalizeUserPermissions(candidate.permissions || {}, candidate, permissionCatalog, permissionProfiles),
+      additionalPermissions: buildOverrideForm(candidate.additionalPermissions, permissionCatalog),
+      restrictedPermissions: buildOverrideForm(candidate.restrictedPermissions, permissionCatalog),
     });
+  };
+
+  const openCreateModal = () => {
+    if (!canCreateUsers) return;
+    resetForm();
+    setShowCreateModal(true);
+  };
+
+  const openDetailModal = (candidate) => {
+    populateForm(candidate);
+    setDetailUserId(candidate.id);
   };
 
   const handleAvatarChange = async (event) => {
@@ -178,41 +230,46 @@ function UsersPage() {
     } else if (!canCreateUsers) {
       return;
     }
-    if (!form.name || !form.email || !form.team || !form.password) return;
 
-    const normalizedEmail = normalizeText(form.email);
-    const duplicatedUser = users.find(
-      (candidate) => normalizeText(candidate.email) === normalizedEmail && candidate.id !== editingUserId,
-    );
-    if (duplicatedUser) {
-      pushToast("Email já cadastrado", duplicatedUser.email, "warning");
+    if (!form.name.trim() || !form.team.trim()) {
+      pushToast("Campos obrigatorios", "Preencha nome e equipe do usuario.", "warning");
       return;
     }
 
+    if (!form.permissionProfileId) {
+      pushToast("Perfil obrigatorio", "Selecione um perfil de permissao para o usuario.", "warning");
+      return;
+    }
+
+    const normalizedEmail = normalizeText(form.email);
+    const duplicatedUser = users.find(
+      (candidate) => normalizedEmail && normalizeText(candidate.email) === normalizedEmail && candidate.id !== editingUserId,
+    );
+    if (duplicatedUser) {
+      pushToast("Email ja cadastrado", duplicatedUser.email, "warning");
+      return;
+    }
+
+    const selectedDepartment = departments.find((department) => department.id === form.departmentId);
+    const selectedPermissionProfile = permissionProfiles.find((profile) => profile.id === form.permissionProfileId) || null;
+    const payload = {
+      ...form,
+      role: selectedPermissionProfile?.name || form.role,
+      departmentId: selectedDepartment?.id || "",
+      department: selectedDepartment?.name || "",
+    };
+
     if (editingUserId) {
-      updateUser(editingUserId, form);
-      pushToast("Usuário atualizado", form.name);
+      updateUser(editingUserId, payload);
+      pushToast("Usuario atualizado", form.name);
     } else {
-      addUser(form);
-      pushToast("Usuário cadastrado", form.name);
+      addUser(payload);
+      pushToast("Usuario cadastrado", form.name);
     }
 
     setShowCreateModal(false);
     setDetailUserId(null);
     resetForm();
-  };
-
-  const openCreateModal = () => {
-    if (!canCreateUsers) return;
-    resetForm();
-    setShowCreateModal(true);
-  };
-
-  const selectedRoleProfile = permissionProfiles.find((profile) => profile.name === form.role) || permissionProfiles[0];
-
-  const openDetailModal = (candidate) => {
-    populateForm(candidate);
-    setDetailUserId(candidate.id);
   };
 
   const togglePassword = (userId) => {
@@ -223,54 +280,89 @@ function UsersPage() {
   };
 
   const handleDeleteUser = (candidate) => {
-    if (!canDeleteUsers) return;
-    if (!candidate) return;
+    if (!canDeleteUsers || !candidate) return;
     if (candidate.id === user?.id) {
-      pushToast("Operação bloqueada", "Não e permitido excluir o usuário logado.", "warning");
+      pushToast("Operacao bloqueada", "Nao e permitido excluir o usuario logado.", "warning");
       return;
     }
-
+    if (!window.confirm(`Confirma a exclusao logica de ${candidate.name}?`)) return;
     deleteUser(candidate.id);
     setDetailUserId(null);
-    setShowCreateModal(false);
-    resetForm();
-    pushToast("Usuário removido", candidate.name);
+    pushToast("Usuario excluido", candidate.name);
   };
+
+  const handleDuplicateUser = (candidate) => {
+    if (!canCreateUsers) return;
+    const duplicated = duplicateUser(candidate.id);
+    if (!duplicated) return;
+    pushToast("Usuario duplicado", `${duplicated.name} criado em modo inativo.`);
+    openDetailModal(duplicated);
+  };
+
+  const activePermissionCount = (candidate) =>
+    permissionCatalog.flatMap((group) => group.permissions).filter((permission) => candidate.permissions?.[permission.key]).length;
 
   if (!canViewUsers) {
     return <Navigate replace to="/app/dashboard" />;
   }
 
-  const describeUserScope = (candidate) => {
-    const activePermissions = permissionCatalog
-      .flatMap((group) => group.permissions)
-      .filter((permission) => candidate.permissions?.[permission.key]);
-
-    return {
-      highlightedPermissions: activePermissions.slice(0, 4),
-      totalPermissions: activePermissions.length,
-    };
-  };
+  const renderOverrideSection = (title, field, toneClass = "badge-neutral") => (
+    <section className="permission-override-card board-card">
+      <div className="permission-group-head">
+        <strong>{title}</strong>
+        <span>{field === "additionalPermissions" ? "Concede acessos extras ao perfil principal." : "Bloqueia acessos herdados do perfil principal."}</span>
+      </div>
+      <div className="permissions-panel permissions-panel-refined">
+        {permissionGroups.map((group) => (
+          <section className="permission-group permission-group-refined" key={`${field}-${group.module}`}>
+            <div className="permission-group-head">
+              <strong>{group.label}</strong>
+              <span>{group.description}</span>
+            </div>
+            <div className="permissions-list permissions-list-compact">
+              {group.permissions.map((permission) => (
+                <label className="permission-item permission-item-compact" key={`${field}-${permission.key}`}>
+                  <input
+                    checked={Boolean(form[field][permission.key])}
+                    disabled={!canManagePermissions}
+                    onChange={updateOverrideField(field, permission.key)}
+                    type="checkbox"
+                  />
+                  <span>{permission.label}</span>
+                  <small className={`badge ${toneClass}`}>{permission.action}</small>
+                </label>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
 
   return (
     <div className="users-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">Usuários</span>
-          <h2>Usuários</h2>
+          <span className="eyebrow">Configuracoes</span>
+          <h2>Usuarios</h2>
+          <p className="module-caption">Gestao de contas, status operacionais, perfil principal e excecoes de acesso.</p>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
             <strong>{orderedUsers.length}</strong>
-            <span>usuários no recorte</span>
+            <span>usuarios no recorte</span>
           </div>
           <div className="insight-chip">
-            <strong>{orderedUsers.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
-            <span>usuários TI</span>
+            <strong>{orderedUsers.filter((candidate) => candidate.status === "Ativo").length}</strong>
+            <span>usuarios ativos</span>
           </div>
           <div className="insight-chip">
-            <strong>{orderedUsers.filter((candidate) => candidate.permissions?.users_admin).length}</strong>
-            <span>gestores de acesso</span>
+            <strong>{orderedUsers.filter((candidate) => candidate.status === "Inativo").length}</strong>
+            <span>usuarios inativos</span>
+          </div>
+          <div className="insight-chip">
+            <strong>{orderedUsers.filter((candidate) => candidate.status === "Excluido").length}</strong>
+            <span>exclusoes logicas</span>
           </div>
         </div>
       </section>
@@ -278,34 +370,28 @@ function UsersPage() {
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar">
           <div>
-            <h2>Usuários cadastrados</h2>
-            <span>Clique em um usuário para abrir detalhes de acesso, permissões e redefinição de senha.</span>
+            <h2>Usuarios cadastrados</h2>
+            <span>Clique em um usuario para abrir detalhes, perfil vinculado, overrides e redefinicao de senha.</span>
           </div>
           <div className="toolbar">
             <input
               className="toolbar-search"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome, email, equipe ou perfil"
+              placeholder="Buscar por nome, email, equipe, perfil ou status"
               value={search}
             />
             {canCreateUsers ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
-                + Novo usuário
+                + Novo usuario
               </button>
             ) : null}
           </div>
         </div>
 
         <div className="user-list">
-          {orderedUsers.map((candidate) => {
-            const scope = describeUserScope(candidate);
-            return (
-              <button
-                className="table-row user-row user-card interactive-button"
-                key={candidate.id}
-                onClick={() => openDetailModal(candidate)}
-                type="button"
-              >
+          {orderedUsers.map((candidate) => (
+            <article className="table-row user-row user-card" key={candidate.id}>
+              <button className="user-card-open interactive-button" onClick={() => openDetailModal(candidate)} type="button">
                 <div className="user-row-main">
                   <div className="user-avatar user-avatar-list">
                     {candidate.avatar ? (
@@ -316,17 +402,19 @@ function UsersPage() {
                   </div>
                   <div className="user-identity">
                     <strong>{candidate.name}</strong>
-                    <span>{candidate.email}</span>
+                    <span>{candidate.email || "Sem email definido"}</span>
                   </div>
                   <div className="user-role-block">
-                    <span className="badge badge-neutral">{candidate.role}</span>
-                    <span>{candidate.team || "Sem equipe"}</span>
-                    <span>{candidate.department || "Sem departamento"}</span>
+                    <span className={`badge ${candidate.status === "Ativo" ? "status-badge-resolvido" : candidate.status === "Inativo" ? "status-badge-aguardando" : "status-badge-reaberto"}`}>
+                      {candidate.status}
+                    </span>
+                    <span>{candidate.role || "Sem perfil"}</span>
+                    <span>{candidate.team || "Sem equipe"} | {candidate.department || "Sem departamento"}</span>
                   </div>
                   <div className="user-summary-stats">
                     <div>
-                      <strong>{scope.totalPermissions}</strong>
-                      <span>permissões</span>
+                      <strong>{activePermissionCount(candidate)}</strong>
+                      <span>acessos efetivos</span>
                     </div>
                     <div>
                       <strong>{candidate.id}</strong>
@@ -356,31 +444,42 @@ function UsersPage() {
                       </button>
                     ) : null}
                   </div>
-                  <div className="permissions-inline">
-                    {scope.highlightedPermissions.map((permission) => (
-                      <span className="badge badge-neutral" key={permission.key}>
-                        {permission.label}
-                      </span>
-                    ))}
-                    {scope.totalPermissions > scope.highlightedPermissions.length ? (
-                      <span className="badge badge-neutral">+{scope.totalPermissions - scope.highlightedPermissions.length} acessos</span>
-                    ) : null}
-                  </div>
                   <span className="user-open-hint">Abrir detalhes</span>
                 </div>
               </button>
-            );
-          })}
+              <div className="compact-row-actions user-quick-actions">
+                {candidate.status === "Ativo" ? (
+                  <button className="ghost-button compact-button interactive-button" onClick={() => setUserStatus(candidate.id, "Inativo")} type="button">
+                    Desativar
+                  </button>
+                ) : (
+                  <button className="ghost-button compact-button interactive-button" onClick={() => setUserStatus(candidate.id, "Ativo")} type="button">
+                    Ativar
+                  </button>
+                )}
+                {canCreateUsers ? (
+                  <button className="ghost-button compact-button interactive-button" onClick={() => handleDuplicateUser(candidate)} type="button">
+                    Duplicar
+                  </button>
+                ) : null}
+                {canDeleteUsers ? (
+                  <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteUser(candidate)} type="button">
+                    Excluir
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
       {showCreateModal ? (
         <div className="ticket-modal-backdrop" onClick={() => setShowCreateModal(false)} role="presentation">
-          <div className="ticket-modal board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+          <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-create-form glpi-ticket-form" onSubmit={handleSubmit}>
               <div className="ticket-modal-header">
                 <div className="form-section-header">
-                  <strong>Novo usuário</strong>
+                  <strong>Novo usuario</strong>
                 </div>
                 <button className="ghost-button interactive-button" onClick={() => setShowCreateModal(false)} type="button">
                   Fechar
@@ -405,18 +504,26 @@ function UsersPage() {
                   <input onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
-                  <span>Email</span>
+                  <span>Email / Login</span>
                   <input onChange={updateField("email")} type="email" value={form.email} />
                 </label>
                 <label className="field-block">
-                  <span>Senha</span>
+                  <span>Senha inicial</span>
                   <input onChange={updateField("password")} type="password" value={form.password} />
                 </label>
                 <label className="field-block">
-                  <span>Perfil</span>
-                  <select onChange={updateRoleField} value={form.role}>
-                    {permissionProfiles.map((profile) => (
-                      <option key={profile.name} value={profile.name}>
+                  <span>Status</span>
+                  <select onChange={updateField("status")} value={form.status}>
+                    <option>Ativo</option>
+                    <option>Inativo</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Perfil de permissao</span>
+                  <select onChange={updateProfileField} value={form.permissionProfileId}>
+                    <option value="">Selecione</option>
+                    {activeProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
                         {profile.name}
                       </option>
                     ))}
@@ -439,36 +546,15 @@ function UsersPage() {
                 </label>
               </div>
               <div className="board-card compact-record-card">
-                <strong>Escopo do perfil</strong>
-                <span>{selectedRoleProfile.description}</span>
+                <strong>Perfil principal</strong>
+                <span>{selectedProfile?.description || "Selecione um perfil para herdar as permissoes base."}</span>
               </div>
-              <div className="permissions-panel permissions-panel-refined">
-                {permissionCatalog.map((group) => (
-                  <section className="permission-group permission-group-refined" key={group.module}>
-                    <div className="permission-group-head">
-                      <strong>{group.label}</strong>
-                      <span>{group.description}</span>
-                    </div>
-                    <div className="permissions-list permissions-list-compact">
-                      {group.permissions.map((permission) => (
-                        <label className="permission-item permission-item-compact" key={permission.key}>
-                          <input
-                            checked={Boolean(form.permissions[permission.key])}
-                            disabled={!canManagePermissions}
-                            onChange={updatePermission(permission.key)}
-                            type="checkbox"
-                          />
-                          <span>{permission.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+              {renderOverrideSection("Permissoes adicionais do usuario", "additionalPermissions")}
+              {renderOverrideSection("Restricoes especificas do usuario", "restrictedPermissions", "status-badge-reaberto")}
               {canCreateUsers ? (
                 <div className="ticket-create-actions">
                   <button className="primary-button interactive-button" type="submit">
-                    Cadastrar usuário
+                    Cadastrar usuario
                   </button>
                 </div>
               ) : null}
@@ -479,30 +565,30 @@ function UsersPage() {
 
       {detailUser ? (
         <div className="ticket-modal-backdrop" onClick={() => setDetailUserId(null)} role="presentation">
-          <div
-            className="ticket-modal ticket-modal-large board-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
+          <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-detail-form" onSubmit={handleSubmit}>
               <div className="ticket-modal-header">
                 <div>
                   <h2>{detailUser.name}</h2>
                   <span className="modal-subtitle">
-                    {detailUser.email} | {detailUser.team}
+                    {detailUser.email || "Sem email"} | {detailUser.team}
                   </span>
                 </div>
                 <div className="ticket-detail-actions">
                   <button className="ghost-button interactive-button" onClick={() => setDetailUserId(null)} type="button">
                     Fechar
                   </button>
+                  {detailUser.status === "Ativo" ? (
+                    <button className="ghost-button interactive-button" onClick={() => setUserStatus(detailUser.id, "Inativo")} type="button">
+                      Desativar
+                    </button>
+                  ) : (
+                    <button className="ghost-button interactive-button" onClick={() => setUserStatus(detailUser.id, "Ativo")} type="button">
+                      Ativar
+                    </button>
+                  )}
                   {canDeleteUsers ? (
-                    <button
-                      className="danger-button interactive-button"
-                      onClick={() => handleDeleteUser(detailUser)}
-                      type="button"
-                    >
+                    <button className="danger-button interactive-button" onClick={() => handleDeleteUser(detailUser)} type="button">
                       Excluir
                     </button>
                   ) : null}
@@ -527,7 +613,7 @@ function UsersPage() {
                   <input disabled={!canEditUsers} onChange={updateField("name")} value={form.name} />
                 </label>
                 <label className="field-block">
-                  <span>Email</span>
+                  <span>Email / Login</span>
                   <input disabled={!canEditUsers} onChange={updateField("email")} type="email" value={form.email} />
                 </label>
                 <label className="field-block">
@@ -535,11 +621,20 @@ function UsersPage() {
                   <input disabled={!canResetPasswords} onChange={updateField("password")} type="password" value={form.password} />
                 </label>
                 <label className="field-block">
-                  <span>Perfil</span>
-                  <select disabled={!canEditUsers} onChange={updateRoleField} value={form.role}>
+                  <span>Status</span>
+                  <select disabled={!canEditUsers} onChange={updateField("status")} value={form.status}>
+                    <option>Ativo</option>
+                    <option>Inativo</option>
+                    <option>Excluido</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Perfil de permissao</span>
+                  <select disabled={!canManagePermissions} onChange={updateProfileField} value={form.permissionProfileId}>
+                    <option value="">Selecione</option>
                     {permissionProfiles.map((profile) => (
-                      <option key={profile.name} value={profile.name}>
-                        {profile.name}
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} {profile.status === "Inativo" ? "(Inativo)" : ""}
                       </option>
                     ))}
                   </select>
@@ -561,36 +656,15 @@ function UsersPage() {
                 </label>
               </div>
               <div className="board-card compact-record-card">
-                <strong>Escopo do perfil</strong>
-                <span>{selectedRoleProfile.description}</span>
+                <strong>Perfil principal</strong>
+                <span>{selectedProfile?.description || "Este usuario precisa de um perfil de permissao valido."}</span>
               </div>
-              <div className="permissions-panel permissions-panel-refined">
-                {permissionCatalog.map((group) => (
-                  <section className="permission-group permission-group-refined" key={group.module}>
-                    <div className="permission-group-head">
-                      <strong>{group.label}</strong>
-                      <span>{group.description}</span>
-                    </div>
-                    <div className="permissions-list permissions-list-compact">
-                      {group.permissions.map((permission) => (
-                        <label className="permission-item permission-item-compact" key={permission.key}>
-                          <input
-                            checked={Boolean(form.permissions[permission.key])}
-                            disabled={!canManagePermissions}
-                            onChange={updatePermission(permission.key)}
-                            type="checkbox"
-                          />
-                          <span>{permission.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+              {renderOverrideSection("Permissoes adicionais do usuario", "additionalPermissions")}
+              {renderOverrideSection("Restricoes especificas do usuario", "restrictedPermissions", "status-badge-reaberto")}
               {canEditUsers || canResetPasswords || canManagePermissions ? (
                 <div className="ticket-create-actions">
                   <button className="primary-button interactive-button" type="submit">
-                    Salvar usuário
+                    Salvar usuario
                   </button>
                 </div>
               ) : null}

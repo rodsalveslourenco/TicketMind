@@ -4,9 +4,11 @@ import { requestJson } from "../lib/api";
 import {
   buildEmptyPermissions,
   getRolePermissions,
+  getUserPermissionProfile,
   canViewAllTickets,
   canViewOwnTickets,
   hasAnyPermission,
+  listPermissionKeys,
   normalizeRoleName,
   normalizeUserPermissions,
 } from "./permissions";
@@ -47,7 +49,11 @@ function hydrateUsers(users, permissionCatalog, permissionProfiles) {
   return baseUsers.map((candidate) => ({
     ...candidate,
     password: candidate.password || "admin0123",
+    status: String(candidate.status || "Ativo").trim() || "Ativo",
     role: normalizeRoleName(candidate.role),
+    permissionProfileId: String(candidate.permissionProfileId || "").trim(),
+    additionalPermissions: sanitizePermissionOverridePayload(candidate.additionalPermissions, permissionCatalog),
+    restrictedPermissions: sanitizePermissionOverridePayload(candidate.restrictedPermissions, permissionCatalog),
     permissions: normalizeUserPermissions(candidate.permissions || {}, candidate, permissionCatalog, permissionProfiles),
   }));
 }
@@ -171,21 +177,57 @@ function resolveAssetType(type) {
 
 function sanitizeUserPayload(payload, departments = [], permissionCatalog = defaultPermissionCatalog, permissionProfiles = defaultPermissionProfiles) {
   const departmentMatch = findDepartmentMatch(departments, payload);
+  const permissionProfile =
+    getUserPermissionProfile(
+      {
+        permissionProfileId: payload.permissionProfileId,
+        role: payload.role,
+      },
+      permissionProfiles,
+    ) || permissionProfiles[permissionProfiles.length - 1];
   return {
     name: String(payload.name || "").trim(),
     email: String(payload.email || "").trim().toLowerCase(),
     password: payload.password || "admin0123",
-    role: normalizeRoleName(payload.role),
+    status: String(payload.status || "Ativo").trim() || "Ativo",
+    role: permissionProfile?.name || normalizeRoleName(payload.role),
+    permissionProfileId: String(permissionProfile?.id || payload.permissionProfileId || "").trim(),
     team: String(payload.team || "").trim(),
     departmentId: departmentMatch?.id || String(payload.departmentId || "").trim(),
     department: departmentMatch?.name || String(payload.department || "").trim(),
     avatar: String(payload.avatar || "").trim(),
+    additionalPermissions: sanitizePermissionOverridePayload(payload.additionalPermissions, permissionCatalog),
+    restrictedPermissions: sanitizePermissionOverridePayload(payload.restrictedPermissions, permissionCatalog),
     permissions: normalizeUserPermissions(
-      payload.permissions || getRolePermissions(payload.role, permissionProfiles, permissionCatalog),
-      payload,
+      payload.permissions || getRolePermissions(permissionProfile?.name || payload.role, permissionProfiles, permissionCatalog),
+      {
+        ...payload,
+        role: permissionProfile?.name || payload.role,
+        permissionProfileId: permissionProfile?.id || payload.permissionProfileId,
+      },
       permissionCatalog,
       permissionProfiles,
     ),
+  };
+}
+
+function sanitizePermissionOverridePayload(rawOverrides = {}, permissionCatalog = defaultPermissionCatalog) {
+  const validKeys = new Set(listPermissionKeys(permissionCatalog));
+  return Object.entries(rawOverrides || {}).reduce((accumulator, [key, value]) => {
+    if (!validKeys.has(key) || value === undefined || value === false) return accumulator;
+    return { ...accumulator, [key]: true };
+  }, {});
+}
+
+function sanitizePermissionProfilePayload(payload, permissionCatalog = defaultPermissionCatalog, currentProfile = {}) {
+  return {
+    name: String(payload.name || currentProfile.name || "").trim(),
+    description: String(payload.description || currentProfile.description || "").trim(),
+    status: String(payload.status || currentProfile.status || "Ativo").trim() || "Ativo",
+    permissions:
+      payload.permissions === "ALL" || currentProfile.permissions === "ALL"
+        ? "ALL"
+        : Object.keys(sanitizePermissionOverridePayload(payload.permissions || currentProfile.permissions || {}, permissionCatalog)),
   };
 }
 
@@ -278,6 +320,7 @@ function hydratePermissionProfiles(storedProfiles) {
     id: String(profile.id || profile.name || "").trim(),
     name: normalizeRoleName(profile.name),
     description: String(profile.description || "").trim(),
+    status: String(profile.status || "Ativo").trim() || "Ativo",
     permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
   }));
 }
@@ -983,6 +1026,27 @@ export function AppDataProvider({ children }) {
     return createdUser;
   };
 
+  const duplicateUser = (userId) => {
+    if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
+    let createdUser = null;
+    applyState((current) => {
+      const sourceUser = current.users.find((candidate) => candidate.id === userId);
+      if (!sourceUser) return current;
+      createdUser = {
+        ...sourceUser,
+        id: nextId("u", current.users || []),
+        name: `${sourceUser.name} (Copia)`,
+        email: "",
+        status: "Inativo",
+        password: "admin0123",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      return { ...current, users: [createdUser, ...(current.users || [])] };
+    });
+    return createdUser;
+  };
+
   const updateUser = (userId, payload) => {
     if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
     applyState((current) => {
@@ -1002,17 +1066,40 @@ export function AppDataProvider({ children }) {
           ...candidate,
           name: sanitizedPayload.name,
           email: sanitizedPayload.email,
+          status: sanitizedPayload.status,
           role: sanitizedPayload.role,
+          permissionProfileId: sanitizedPayload.permissionProfileId,
           team: sanitizedPayload.team,
           departmentId: sanitizedPayload.departmentId,
           department: sanitizedPayload.department,
           avatar: sanitizedPayload.avatar,
+          additionalPermissions: sanitizedPayload.additionalPermissions,
+          restrictedPermissions: sanitizedPayload.restrictedPermissions,
           ...(passwordChanged && hasAnyPermission(user, ["users_reset_password", "users_admin"])
             ? { password: sanitizedPayload.password }
             : {}),
           ...(permissionsChanged && hasAnyPermission(user, ["users_manage_permissions", "users_admin"])
             ? { permissions: sanitizedPayload.permissions }
             : {}),
+        };
+        if (nextUser.id === user?.id) nextCurrentUser = nextUser;
+        return nextUser;
+      });
+      if (nextCurrentUser) setSessionUser(nextCurrentUser);
+      return { ...current, users: nextUsers };
+    });
+  };
+
+  const setUserStatus = (userId, status) => {
+    if (!hasAnyPermission(user, ["users_edit", "users_reset_password", "users_admin"])) return;
+    applyState((current) => {
+      let nextCurrentUser = null;
+      const nextUsers = current.users.map((candidate) => {
+        if (candidate.id !== userId) return candidate;
+        const nextUser = {
+          ...candidate,
+          status: status === "Ativo" ? "Ativo" : "Inativo",
+          updatedAt: new Date().toISOString(),
         };
         if (nextUser.id === user?.id) nextCurrentUser = nextUser;
         return nextUser;
@@ -1038,10 +1125,21 @@ export function AppDataProvider({ children }) {
 
   const deleteUser = (userId) => {
     if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
-    applyState((current) => ({
-      ...current,
-      users: current.users.filter((candidate) => candidate.id !== userId),
-    }));
+    applyState((current) => {
+      let nextCurrentUser = null;
+      const nextUsers = current.users.map((candidate) => {
+        if (candidate.id !== userId) return candidate;
+        const nextUser = {
+          ...candidate,
+          status: "Excluido",
+          updatedAt: new Date().toISOString(),
+        };
+        if (nextUser.id === user?.id) nextCurrentUser = nextUser;
+        return nextUser;
+      });
+      if (nextCurrentUser) setSessionUser(nextCurrentUser);
+      return { ...current, users: nextUsers };
+    });
   };
 
   const addDepartment = (payload) => {
@@ -1199,6 +1297,26 @@ export function AppDataProvider({ children }) {
     return createdLocation;
   };
 
+  const setLocationStatus = (locationId, status) => {
+    if (!hasAnyPermission(user, ["assets_edit", "assets_admin"])) return;
+    applyState((current) => {
+      const nextLocations = current.locations.map((location) =>
+        location.id === locationId
+          ? {
+              ...location,
+              status: status === "Ativo" ? "Ativo" : "Inativo",
+              updatedAt: new Date().toISOString(),
+            }
+          : location,
+      );
+      return {
+        ...current,
+        locations: nextLocations,
+        assets: current.assets.map((asset) => syncAssetLocation(asset, nextLocations)),
+      };
+    });
+  };
+
   const updateLocation = (locationId, payload) => {
     if (!hasAnyPermission(user, ["assets_edit", "assets_admin"])) return;
     applyState((current) => {
@@ -1233,6 +1351,88 @@ export function AppDataProvider({ children }) {
     applyState((current) => ({
       ...current,
       locations: current.locations.filter((location) => location.id !== locationId),
+    }));
+  };
+
+  const savePermissionProfile = (payload, profileId = null) => {
+    if (!hasAnyPermission(user, ["users_manage_permissions", "users_admin"])) return null;
+    const nowIso = new Date().toISOString();
+    let savedProfileId = profileId;
+    applyState((current) => {
+      const sanitizedPayload = sanitizePermissionProfilePayload(
+        payload,
+        current.permissionCatalog || defaultPermissionCatalog,
+        current.permissionProfiles.find((profile) => profile.id === profileId) || {},
+      );
+      if (profileId) {
+        return {
+          ...current,
+          permissionProfiles: current.permissionProfiles.map((profile) =>
+            profile.id === profileId
+              ? { ...profile, ...sanitizedPayload, updatedAt: nowIso }
+              : profile,
+          ),
+        };
+      }
+      savedProfileId = nextId("profile", current.permissionProfiles || []);
+      return {
+        ...current,
+        permissionProfiles: [
+          {
+            id: savedProfileId,
+            ...sanitizedPayload,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          ...(current.permissionProfiles || []),
+        ],
+      };
+    });
+    return savedProfileId;
+  };
+
+  const duplicatePermissionProfile = (profileId) => {
+    if (!hasAnyPermission(user, ["users_manage_permissions", "users_admin"])) return null;
+    let duplicatedProfileId = null;
+    applyState((current) => {
+      const sourceProfile = current.permissionProfiles.find((profile) => profile.id === profileId);
+      if (!sourceProfile) return current;
+      duplicatedProfileId = nextId("profile", current.permissionProfiles || []);
+      return {
+        ...current,
+        permissionProfiles: [
+          {
+            ...sourceProfile,
+            id: duplicatedProfileId,
+            name: `${sourceProfile.name} (Copia)`,
+            status: "Inativo",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          ...(current.permissionProfiles || []),
+        ],
+      };
+    });
+    return duplicatedProfileId;
+  };
+
+  const setPermissionProfileStatus = (profileId, status) => {
+    if (!hasAnyPermission(user, ["users_manage_permissions", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      permissionProfiles: current.permissionProfiles.map((profile) =>
+        profile.id === profileId
+          ? { ...profile, status: status === "Ativo" ? "Ativo" : "Inativo", updatedAt: new Date().toISOString() }
+          : profile,
+      ),
+    }));
+  };
+
+  const deletePermissionProfile = (profileId) => {
+    if (!hasAnyPermission(user, ["users_manage_permissions", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      permissionProfiles: current.permissionProfiles.filter((profile) => profile.id !== profileId),
     }));
   };
 
@@ -1700,7 +1900,9 @@ export function AppDataProvider({ children }) {
       searchTickets,
       searchKnowledgeArticles,
       addUser,
+      duplicateUser,
       updateUser,
+      setUserStatus,
       updateOwnProfile,
       deleteUser,
       addDepartment,
@@ -1711,7 +1913,12 @@ export function AppDataProvider({ children }) {
       deleteAsset,
       addLocation,
       updateLocation,
+      setLocationStatus,
       deleteLocation,
+      savePermissionProfile,
+      duplicatePermissionProfile,
+      setPermissionProfileStatus,
+      deletePermissionProfile,
       addBrand,
       updateBrand,
       deleteBrand,

@@ -22,6 +22,10 @@ function hasPermission(user, permissionKey) {
   return Boolean(user?.permissions && user.permissions[permissionKey]);
 }
 
+function isActiveUser(user) {
+  return String(user?.status || "Ativo").trim().toLowerCase() === "ativo";
+}
+
 function toIsoDateOrEmpty(value, { endOfDay = false } = {}) {
   const trimmedValue = String(value || "").trim();
   if (!trimmedValue) return "";
@@ -84,7 +88,7 @@ app.post("/api/auth/login", async (request, response) => {
       String(candidate.password || "") === normalizedPassword,
   );
 
-  if (!user) {
+  if (!user || !isActiveUser(user)) {
     await insertSystemLog(
       createSystemLog({
         userName: normalizedEmail || "Login sem email",
@@ -94,10 +98,10 @@ app.post("/api/auth/login", async (request, response) => {
         description: `Falha de login para ${normalizedEmail || "email nao informado"}.`,
         origin: getRequestOrigin(request),
         status: "erro",
-        metadata: { email: normalizedEmail },
+        metadata: { email: normalizedEmail, reason: user && !isActiveUser(user) ? "user_inactive" : "invalid_credentials" },
       }),
     );
-    response.status(401).json({ error: "Credenciais invalidas." });
+    response.status(401).json({ error: user && !isActiveUser(user) ? "Usuario inativo." : "Credenciais invalidas." });
     return;
   }
 
@@ -122,6 +126,11 @@ app.get("/api/auth/session/:userId", async (request, response) => {
 
   if (!user) {
     response.status(404).json({ error: "Sessao nao encontrada." });
+    return;
+  }
+
+  if (!isActiveUser(user)) {
+    response.status(403).json({ error: "Sessao indisponivel para usuario inativo." });
     return;
   }
 

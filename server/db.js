@@ -112,11 +112,15 @@ function normalizeUserRecord(
     name: String(record.name || "").trim(),
     email: String(record.email || "").trim().toLowerCase(),
     password: String(record.password || "").trim(),
+    status: String(record.status || "Ativo").trim() || "Ativo",
     role: normalizeRoleName(record.role),
+    permissionProfileId: String(record.permissionProfileId || "").trim(),
     team: String(record.team || "").trim(),
     departmentId: matchedDepartment?.id || departmentId,
     department: matchedDepartment?.name || departmentName,
     avatar: String(record.avatar || "").trim(),
+    additionalPermissions: record.additionalPermissions && typeof record.additionalPermissions === "object" ? record.additionalPermissions : {},
+    restrictedPermissions: record.restrictedPermissions && typeof record.restrictedPermissions === "object" ? record.restrictedPermissions : {},
     permissions: normalizeUserPermissions(record.permissions || {}, record, permissionCatalog, permissionProfiles),
     createdAt: String(record.createdAt || nowIso),
     updatedAt: String(record.updatedAt || nowIso),
@@ -465,10 +469,14 @@ async function getSqliteDb() {
           name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
           password TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Ativo',
           role TEXT NOT NULL,
+          permission_profile_id TEXT NOT NULL DEFAULT '',
           team TEXT NOT NULL,
           department_id TEXT,
           avatar TEXT NOT NULL DEFAULT '',
+          additional_permissions TEXT NOT NULL DEFAULT '{}',
+          restricted_permissions TEXT NOT NULL DEFAULT '{}',
           permissions TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
@@ -488,6 +496,18 @@ async function getSqliteDb() {
           metadata TEXT NOT NULL
         );
       `);
+      [
+        "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'Ativo'",
+        "ALTER TABLE users ADD COLUMN permission_profile_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN additional_permissions TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE users ADD COLUMN restricted_permissions TEXT NOT NULL DEFAULT '{}'",
+      ].forEach((statement) => {
+        try {
+          db.run(statement);
+        } catch {
+          // Column already exists in migrated databases.
+        }
+      });
       return db;
     })();
   }
@@ -550,8 +570,8 @@ async function readSqliteCollections() {
     ORDER BY locations.name
   `);
   const usersResult = db.exec(`
-    SELECT users.id, users.name, users.email, users.password, users.role, users.team, users.department_id,
-           departments.name AS department_name, users.avatar, users.permissions, users.created_at, users.updated_at
+    SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+           departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
     FROM users
     LEFT JOIN departments ON departments.id = users.department_id
     ORDER BY users.name
@@ -589,11 +609,15 @@ async function readSqliteCollections() {
       name: row.name,
       email: row.email,
       password: row.password,
+      status: row.status || "Ativo",
       role: row.role,
+      permissionProfileId: row.permission_profile_id || "",
       team: row.team,
       departmentId: row.department_id || "",
       department: row.department_name || "",
       avatar: row.avatar || "",
+      additionalPermissions: parseJson(row.additional_permissions, {}),
+      restrictedPermissions: parseJson(row.restricted_permissions, {}),
       permissions: parseJson(row.permissions, {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -649,8 +673,11 @@ async function writeSqliteCollections(collections) {
     insertLocation.free();
 
     const insertUser = db.prepare(`
-      INSERT INTO users (id, name, email, password, role, team, department_id, avatar, permissions, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (
+        id, name, email, password, status, role, permission_profile_id, team, department_id, avatar,
+        additional_permissions, restricted_permissions, permissions, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     collections.users.forEach((user) => {
       insertUser.run([
@@ -658,10 +685,14 @@ async function writeSqliteCollections(collections) {
         user.name,
         user.email,
         user.password,
+        user.status || "Ativo",
         user.role,
+        user.permissionProfileId || "",
         user.team,
         user.departmentId || null,
         user.avatar || "",
+        JSON.stringify(user.additionalPermissions || {}),
+        JSON.stringify(user.restrictedPermissions || {}),
         JSON.stringify(user.permissions || {}),
         user.createdAt,
         user.updatedAt,
@@ -742,10 +773,14 @@ async function ensurePgSchema() {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Ativo',
       role TEXT NOT NULL,
+      permission_profile_id TEXT NOT NULL DEFAULT '',
       team TEXT NOT NULL,
       department_id TEXT REFERENCES departments(id),
       avatar TEXT NOT NULL DEFAULT '',
+      additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+      restricted_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
       permissions JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
@@ -763,6 +798,12 @@ async function ensurePgSchema() {
       status TEXT NOT NULL,
       metadata JSONB NOT NULL
     )
+  `);
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Ativo';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS permission_profile_id TEXT NOT NULL DEFAULT '';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS restricted_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
   `);
 }
 
@@ -786,8 +827,8 @@ async function readPostgresCollections() {
       ORDER BY locations.name
     `),
     pool.query(`
-      SELECT users.id, users.name, users.email, users.password, users.role, users.team, users.department_id,
-             departments.name AS department_name, users.avatar, users.permissions, users.created_at, users.updated_at
+      SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+             departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
       FROM users
       LEFT JOIN departments ON departments.id = users.department_id
       ORDER BY users.name
@@ -818,11 +859,15 @@ async function readPostgresCollections() {
       name: row.name,
       email: row.email,
       password: row.password,
+      status: row.status || "Ativo",
       role: row.role,
+      permissionProfileId: row.permission_profile_id || "",
       team: row.team,
       departmentId: row.department_id || "",
       department: row.department_name || "",
       avatar: row.avatar || "",
+      additionalPermissions: row.additional_permissions || {},
+      restrictedPermissions: row.restricted_permissions || {},
       permissions: row.permissions || {},
       createdAt: row.created_at?.toISOString?.() || row.created_at,
       updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
@@ -870,18 +915,25 @@ async function writePostgresCollections(collections) {
     for (const user of collections.users) {
       await client.query(
         `
-          INSERT INTO users (id, name, email, password, role, team, department_id, avatar, permissions, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
+          INSERT INTO users (
+            id, name, email, password, status, role, permission_profile_id, team, department_id, avatar,
+            additional_permissions, restricted_permissions, permissions, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15)
         `,
         [
           user.id,
           user.name,
           user.email,
           user.password,
+          user.status || "Ativo",
           user.role,
+          user.permissionProfileId || "",
           user.team,
           user.departmentId || null,
           user.avatar || "",
+          JSON.stringify(user.additionalPermissions || {}),
+          JSON.stringify(user.restrictedPermissions || {}),
           JSON.stringify(user.permissions || {}),
           user.createdAt,
           user.updatedAt,

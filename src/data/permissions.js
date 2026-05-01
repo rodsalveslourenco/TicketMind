@@ -61,14 +61,36 @@ export function getRolePermissions(
   return buildPermissionsFromKeys(profile?.permissions || [], permissionCatalog);
 }
 
+export function getPermissionProfileById(profileId, permissionProfiles = defaultPermissionProfiles) {
+  const normalizedProfileId = String(profileId || "").trim();
+  if (!normalizedProfileId) return null;
+  return (Array.isArray(permissionProfiles) ? permissionProfiles : []).find((profile) => profile.id === normalizedProfileId) || null;
+}
+
+export function getUserPermissionProfile(user = {}, permissionProfiles = defaultPermissionProfiles) {
+  return (
+    getPermissionProfileById(user.permissionProfileId, permissionProfiles) ||
+    getRoleProfile(user.role, permissionProfiles)
+  );
+}
+
+function normalizePermissionOverrideMap(rawMap = {}, permissionCatalog = defaultPermissionCatalog) {
+  const validKeys = new Set(listPermissionKeys(permissionCatalog));
+  return Object.entries(rawMap || {}).reduce((accumulator, [key, value]) => {
+    if (!validKeys.has(key) || value === undefined) return accumulator;
+    return { ...accumulator, [key]: Boolean(value) };
+  }, {});
+}
+
 export function normalizeUserPermissions(
   rawPermissions = {},
   user = {},
   permissionCatalog = defaultPermissionCatalog,
   permissionProfiles = defaultPermissionProfiles,
 ) {
+  const profile = getUserPermissionProfile(user, permissionProfiles);
   const nextPermissions = {
-    ...getRolePermissions(user.role, permissionProfiles, permissionCatalog),
+    ...buildPermissionsFromKeys(profile?.permissions || [], permissionCatalog),
   };
   const permissionKeys = listPermissionKeys(permissionCatalog);
   let hasExplicitPermission = false;
@@ -210,10 +232,21 @@ export function normalizeUserPermissions(
     });
   }
 
+  const additionalPermissions = normalizePermissionOverrideMap(user.additionalPermissions, permissionCatalog);
+  Object.entries(additionalPermissions).forEach(([key, value]) => {
+    if (value) nextPermissions[key] = true;
+  });
+
+  const restrictedPermissions = normalizePermissionOverrideMap(user.restrictedPermissions, permissionCatalog);
+  Object.entries(restrictedPermissions).forEach(([key, value]) => {
+    if (value) nextPermissions[key] = false;
+  });
+
   return nextPermissions;
 }
 
 export function hasPermission(user, permissionKey) {
+  if (normalizeText(user?.status || "Ativo") !== "ativo") return false;
   return Boolean(user?.permissions?.[permissionKey]);
 }
 

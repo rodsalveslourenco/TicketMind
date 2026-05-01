@@ -172,7 +172,7 @@ export function collectStateAuditLogs(previousState = {}, nextState = {}, actor 
         metadata: { userId: record.id, action: "create" },
       }),
     onUpdate: (previousRecord, nextRecord, push) => {
-      const profileChanges = summarizeChanges(previousRecord, nextRecord, ["name", "email", "role", "team", "department"]);
+      const profileChanges = summarizeChanges(previousRecord, nextRecord, ["name", "email", "role", "team", "department", "status", "permissionProfileId"]);
       if (profileChanges.length) {
         push({
           module: "usuarios",
@@ -182,7 +182,7 @@ export function collectStateAuditLogs(previousState = {}, nextState = {}, actor 
         });
       }
 
-      const permissionChanges = summarizeChanges(previousRecord, nextRecord, ["permissions"]);
+      const permissionChanges = summarizeChanges(previousRecord, nextRecord, ["permissions", "additionalPermissions", "restrictedPermissions"]);
       if (permissionChanges.length) {
         push({
           module: "usuarios",
@@ -199,6 +199,63 @@ export function collectStateAuditLogs(previousState = {}, nextState = {}, actor 
         eventType: "exclusao",
         description: `Usuario excluido: ${record.name} (${record.email})`,
         metadata: { userId: record.id, action: "delete" },
+        status: "alerta",
+      }),
+  });
+
+  diffCollection("locations", previousState.locations, nextState.locations, {
+    onCreate: (record, push) =>
+      push({
+        module: "localizacoes",
+        eventType: "inclusao",
+        description: `Localizacao criada: ${record.name}`,
+        metadata: { locationId: record.id, action: "create" },
+      }),
+    onUpdate: (previousRecord, nextRecord, push) => {
+      const changes = summarizeChanges(previousRecord, nextRecord, ["name", "code", "departmentId", "department", "status"]);
+      if (!changes.length) return;
+      push({
+        module: "localizacoes",
+        eventType: "alteracao",
+        description: `Localizacao atualizada: ${nextRecord.name}`,
+        metadata: { locationId: nextRecord.id, action: "update", changes },
+      });
+    },
+    onDelete: (record, push) =>
+      push({
+        module: "localizacoes",
+        eventType: "exclusao",
+        description: `Localizacao excluida: ${record.name}`,
+        metadata: { locationId: record.id, action: "delete" },
+        status: "alerta",
+      }),
+  });
+
+  diffCollection("permissionProfiles", previousState.permissionProfiles, nextState.permissionProfiles, {
+    onCreate: (record, push) =>
+      push({
+        module: "perfis",
+        eventType: "inclusao",
+        description: `Perfil criado: ${record.name}`,
+        metadata: { profileId: record.id, action: "create" },
+      }),
+    onUpdate: (previousRecord, nextRecord, push) => {
+      const changes = summarizeChanges(previousRecord, nextRecord, ["name", "description", "status", "permissions"]);
+      if (!changes.length) return;
+      push({
+        module: "perfis",
+        eventType: changes.some((change) => change.field === "permissions") ? "permissao" : "alteracao",
+        description: `Perfil atualizado: ${nextRecord.name}`,
+        metadata: { profileId: nextRecord.id, action: "update", changes },
+        status: changes.some((change) => change.field === "permissions") ? "alerta" : "sucesso",
+      });
+    },
+    onDelete: (record, push) =>
+      push({
+        module: "perfis",
+        eventType: "exclusao",
+        description: `Perfil excluido: ${record.name}`,
+        metadata: { profileId: record.id, action: "delete" },
         status: "alerta",
       }),
   });
@@ -237,6 +294,7 @@ export function collectStateAuditLogs(previousState = {}, nextState = {}, actor 
     "apiConfigs",
     "emailLayouts",
     "departments",
+    "navigationSections",
   ]);
 
   configChanges.forEach((change) => {

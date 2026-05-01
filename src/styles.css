@@ -1531,6 +1531,16 @@ textarea:focus {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
 }
 
+.user-card-open {
+  width: 100%;
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
 .user-identity {
   display: grid;
   gap: 0.18rem;
@@ -1579,6 +1589,15 @@ textarea:focus {
 
 .user-open-hint {
   font-weight: 700;
+}
+
+.user-quick-actions {
+  justify-content: flex-end;
+}
+
+.permission-override-card {
+  display: grid;
+  gap: 1rem;
 }
 
 .priority-line-critica {
