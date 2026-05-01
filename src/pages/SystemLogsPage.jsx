@@ -20,6 +20,70 @@ const eventTypeOptions = [
 
 const statusOptions = ["sucesso", "alerta", "erro"];
 
+const FIELD_LABELS = {
+  name: "nome",
+  email: "email",
+  role: "perfil",
+  team: "equipe",
+  department: "departamento",
+  status: "status",
+  permissionProfileId: "perfil de permissao",
+  permissions: "permissoes",
+  additionalPermissions: "permissoes adicionais",
+  restrictedPermissions: "restricoes de permissao",
+  code: "codigo",
+  departmentId: "departamento vinculado",
+  description: "descricao",
+  smtpSettings: "configuracao SMTP",
+  emailServiceSettings: "servico de e-mail",
+  apiConfigs: "integracoes de API",
+  emailLayouts: "layouts de e-mail",
+  departments: "departamentos",
+  navigationSections: "menus e navegacao",
+  active: "ativo",
+  recipientUserIds: "destinatarios internos",
+  externalEmails: "destinatarios externos",
+  layoutId: "layout vinculado",
+};
+
+const MODULE_LABELS = {
+  autenticacao: "Autenticacao",
+  seguranca: "Seguranca",
+  usuarios: "Usuarios",
+  localizacoes: "Localizacoes",
+  perfis: "Perfis de permissao",
+  configuracoes: "Configuracoes",
+  chamados: "Chamados",
+  notificacoes: "Notificacoes",
+};
+
+const EVENT_LABELS = {
+  erro: "Erro",
+  falha: "Falha",
+  inclusao: "Criacao",
+  alteracao: "Alteracao",
+  exclusao: "Exclusao",
+  login: "Login",
+  permissao: "Permissao",
+  chamado: "Chamado",
+  notificacao: "Notificacao",
+  configuracao: "Configuracao",
+};
+
+const STATUS_LABELS = {
+  sucesso: "Sucesso",
+  alerta: "Atencao",
+  erro: "Erro",
+};
+
+function getTodayDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function toDateInputValue(value) {
   return value ? String(value).slice(0, 10) : "";
 }
@@ -32,13 +96,61 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+function formatTime(value) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatFieldLabel(field) {
+  return FIELD_LABELS[field] || String(field || "").replace(/([A-Z])/g, " $1").toLowerCase().trim();
+}
+
+function formatModuleLabel(module) {
+  return MODULE_LABELS[module] || String(module || "").trim() || "-";
+}
+
+function formatEventLabel(eventType) {
+  return EVENT_LABELS[eventType] || String(eventType || "").trim() || "-";
+}
+
+function formatStatusLabel(status) {
+  return STATUS_LABELS[status] || String(status || "").trim() || "-";
+}
+
+function summarizeChangeList(changes = []) {
+  const labels = changes.map((change) => formatFieldLabel(change.field)).filter(Boolean);
+  if (!labels.length) return "";
+  return `Campos alterados: ${labels.join(", ")}.`;
+}
+
 function summarizeMetadata(metadata) {
   if (!metadata || typeof metadata !== "object") return "";
-  const entries = Object.entries(metadata)
-    .filter(([, value]) => value !== null && value !== undefined && value !== "")
-    .slice(0, 3)
-    .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`);
-  return entries.join(" | ");
+  if (Array.isArray(metadata.changes) && metadata.changes.length) {
+    return summarizeChangeList(metadata.changes);
+  }
+  if (Array.isArray(metadata) && metadata.length && metadata[0]?.field) {
+    return summarizeChangeList(metadata);
+  }
+  if (metadata.reason === "user_inactive") {
+    return "Tentativa bloqueada porque o usuario esta inativo.";
+  }
+  if (metadata.reason === "invalid_credentials") {
+    return "Tentativa rejeitada por credenciais invalidas.";
+  }
+  if (metadata.route || metadata.method) {
+    return `Origem tecnica: ${String(metadata.method || "").toUpperCase()} ${metadata.route || ""}`.trim();
+  }
+  if (metadata.field && Array.isArray(metadata.changes) && metadata.changes.length) {
+    return `Configuracao afetada: ${formatFieldLabel(metadata.field)}. ${summarizeChangeList(metadata.changes)}`;
+  }
+  if (metadata.action === "create") return "Registro criado.";
+  if (metadata.action === "update") return "Registro atualizado.";
+  if (metadata.action === "delete") return "Registro removido.";
+  if (metadata.action === "permissions") return "Permissoes revisadas.";
+  return "";
 }
 
 function buildQueryString(filters, page, limit) {
@@ -71,8 +183,8 @@ function SystemLogsPage() {
   const { user } = useAuth();
   const { departments, pushToast, users } = useAppData();
   const [filters, setFilters] = useState({
-    startDate: "",
-    endDate: "",
+    startDate: getTodayDateString(),
+    endDate: getTodayDateString(),
     user: "",
     department: "",
     module: "",
@@ -144,8 +256,8 @@ function SystemLogsPage() {
 
   const handleClearFilters = () => {
     setFilters({
-      startDate: "",
-      endDate: "",
+      startDate: getTodayDateString(),
+      endDate: getTodayDateString(),
       user: "",
       department: "",
       module: "",
@@ -162,7 +274,7 @@ function SystemLogsPage() {
         <div>
           <span className="eyebrow">Configuracoes</span>
           <h2>Auditoria e Acessos</h2>
-          <p className="module-caption">Rastreia logins, permissoes, falhas operacionais e mudancas sensiveis com origem e contexto.</p>
+          <p className="module-caption">Resumo legivel das acoes de hoje, com foco em quem fez, o que ocorreu e se houve alerta.</p>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -188,7 +300,7 @@ function SystemLogsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Filtros e busca</h2>
-            <span>Os resultados priorizam acesso, seguranca e alteracoes sensiveis em ordem cronologica reversa.</span>
+            <span>A tela abre mostrando os eventos de hoje. Use os filtros para investigar periodos anteriores.</span>
           </div>
           <div className="toolbar">
             <button className="ghost-button interactive-button" onClick={handleClearFilters} type="button">
@@ -201,7 +313,7 @@ function SystemLogsPage() {
           <div className="dashboard-filter-grid system-logs-filter-grid">
             <label>
               <span>Busca geral</span>
-              <input className="toolbar-search" onChange={updateFilter("search")} placeholder="Usuario, modulo, origem, rota ou descricao" value={filters.search} />
+              <input className="toolbar-search" onChange={updateFilter("search")} placeholder="Usuario, modulo ou descricao do ocorrido" value={filters.search} />
             </label>
             <label>
               <span>Periodo inicial</span>
@@ -274,7 +386,7 @@ function SystemLogsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Eventos registrados</h2>
-            <span>{loading ? "Carregando registros..." : `${logs.length} itens nesta pagina`}</span>
+            <span>{loading ? "Carregando registros..." : `${logs.length} ocorrencias nesta pagina`}</span>
           </div>
           <div className="toolbar">
             <label className="system-logs-page-size">
@@ -303,16 +415,16 @@ function SystemLogsPage() {
               <article className="table-row system-log-row" key={entry.id}>
                 <div className="system-log-main">
                   <div className="system-log-head">
-                    <strong>{formatDateTime(entry.occurredAt)}</strong>
-                    <span className={`badge ${getStatusBadgeClass(entry.status)}`}>{entry.status}</span>
-                    <span className="badge badge-neutral">{entry.eventType}</span>
-                    <span className="badge badge-neutral">{entry.module}</span>
+                    <strong>{formatTime(entry.occurredAt)}</strong>
+                    <span className={`badge ${getStatusBadgeClass(entry.status)}`}>{formatStatusLabel(entry.status)}</span>
+                    <span className="badge badge-neutral">{formatEventLabel(entry.eventType)}</span>
+                    <span className="badge badge-neutral">{formatModuleLabel(entry.module)}</span>
                   </div>
                   <p className="system-log-description">{entry.description}</p>
                   <div className="row-stats row-stats-wrap">
                     <span>{entry.userName || "Sistema"}</span>
-                    <span>{entry.userDepartment || "-"}</span>
-                    <span>{entry.origin || "-"}</span>
+                    <span>{entry.userDepartment || "Sem departamento"}</span>
+                    <span>{formatDateTime(entry.occurredAt)}</span>
                   </div>
                   {summarizeMetadata(entry.metadata) ? (
                     <p className="system-log-metadata">{summarizeMetadata(entry.metadata)}</p>
