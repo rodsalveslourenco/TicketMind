@@ -366,17 +366,10 @@ function hydratePermissionProfiles(storedProfiles) {
         normalizedStored.find((profile) => profile.name === defaultProfile.name) ||
         null;
       if (!storedProfile) return defaultProfile;
-      if (storedProfile.permissions === "ALL" || defaultProfile.permissions === "ALL") {
-        return {
-          ...defaultProfile,
-          ...storedProfile,
-          permissions: storedProfile.permissions === "ALL" ? "ALL" : defaultProfile.permissions,
-        };
-      }
       return {
         ...defaultProfile,
         ...storedProfile,
-        permissions: Array.from(new Set([...(defaultProfile.permissions || []), ...(storedProfile.permissions || [])])),
+        permissions: storedProfile.permissions === "ALL" ? "ALL" : [...(storedProfile.permissions || [])],
       };
     })
     .concat(normalizedStored.filter((profile) => !normalizedDefaults.some((candidate) => candidate.id === profile.id)))
