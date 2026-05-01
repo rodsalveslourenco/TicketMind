@@ -151,6 +151,7 @@ function hydrateServiceCenter(storedConfig, departments = []) {
 }
 
 function syncUserDepartment(candidate, departments) {
+  if (!candidate || typeof candidate !== "object") return null;
   const departmentMatch = findDepartmentMatch(departments, candidate);
   return {
     ...candidate,
