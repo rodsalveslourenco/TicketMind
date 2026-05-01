@@ -21,6 +21,7 @@ import DepartmentsPage from "./pages/DepartmentsPage";
 import LocationsPage from "./pages/LocationsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import EmailLayoutsPage from "./pages/EmailLayoutsPage";
+import SystemLogsPage from "./pages/SystemLogsPage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -58,6 +59,7 @@ function App() {
         <Route element={<ProtectedRoute moduleKey="users"><DepartmentsPage /></ProtectedRoute>} path="departments" />
         <Route element={<ProtectedRoute moduleKey="notifications"><NotificationsPage /></ProtectedRoute>} path="notifications" />
         <Route element={<ProtectedRoute moduleKey="email_layouts"><EmailLayoutsPage /></ProtectedRoute>} path="email-layouts" />
+        <Route element={<ProtectedRoute moduleKey="system_logs"><SystemLogsPage /></ProtectedRoute>} path="system-logs" />
       </Route>
       <Route
         element={<Navigate replace to={isAuthenticated ? homePath : "/login"} />}

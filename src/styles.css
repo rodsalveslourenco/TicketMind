@@ -4027,6 +4027,49 @@ textarea:focus {
   gap: 0.5rem;
 }
 
+.system-logs-filter-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.system-log-row {
+  align-items: flex-start;
+}
+
+.system-log-main {
+  display: grid;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.system-log-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.system-log-description {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.system-logs-page-size {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 150px;
+}
+
+.system-logs-page-size span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.system-logs-pagination {
+  justify-content: space-between;
+}
+
 .settings-placeholder-panel {
   display: grid;
   gap: 0.75rem;
@@ -4082,4 +4125,20 @@ textarea:focus {
 .inline-toggle input {
   width: 14px;
   height: 14px;
+}
+
+@media (max-width: 1100px) {
+  .system-logs-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .system-logs-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-logs-pagination {
+    align-items: stretch;
+  }
 }

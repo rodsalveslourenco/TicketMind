@@ -424,6 +424,19 @@ async function getSqliteDb() {
           updated_at TEXT NOT NULL,
           FOREIGN KEY (department_id) REFERENCES departments(id)
         );
+        CREATE TABLE IF NOT EXISTS system_logs (
+          id TEXT PRIMARY KEY,
+          occurred_at TEXT NOT NULL,
+          user_id TEXT,
+          user_name TEXT NOT NULL,
+          user_department TEXT NOT NULL,
+          module TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          description TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          status TEXT NOT NULL,
+          metadata TEXT NOT NULL
+        );
       `);
       return db;
     })();
@@ -444,6 +457,29 @@ function parseJson(value, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function toIsoString(value) {
+  if (!value) return "";
+  if (value instanceof Date) return value.toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function mapSystemLogRow(row = {}) {
+  return {
+    id: String(row.id || "").trim(),
+    occurredAt: toIsoString(row.occurred_at || row.occurredAt),
+    userId: String(row.user_id || row.userId || "").trim(),
+    userName: String(row.user_name || row.userName || "").trim(),
+    userDepartment: String(row.user_department || row.userDepartment || "").trim(),
+    module: String(row.module || "").trim(),
+    eventType: String(row.event_type || row.eventType || "").trim(),
+    description: String(row.description || "").trim(),
+    origin: String(row.origin || "").trim(),
+    status: String(row.status || "").trim(),
+    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : parseJson(row.metadata, {}),
+  };
 }
 
 async function readSqliteStateRaw() {
@@ -663,6 +699,19 @@ async function ensurePgSchema() {
       permissions JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id TEXT PRIMARY KEY,
+      occurred_at TIMESTAMPTZ NOT NULL,
+      user_id TEXT,
+      user_name TEXT NOT NULL,
+      user_department TEXT NOT NULL,
+      module TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      status TEXT NOT NULL,
+      metadata JSONB NOT NULL
     )
   `);
 }
@@ -876,6 +925,186 @@ async function loadBootstrapState() {
   return buildStateDefaults({});
 }
 
+async function insertSqliteSystemLog(entry) {
+  const db = await getSqliteDb();
+  db.run(
+    `
+      INSERT INTO system_logs (
+        id, occurred_at, user_id, user_name, user_department, module, event_type, description, origin, status, metadata
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      entry.id,
+      entry.occurredAt,
+      entry.userId || null,
+      entry.userName,
+      entry.userDepartment,
+      entry.module,
+      entry.eventType,
+      entry.description,
+      entry.origin,
+      entry.status,
+      JSON.stringify(entry.metadata || {}),
+    ],
+  );
+  await persistSqliteDb(db);
+}
+
+async function querySqliteSystemLogs(filters = {}) {
+  const db = await getSqliteDb();
+  const conditions = [];
+  const params = [];
+
+  const addEqualsFilter = (column, value) => {
+    if (!String(value || "").trim()) return;
+    conditions.push(`LOWER(${column}) = LOWER(?)`);
+    params.push(String(value).trim());
+  };
+
+  if (filters.startDate) {
+    conditions.push("occurred_at >= ?");
+    params.push(String(filters.startDate));
+  }
+  if (filters.endDate) {
+    conditions.push("occurred_at <= ?");
+    params.push(String(filters.endDate));
+  }
+
+  addEqualsFilter("user_name", filters.user);
+  addEqualsFilter("user_department", filters.department);
+  addEqualsFilter("module", filters.module);
+  addEqualsFilter("event_type", filters.eventType);
+  addEqualsFilter("status", filters.status);
+
+  const search = String(filters.search || "").trim().toLowerCase();
+  if (search) {
+    conditions.push("(LOWER(description) LIKE ? OR LOWER(user_name) LIKE ? OR LOWER(module) LIKE ? OR LOWER(event_type) LIKE ?)");
+    const likeValue = `%${search}%`;
+    params.push(likeValue, likeValue, likeValue, likeValue);
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const countResult = db.exec(`SELECT COUNT(*) AS total FROM system_logs ${whereClause}`, params);
+  const total = Number(countResult?.[0]?.values?.[0]?.[0] || 0);
+  const limit = Math.max(1, Math.min(Number(filters.limit) || 25, 100));
+  const page = Math.max(1, Number(filters.page) || 1);
+  const offset = (page - 1) * limit;
+  const rowsResult = db.exec(
+    `
+      SELECT id, occurred_at, user_id, user_name, user_department, module, event_type, description, origin, status, metadata
+      FROM system_logs
+      ${whereClause}
+      ORDER BY occurred_at DESC
+      LIMIT ? OFFSET ?
+    `,
+    [...params, limit, offset],
+  );
+  const table = rowsResult[0];
+  const rows =
+    table?.values?.map((valueRow) =>
+      table.columns.reduce((accumulator, column, index) => ({ ...accumulator, [column]: valueRow[index] }), {}),
+    ) || [];
+
+  return {
+    items: rows.map(mapSystemLogRow),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
+
+async function insertPostgresSystemLog(entry) {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  await pool.query(
+    `
+      INSERT INTO system_logs (
+        id, occurred_at, user_id, user_name, user_department, module, event_type, description, origin, status, metadata
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+    `,
+    [
+      entry.id,
+      entry.occurredAt,
+      entry.userId || null,
+      entry.userName,
+      entry.userDepartment,
+      entry.module,
+      entry.eventType,
+      entry.description,
+      entry.origin,
+      entry.status,
+      JSON.stringify(entry.metadata || {}),
+    ],
+  );
+}
+
+async function queryPostgresSystemLogs(filters = {}) {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const where = [];
+  const values = [];
+
+  const pushValue = (value) => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+
+  const addEqualsFilter = (column, value) => {
+    if (!String(value || "").trim()) return;
+    where.push(`LOWER(${column}) = LOWER(${pushValue(String(value).trim())})`);
+  };
+
+  if (filters.startDate) {
+    where.push(`occurred_at >= ${pushValue(String(filters.startDate))}`);
+  }
+  if (filters.endDate) {
+    where.push(`occurred_at <= ${pushValue(String(filters.endDate))}`);
+  }
+
+  addEqualsFilter("user_name", filters.user);
+  addEqualsFilter("user_department", filters.department);
+  addEqualsFilter("module", filters.module);
+  addEqualsFilter("event_type", filters.eventType);
+  addEqualsFilter("status", filters.status);
+
+  const search = String(filters.search || "").trim().toLowerCase();
+  if (search) {
+    const placeholder = pushValue(`%${search}%`);
+    where.push(`(LOWER(description) LIKE ${placeholder} OR LOWER(user_name) LIKE ${placeholder} OR LOWER(module) LIKE ${placeholder} OR LOWER(event_type) LIKE ${placeholder})`);
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const limit = Math.max(1, Math.min(Number(filters.limit) || 25, 100));
+  const page = Math.max(1, Number(filters.page) || 1);
+  const offset = (page - 1) * limit;
+  const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM system_logs ${whereClause}`, values);
+  const rowsResult = await pool.query(
+    `
+      SELECT id, occurred_at, user_id, user_name, user_department, module, event_type, description, origin, status, metadata
+      FROM system_logs
+      ${whereClause}
+      ORDER BY occurred_at DESC
+      LIMIT ${pushValue(limit)} OFFSET ${pushValue(offset)}
+    `,
+    values,
+  );
+
+  return {
+    items: rowsResult.rows.map(mapSystemLogRow),
+    pagination: {
+      page,
+      limit,
+      total: Number(countResult.rows[0]?.total || 0),
+      totalPages: Math.max(1, Math.ceil(Number(countResult.rows[0]?.total || 0) / limit)),
+    },
+  };
+}
+
 export async function readState() {
   if (!isPostgresEnabled()) {
     await migrateSqliteCollectionsIfNeeded();
@@ -901,6 +1130,23 @@ export async function writeState(nextState) {
     return writeSqliteState(nextState);
   }
   return writePostgresState(nextState);
+}
+
+export async function insertSystemLog(entry) {
+  if (!entry?.id) return null;
+  if (!isPostgresEnabled()) {
+    await insertSqliteSystemLog(entry);
+    return entry;
+  }
+  await insertPostgresSystemLog(entry);
+  return entry;
+}
+
+export async function querySystemLogs(filters = {}) {
+  if (!isPostgresEnabled()) {
+    return querySqliteSystemLogs(filters);
+  }
+  return queryPostgresSystemLogs(filters);
 }
 
 export function sanitizeSessionUser(user) {

@@ -231,6 +231,7 @@ export function canAccessModule(user, moduleConfigOrKey, permissionCatalog = def
       ? getModuleConfig(moduleConfigOrKey, permissionCatalog)
       : moduleConfigOrKey;
   if (!moduleConfig) return false;
+  if (moduleConfig.departmentScope === "ti" && !isTechnologyDepartment(user)) return false;
   return hasAnyPermission(user, moduleConfig.accessKeys || []);
 }
 
@@ -239,7 +240,11 @@ export function canViewOwnTickets(user) {
 }
 
 export function canViewAllTickets(user) {
-  return normalizeText(user?.department) === "ti" && hasAnyPermission(user, ["tickets_view_all", "tickets_admin"]);
+  return isTechnologyDepartment(user) && hasAnyPermission(user, ["tickets_view_all", "tickets_admin"]);
+}
+
+export function isTechnologyDepartment(user) {
+  return normalizeText(user?.department) === "ti";
 }
 
 export function getUserHomePath(user, navigationSections = defaultNavigationSections, permissionCatalog = defaultPermissionCatalog) {

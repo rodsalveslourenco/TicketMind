@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.log
 data/*.sqlite
+.tmp-db-test/

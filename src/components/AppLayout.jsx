@@ -89,6 +89,11 @@ const navigationIcons = {
       <path d="M3 4h14v12H3V4Zm2 2v1.2l5 3.5 5-3.5V6H5Zm10 8V9.1l-5 3.5-5-3.5V14h10Z" />
     </svg>
   ),
+  system_logs: (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M4 3h9l3 3v11H4V3Zm2 2v10h8V7h-3V4H6Zm1 4h6v1.5H7V9Zm0 3h6v1.5H7V12Z" />
+    </svg>
+  ),
 };
 
 function AppLayout() {

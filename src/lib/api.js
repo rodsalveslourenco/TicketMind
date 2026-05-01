@@ -1,3 +1,16 @@
+const SESSION_STORAGE_KEY = "ticketmind-session";
+
+function getSessionUserId() {
+  if (typeof window === "undefined") return "";
+  try {
+    const rawSession = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const session = rawSession ? JSON.parse(rawSession) : null;
+    return String(session?.userId || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function readJsonSafely(response) {
   const text = await response.text();
   if (!text) return null;
@@ -9,9 +22,11 @@ async function readJsonSafely(response) {
 }
 
 export async function requestJson(path, options = {}) {
+  const sessionUserId = getSessionUserId();
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
+      ...(sessionUserId ? { "x-user-id": sessionUserId } : {}),
       ...(options.headers || {}),
     },
     ...options,

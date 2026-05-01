@@ -183,6 +183,15 @@ export const defaultPermissionCatalog = [
       { key: "email_layouts_manage", label: "Acessar configuracoes", action: "settings" },
     ],
   },
+  {
+    module: "system_logs",
+    label: "Log Geral do Sistema",
+    description: "Auditoria centralizada de eventos, falhas, permissoes e configuracoes.",
+    order: 140,
+    departmentScope: "ti",
+    accessKeys: ["system_logs_view"],
+    permissions: [{ key: "system_logs_view", label: "Visualizar", action: "view" }],
+  },
 ];
 
 export const defaultNavigationSections = [
@@ -235,6 +244,7 @@ export const defaultNavigationSections = [
       { to: "/app/departments", label: "Departamentos", module: "users", icon: "users" },
       { to: "/app/notifications", label: "Notificacoes", module: "notifications", icon: "notifications" },
       { to: "/app/email-layouts", label: "Layouts de E-mail", module: "email_layouts", icon: "email_layouts" },
+      { to: "/app/system-logs", label: "Log Geral", module: "system_logs", icon: "system_logs" },
     ],
   },
 ];
@@ -306,6 +316,7 @@ export const defaultPermissionProfiles = [
       "email_layouts_edit",
       "email_layouts_delete",
       "email_layouts_manage",
+      "system_logs_view",
     ],
   },
   {
@@ -333,6 +344,7 @@ export const defaultPermissionProfiles = [
       "knowledge_view",
       "knowledge_create",
       "projects_view",
+      "system_logs_view",
     ],
   },
   {
@@ -370,6 +382,7 @@ export const defaultPermissionProfiles = [
       "brands_models_edit",
       "knowledge_view",
       "projects_view",
+      "system_logs_view",
     ],
   },
   {
