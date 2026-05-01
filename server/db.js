@@ -13,6 +13,7 @@ import {
   defaultNotificationEvents,
   defaultPermissionCatalog,
   defaultPermissionProfiles,
+  defaultServiceCenterSettings,
   defaultSmtpSettings,
 } from "../src/data/systemDefaults.js";
 
@@ -175,6 +176,10 @@ function buildStateDefaults(stored = {}) {
       stored.emailServiceSettings && typeof stored.emailServiceSettings === "object"
         ? { ...defaultEmailServiceSettings, ...stored.emailServiceSettings }
         : defaultEmailServiceSettings,
+    serviceCenter:
+      stored.serviceCenter && typeof stored.serviceCenter === "object"
+        ? { ...defaultServiceCenterSettings, ...stored.serviceCenter }
+        : defaultServiceCenterSettings,
     users: Array.isArray(stored.users) ? stored.users : [],
     departments: Array.isArray(stored.departments) ? stored.departments : [],
     locations: Array.isArray(stored.locations) ? stored.locations : [],

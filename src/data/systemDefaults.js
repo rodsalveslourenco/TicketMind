@@ -34,7 +34,14 @@ export const defaultPermissionCatalog = [
     label: "Chamados",
     description: "Atendimento, atualizacoes e governanca dos chamados.",
     order: 40,
-    accessKeys: ["tickets_view_own", "tickets_view_all", "tickets_admin"],
+    accessKeys: [
+      "tickets_view_own",
+      "tickets_view_all",
+      "tickets_admin",
+      "service_center_view_department_tickets",
+      "service_center_view_all_tickets",
+      "service_center_attend_linked_departments",
+    ],
     permissions: [
       { key: "tickets_view_own", label: "Visualizar proprios", action: "view" },
       { key: "tickets_view_all", label: "Visualizar todos", action: "view" },
@@ -161,6 +168,22 @@ export const defaultPermissionCatalog = [
     ],
   },
   {
+    module: "service_center",
+    label: "Central de Servicos",
+    description: "Ativacao da central compartilhada, departamentos atendentes e regras de encaminhamento.",
+    order: 112,
+    departmentScope: "ti",
+    accessKeys: ["service_center_manage", "service_center_departments_manage", "users_manage_permissions", "users_admin"],
+    permissions: [
+      { key: "service_center_manage", label: "Gerenciar Central de Servicos", action: "settings" },
+      { key: "service_center_departments_manage", label: "Cadastrar departamentos", action: "create" },
+      { key: "service_center_departments_toggle", label: "Ativar / inativar departamentos", action: "status" },
+      { key: "service_center_view_department_tickets", label: "Visualizar chamados de outros setores", action: "view" },
+      { key: "service_center_view_all_tickets", label: "Visualizar todos os chamados", action: "reports" },
+      { key: "service_center_attend_linked_departments", label: "Atender departamentos vinculados", action: "assign" },
+    ],
+  },
+  {
     module: "permission_profiles",
     label: "Perfis de Permissao",
     description: "Perfis reutilizaveis com permissoes por modulo, menu e acao.",
@@ -275,6 +298,7 @@ export const defaultNavigationSections = [
     items: [
       { to: "/app/api-rest", label: "API REST", module: "api_rest", icon: "api_rest" },
       { to: "/app/users", label: "Usuarios", module: "users", icon: "users" },
+      { to: "/app/service-center", label: "Central de Servicos", module: "service_center", icon: "service_center" },
       { to: "/app/permission-profiles", label: "Perfis de Permissao", module: "permission_profiles", icon: "users" },
       { to: "/app/departments", label: "Departamentos", module: "users", icon: "users" },
       { to: "/app/settings/locations", label: "Localizacoes", module: "settings_locations", icon: "assets" },
@@ -347,6 +371,12 @@ export const defaultPermissionProfiles = [
       "users_edit",
       "users_reset_password",
       "users_manage_permissions",
+      "service_center_manage",
+      "service_center_departments_manage",
+      "service_center_departments_toggle",
+      "service_center_view_department_tickets",
+      "service_center_view_all_tickets",
+      "service_center_attend_linked_departments",
       "notifications_view",
       "notifications_manage",
       "email_layouts_view",
@@ -377,6 +407,8 @@ export const defaultPermissionProfiles = [
       "tickets_change_status",
       "tickets_assign",
       "tickets_export",
+      "service_center_view_department_tickets",
+      "service_center_attend_linked_departments",
       "assets_view",
       "inventory_view",
       "knowledge_view",
@@ -404,6 +436,8 @@ export const defaultPermissionProfiles = [
       "tickets_change_priority",
       "tickets_change_status",
       "tickets_assign",
+      "service_center_view_department_tickets",
+      "service_center_attend_linked_departments",
       "assets_view",
       "assets_create",
       "assets_edit",
@@ -492,4 +526,10 @@ export const defaultEmailServiceSettings = {
   fromEmail: "",
   fromName: "",
   deliveryMode: "smtp",
+};
+
+export const defaultServiceCenterSettings = {
+  enabled: false,
+  departments: {},
+  updatedAt: "",
 };

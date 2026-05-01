@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
-import { canViewAllTickets as hasGlobalTicketView, hasAnyPermission } from "../data/permissions";
+import { hasAnyPermission } from "../data/permissions";
 import { PRIORITY_LEVELS, TICKET_STATUSES, normalizeText, toLocalDatetimeInput } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
 
@@ -10,6 +10,7 @@ const defaultCreateForm = {
   title: "",
   type: "Incidente",
   status: "Aberto",
+  departmentId: "",
   location: "",
   priority: "Media",
   urgency: "Media",
@@ -100,15 +101,18 @@ function TicketsPage() {
   const {
     addTicketAttachments,
     allTickets,
+    canViewAllTickets,
     createKnowledgeArticleFromTicket,
     createTicket,
     deleteTicket,
+    departments,
     knowledgeArticles,
     linkKnowledgeArticleToTicket,
     pushToast,
     removeTicketAttachment,
     searchKnowledgeArticles,
     searchTickets,
+    serviceCenter,
     tickets,
     updateTicket,
     users,
@@ -138,9 +142,74 @@ function TicketsPage() {
   const canChangeStatus = hasAnyPermission(user, ["tickets_change_status", "tickets_admin"]);
   const canManageAttachments = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canCreateKnowledge = hasAnyPermission(user, ["knowledge_create", "knowledge_admin"]);
-  const canSeeAllTickets = hasGlobalTicketView(user);
+  const canSeeAllTickets = Boolean(canViewAllTickets);
+  const serviceCenterEnabled = Boolean(serviceCenter?.enabled);
 
-  const tiUsers = useMemo(() => users.filter((candidate) => normalizeText(candidate.department) === "ti"), [users]);
+  const requestableDepartments = useMemo(
+    () =>
+      departments.filter((department) => {
+        const config = serviceCenter?.departments?.[department.id] || {};
+        return (
+          normalizeText(department.status) === "ativo" &&
+          Boolean(config.active) &&
+          (config.acceptsTickets !== undefined ? Boolean(config.acceptsTickets) : true) &&
+          Boolean(config.showInRequestPortal)
+        );
+      }),
+    [departments, serviceCenter],
+  );
+
+  const serviceDepartmentDirectory = useMemo(
+    () =>
+      departments.reduce(
+        (accumulator, department) => ({
+          ...accumulator,
+          [department.id]: {
+            ...department,
+            serviceConfig: serviceCenter?.departments?.[department.id] || {},
+          },
+        }),
+        {},
+      ),
+    [departments, serviceCenter],
+  );
+
+  const selectableDepartmentOptions = useMemo(() => {
+    if (!serviceCenterEnabled) {
+      return [
+        { id: "", name: "Service Desk" },
+        { id: "queue-infra", name: "Infraestrutura" },
+        { id: "queue-apps", name: "Aplicacoes" },
+        { id: "queue-security", name: "Seguranca" },
+      ];
+    }
+    return departments.filter((department) => {
+      const config = serviceCenter?.departments?.[department.id] || {};
+      return normalizeText(department.status) === "ativo" && Boolean(config.active);
+    });
+  }, [departments, serviceCenter, serviceCenterEnabled]);
+
+  const selectedCreateDepartment = serviceCenterEnabled
+    ? requestableDepartments.find((department) => department.id === createForm.departmentId) || null
+    : null;
+
+  const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
+  const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
+  const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
+
+  const assigneeUsers = useMemo(() => {
+    if (!serviceCenterEnabled) {
+      return users.filter((candidate) => normalizeText(candidate.department) === "ti");
+    }
+
+    const responsibleIds = Array.isArray(assigneeDepartment?.responsibleUserIds) ? assigneeDepartment.responsibleUserIds : [];
+    if (responsibleIds.length) {
+      return users.filter((candidate) => responsibleIds.includes(candidate.id));
+    }
+
+    if (!currentDetailDepartmentId) return [];
+    return users.filter((candidate) => candidate.departmentId === currentDetailDepartmentId);
+  }, [assigneeDepartment, currentDetailDepartmentId, serviceCenterEnabled, users]);
 
   useEffect(() => {
     setSearch(searchParams.get("q") || "");
@@ -149,10 +218,13 @@ function TicketsPage() {
   useEffect(() => {
     if (searchParams.get("new") === "1" && canCreateTicket) {
       setShowCreateForm(true);
-      setCreateForm(getFreshCreateForm());
+      setCreateForm({
+        ...getFreshCreateForm(),
+        departmentId: serviceCenterEnabled && requestableDepartments.length ? requestableDepartments[0].id : "",
+      });
       setCreateKnowledgeQuery("");
     }
-  }, [canCreateTicket, searchParams]);
+  }, [canCreateTicket, requestableDepartments, searchParams, serviceCenterEnabled]);
 
   const filteredTickets = useMemo(() => {
     let currentTickets = searchTickets(search, tickets);
@@ -226,6 +298,8 @@ function TicketsPage() {
       resolutionNotes: detailTicket.resolutionNotes || "",
       type: detailTicket.type,
       status: detailTicket.status,
+      departmentId: detailTicket.departmentId || "",
+      department: detailTicket.department || "",
       queue: detailTicket.queue,
       requester: detailTicket.requester,
       requesterEmail: detailTicket.requesterEmail || "",
@@ -256,7 +330,16 @@ function TicketsPage() {
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [showCreateForm]);
 
-  if (!hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"])) {
+  if (
+    !hasAnyPermission(user, [
+      "tickets_view_own",
+      "tickets_view_all",
+      "tickets_admin",
+      "service_center_view_department_tickets",
+      "service_center_view_all_tickets",
+      "service_center_attend_linked_departments",
+    ])
+  ) {
     return <Navigate replace to="/app/dashboard" />;
   }
 
@@ -280,7 +363,8 @@ function TicketsPage() {
   };
 
   const handleOpenCreateModal = () => {
-    setCreateForm(getFreshCreateForm());
+    const nextDepartmentId = serviceCenterEnabled && requestableDepartments.length ? requestableDepartments[0].id : "";
+    setCreateForm({ ...getFreshCreateForm(), departmentId: nextDepartmentId });
     setWatcherQuery("");
     setCreateKnowledgeQuery("");
     setShowCreateForm(true);
@@ -305,19 +389,30 @@ function TicketsPage() {
   const handleCreateSubmit = (event) => {
     event.preventDefault();
     if (!createForm.title || !user?.name || !createForm.description) return;
+    if (serviceCenterEnabled && !createForm.departmentId) {
+      pushToast("Departamento obrigatorio", "Selecione um departamento para abrir o chamado.", "warning");
+      return;
+    }
 
-    createTicket({
+    const createdTicket = createTicket({
       ...createForm,
       requester: user.name,
       requesterId: user.id,
       requesterEmail: user.email,
-      queue: "Service Desk",
+      queue: selectedCreateDepartment?.name || "Service Desk",
+      departmentId: createForm.departmentId,
+      department: selectedCreateDepartment?.name || "",
       category: "Geral",
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
-      assignee: "Triagem TI",
+      assignee: "",
       openedAt: toIsoOrEmpty(createForm.openedAt) || new Date().toISOString(),
     });
+
+    if (!createdTicket) {
+      pushToast("Falha ao abrir chamado", "Revise a configuracao do departamento selecionado.", "warning");
+      return;
+    }
 
     pushToast("Chamado aberto", createForm.title);
     handleCloseCreateModal();
@@ -364,15 +459,21 @@ function TicketsPage() {
             <span>tickets visiveis</span>
           </div>
           <div className="insight-chip">
-            <strong>{allTickets.filter((ticket) => ticket.dueSoon || ticket.isOverdue).length}</strong>
+            <strong>{tickets.filter((ticket) => ticket.dueSoon || ticket.isOverdue).length}</strong>
             <span>alertas de SLA</span>
           </div>
           <div className="insight-chip">
-            <strong>{users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
-            <span>tecnicos TI</span>
+            <strong>{serviceCenterEnabled ? requestableDepartments.length : users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
+            <span>{serviceCenterEnabled ? "departamentos de abertura" : "tecnicos TI"}</span>
           </div>
         </div>
-        {!canSeeAllTickets ? <p className="module-caption">Visualizacao restrita aos seus proprios chamados.</p> : null}
+        {!canSeeAllTickets ? (
+          <p className="module-caption">
+            {serviceCenterEnabled
+              ? "Visualizacao restrita aos seus chamados e aos departamentos em que voce atua, conforme permissao."
+              : "Visualizacao restrita aos seus proprios chamados."}
+          </p>
+        ) : null}
       </section>
 
       <section className="board-card glpi-panel">
@@ -505,6 +606,30 @@ function TicketsPage() {
                     <option>Problema</option>
                   </select>
                 </label>
+                {serviceCenterEnabled ? (
+                  <div className="field-block field-full">
+                    <span>Departamento de destino</span>
+                    <div className="service-request-grid">
+                      {requestableDepartments.map((department) => (
+                        <button
+                          className={`service-request-card interactive-button${createForm.departmentId === department.id ? " is-selected" : ""}`}
+                          key={department.id}
+                          onClick={() => setCreateForm((current) => ({ ...current, departmentId: department.id }))}
+                          type="button"
+                        >
+                          <strong>Chamado para {department.name}</strong>
+                          <span>{department.code || "SEM-CODIGO"}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {!requestableDepartments.length ? (
+                      <div className="empty-state">
+                        <strong>Nenhum departamento disponivel.</strong>
+                        <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="field-block">
                   <span>Solicitante</span>
                   <div className="requester-stamp">
@@ -719,13 +844,38 @@ function TicketsPage() {
                   </select>
                 </label>
                 <label className="field-block">
-                  <span>Fila</span>
-                  <select disabled={!canEditTicket} onChange={updateDetailField("queue")} value={detailForm.queue}>
-                    <option>Service Desk</option>
-                    <option>Infraestrutura</option>
-                    <option>Aplicacoes</option>
-                    <option>Seguranca</option>
-                  </select>
+                  <span>{serviceCenterEnabled ? "Departamento de atendimento" : "Fila"}</span>
+                  {serviceCenterEnabled ? (
+                    <select
+                      disabled={!canEditTicket}
+                      onChange={(event) => {
+                        const nextDepartmentId = event.target.value;
+                        const nextDepartment = serviceDepartmentDirectory[nextDepartmentId] || null;
+                        setDetailForm((current) => ({
+                          ...current,
+                          departmentId: nextDepartmentId,
+                          department: nextDepartment?.name || "",
+                          queue: nextDepartment?.name || current.queue,
+                          assignee: "",
+                        }));
+                      }}
+                      value={detailForm.departmentId || ""}
+                    >
+                      <option value="">Selecione</option>
+                      {selectableDepartmentOptions.map((department) => (
+                        <option key={department.id || department.name} value={department.id || ""}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select disabled={!canEditTicket} onChange={updateDetailField("queue")} value={detailForm.queue}>
+                      <option>Service Desk</option>
+                      <option>Infraestrutura</option>
+                      <option>Aplicacoes</option>
+                      <option>Seguranca</option>
+                    </select>
+                  )}
                 </label>
                 <label className="field-block">
                   <span>Solicitante</span>
@@ -791,11 +941,15 @@ function TicketsPage() {
                 <label className="field-block">
                   <span>Tecnico responsavel</span>
                   <UserAutocomplete
-                    filterFn={(candidate) => normalizeText(candidate.department) === "ti"}
+                    filterFn={(candidate) =>
+                      serviceCenterEnabled
+                        ? assigneeUsers.some((assigneeCandidate) => assigneeCandidate.id === candidate.id)
+                        : normalizeText(candidate.department) === "ti"
+                    }
                     disabled={!canAssignTicket}
                     onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
-                    placeholder="Comece a digitar um tecnico de TI"
-                    users={tiUsers}
+                    placeholder={serviceCenterEnabled ? "Comece a digitar um responsavel do departamento" : "Comece a digitar um tecnico de TI"}
+                    users={assigneeUsers}
                     value={detailForm.assignee || ""}
                   />
                 </label>

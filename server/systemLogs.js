@@ -140,6 +140,8 @@ export function collectStateAuditLogs(previousState = {}, nextState = {}, actor 
         "priority",
         "assignee",
         "queue",
+        "departmentId",
+        "department",
         "category",
         "location",
         "resolutionNotes",
@@ -294,17 +296,24 @@ export function collectStateAuditLogs(previousState = {}, nextState = {}, actor 
     "apiConfigs",
     "emailLayouts",
     "departments",
+    "serviceCenter",
     "navigationSections",
   ]);
 
   configChanges.forEach((change) => {
+    const isServiceCenter = change.field === "serviceCenter";
     register({
-      module: "configuracoes",
+      module: isServiceCenter ? "central_servicos" : "configuracoes",
       eventType:
-        change.field === "emailLayouts" || change.field === "smtpSettings" || change.field === "emailServiceSettings"
+        isServiceCenter ||
+        change.field === "emailLayouts" ||
+        change.field === "smtpSettings" ||
+        change.field === "emailServiceSettings"
           ? "configuracao"
           : "alteracao",
-      description: `Configuracao alterada em ${change.field}`,
+      description: isServiceCenter
+        ? "Configuracao da Central de Servicos alterada"
+        : `Configuracao alterada em ${change.field}`,
       metadata: { field: change.field, changes: cleanObject([change]) },
     });
   });

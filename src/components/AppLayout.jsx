@@ -79,6 +79,11 @@ const navigationIcons = {
       <path d="M7 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm6 1a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM2 16a5 5 0 0 1 10 0v1H2v-1Zm11-1a4 4 0 0 1 5 2h-5v-2Z" />
     </svg>
   ),
+  service_center: (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M4 4h5v5H4V4Zm7 0h5v5h-5V4ZM4 11h5v5H4v-5Zm10-1.5 1.2 1.2-2.7 2.7L11 11.9l-1.1 1.1 2.6 2.6 3.5-3.5-2-2Z" />
+    </svg>
+  ),
   notifications: (
     <svg aria-hidden="true" viewBox="0 0 20 20">
       <path d="M10 3a4 4 0 0 1 4 4v2.6c0 .8.3 1.6.8 2.2l1.2 1.4V15H4v-1.8l1.2-1.4c.5-.6.8-1.4.8-2.2V7a4 4 0 0 1 4-4Zm0 14a2.5 2.5 0 0 0 2.4-2H7.6A2.5 2.5 0 0 0 10 17Z" />

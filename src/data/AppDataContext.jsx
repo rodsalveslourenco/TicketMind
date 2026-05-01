@@ -19,6 +19,7 @@ import {
   defaultNotificationEvents,
   defaultPermissionCatalog,
   defaultPermissionProfiles,
+  defaultServiceCenterSettings,
   defaultSmtpSettings,
 } from "./systemDefaults";
 import { assetTypeOptions } from "./assetCatalog";
@@ -106,6 +107,18 @@ function sanitizeDepartmentPayload(payload, currentDepartment = {}) {
   };
 }
 
+function sanitizeServiceCenterDepartmentConfig(payload, currentConfig = {}) {
+  const nowIso = new Date().toISOString();
+  return {
+    active: Boolean(payload.active),
+    acceptsTickets: payload.acceptsTickets !== undefined ? Boolean(payload.acceptsTickets) : true,
+    showInRequestPortal: Boolean(payload.showInRequestPortal),
+    responsibleUserIds: Array.isArray(payload.responsibleUserIds) ? Array.from(new Set(payload.responsibleUserIds.filter(Boolean))) : [],
+    createdAt: currentConfig.createdAt || payload.createdAt || nowIso,
+    updatedAt: payload.updatedAt || nowIso,
+  };
+}
+
 function hydrateDepartments(storedDepartments) {
   return (Array.isArray(storedDepartments) ? storedDepartments : [])
     .map((department) => ({
@@ -114,6 +127,27 @@ function hydrateDepartments(storedDepartments) {
     }))
     .filter((department) => department.id && department.name)
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function hydrateServiceCenter(storedConfig, departments = []) {
+  const rawConfig = storedConfig && typeof storedConfig === "object" ? storedConfig : {};
+  const rawDepartments = rawConfig.departments && typeof rawConfig.departments === "object" ? rawConfig.departments : {};
+
+  const departmentsConfig = departments.reduce((accumulator, department) => {
+    const storedDepartmentConfig = rawDepartments[department.id] && typeof rawDepartments[department.id] === "object" ? rawDepartments[department.id] : {};
+    return {
+      ...accumulator,
+      [department.id]: sanitizeServiceCenterDepartmentConfig(storedDepartmentConfig, storedDepartmentConfig),
+    };
+  }, {});
+
+  return {
+    ...defaultServiceCenterSettings,
+    ...rawConfig,
+    enabled: Boolean(rawConfig.enabled),
+    departments: departmentsConfig,
+    updatedAt: String(rawConfig.updatedAt || "").trim(),
+  };
 }
 
 function syncUserDepartment(candidate, departments) {
@@ -519,16 +553,55 @@ function hydrateEmailServiceSettings(storedSettings) {
   };
 }
 
-function filterTicketsForUser(tickets, user) {
-  if (!user) return [];
-  if (canViewAllTickets(user)) return tickets;
-  if (!canViewOwnTickets(user)) return [];
-  return tickets.filter((ticket) => ticket.requesterId === user.id);
+function getServiceCenterDepartmentConfig(serviceCenter = defaultServiceCenterSettings, departmentId = "") {
+  const normalizedDepartmentId = String(departmentId || "").trim();
+  if (!normalizedDepartmentId) return sanitizeServiceCenterDepartmentConfig({}, {});
+  return sanitizeServiceCenterDepartmentConfig(serviceCenter?.departments?.[normalizedDepartmentId] || {}, serviceCenter?.departments?.[normalizedDepartmentId] || {});
 }
 
-function canAccessTicket(ticket, user) {
+function getLinkedServiceDepartmentIds(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
+  if (!user?.id) return [];
+  return departments
+    .filter((department) => {
+      const config = getServiceCenterDepartmentConfig(serviceCenter, department.id);
+      return config.active && config.responsibleUserIds.includes(user.id);
+    })
+    .map((department) => department.id);
+}
+
+function canViewAllTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
+  if (!user) return false;
+  if (!serviceCenter?.enabled) return canViewAllTickets(user);
+  return hasAnyPermission(user, ["tickets_admin", "service_center_view_all_tickets"]) || canViewAllTickets(user);
+}
+
+function canViewDepartmentTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
+  if (!user || !serviceCenter?.enabled) return false;
+  if (!hasAnyPermission(user, ["service_center_view_department_tickets", "service_center_attend_linked_departments", "tickets_admin"])) {
+    return false;
+  }
+  return getLinkedServiceDepartmentIds(user, departments, serviceCenter).length > 0;
+}
+
+function filterTicketsForUser(tickets, user, departments = [], serviceCenter = defaultServiceCenterSettings) {
+  if (!user) return [];
+  if (canViewAllTicketsForContext(user, departments, serviceCenter)) return tickets;
+  const linkedDepartmentIds = new Set(getLinkedServiceDepartmentIds(user, departments, serviceCenter));
+  const canViewDepartmentTickets = canViewDepartmentTicketsForContext(user, departments, serviceCenter);
+  if (!canViewOwnTickets(user) && !canViewDepartmentTickets) return [];
+  return tickets.filter((ticket) => {
+    if (canViewOwnTickets(user) && ticket.requesterId === user.id) return true;
+    if (!canViewDepartmentTickets) return false;
+    return linkedDepartmentIds.has(String(ticket.departmentId || "").trim());
+  });
+}
+
+function canAccessTicket(ticket, user, departments = [], serviceCenter = defaultServiceCenterSettings) {
   if (!ticket || !user) return false;
-  return canViewAllTickets(user) || ticket.requesterId === user.id;
+  if (canViewAllTicketsForContext(user, departments, serviceCenter)) return true;
+  if (ticket.requesterId === user.id) return true;
+  if (!canViewDepartmentTicketsForContext(user, departments, serviceCenter)) return false;
+  return getLinkedServiceDepartmentIds(user, departments, serviceCenter).includes(String(ticket.departmentId || "").trim());
 }
 
 function mergeCollections(stored) {
@@ -562,6 +635,7 @@ function mergeCollections(stored) {
   const notificationLogs = hydrateNotificationLogs(stored?.notificationLogs);
   const smtpSettings = hydrateSmtpSettings(stored?.smtpSettings);
   const emailServiceSettings = hydrateEmailServiceSettings(stored?.emailServiceSettings);
+  const serviceCenter = hydrateServiceCenter(stored?.serviceCenter, departments);
 
   const baseState = {
     ...stored,
@@ -576,6 +650,7 @@ function mergeCollections(stored) {
     notificationLogs,
     smtpSettings,
     emailServiceSettings,
+    serviceCenter,
     users,
     departments,
     locations,
@@ -596,7 +671,21 @@ function mergeCollections(stored) {
 const EMPTY_DATA = mergeCollections({});
 
 function summarizeTicketsByQueue(queues, tickets) {
-  return queues.map((queue) => {
+  const queueRegistry = new Map(
+    (Array.isArray(queues) ? queues : []).map((queue) => [queue.name, queue]),
+  );
+
+  tickets.forEach((ticket) => {
+    const queueName = String(ticket.queue || "").trim();
+    if (!queueName || queueRegistry.has(queueName)) return;
+    queueRegistry.set(queueName, {
+      id: `queue-${normalizeCode(queueName, "QUEUE").toLowerCase()}`,
+      name: queueName,
+      assigned: 0,
+    });
+  });
+
+  return Array.from(queueRegistry.values()).map((queue) => {
     const queueTickets = tickets.filter((ticket) => ticket.queue === queue.name);
     return {
       ...queue,
@@ -753,8 +842,23 @@ export function AppDataProvider({ children }) {
   };
 
   const allTickets = useMemo(() => prepareTickets(data.tickets, data.users || []), [data.tickets, data.users]);
-  const visibleTickets = useMemo(() => filterTicketsForUser(allTickets, user), [allTickets, user]);
-  const operationalTickets = canViewAllTickets(user) ? allTickets : visibleTickets;
+  const visibleTickets = useMemo(
+    () => filterTicketsForUser(allTickets, user, data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
+    [allTickets, data.departments, data.serviceCenter, user],
+  );
+  const operationalTickets = visibleTickets;
+  const linkedServiceDepartmentIds = useMemo(
+    () => getLinkedServiceDepartmentIds(user, data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
+    [data.departments, data.serviceCenter, user],
+  );
+  const canViewDepartmentTickets = useMemo(
+    () => canViewDepartmentTicketsForContext(user, data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
+    [data.departments, data.serviceCenter, user],
+  );
+  const canViewGlobalTickets = useMemo(
+    () => canViewAllTicketsForContext(user, data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
+    [data.departments, data.serviceCenter, user],
+  );
   const knowledgeArticles = useMemo(
     () => (data.knowledgeArticles || []).map((article) => normalizeKnowledgeArticle(article)),
     [data.knowledgeArticles],
@@ -831,21 +935,49 @@ export function AppDataProvider({ children }) {
       const openedAt = payload.openedAt || nowIso;
       const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
       const slaTargetMinutes = getSlaPolicyMinutes(priority);
-      const requesterId = canViewAllTickets(user) ? payload.requesterId || "" : user?.id || "";
-      const requesterEmail = canViewAllTickets(user)
+      const serviceCenterEnabled = Boolean(current.serviceCenter?.enabled);
+      const targetDepartment =
+        serviceCenterEnabled
+          ? (current.departments || []).find((department) => department.id === payload.departmentId) || null
+          : null;
+      const targetDepartmentConfig = targetDepartment
+        ? getServiceCenterDepartmentConfig(current.serviceCenter, targetDepartment.id)
+        : null;
+      const requesterId = canViewGlobalTickets ? payload.requesterId || "" : user?.id || "";
+      const requesterEmail = canViewGlobalTickets
         ? String(payload.requesterEmail || "").trim().toLowerCase()
         : String(user?.email || "").trim().toLowerCase();
-      const requester = canViewAllTickets(user) ? payload.requester : user?.name || payload.requester;
+      const requester = canViewGlobalTickets ? payload.requester : user?.name || payload.requester;
+
+      if (
+        serviceCenterEnabled &&
+        (!targetDepartment ||
+          normalizeText(targetDepartment.status) !== "ativo" ||
+          !targetDepartmentConfig?.active ||
+          !targetDepartmentConfig?.acceptsTickets ||
+          !targetDepartmentConfig?.showInRequestPortal)
+      ) {
+        return current;
+      }
       const history = [
         createHistoryEntry({
           type: "created",
           actorId: user?.id,
           actorName: user?.name || "Sistema",
           message: "Chamado aberto",
-          metadata: { status: "Aberto" },
+          metadata: {
+            status: "Aberto",
+            departmentId: targetDepartment?.id || "",
+            department: targetDepartment?.name || "",
+          },
           createdAt: nowIso,
         }),
       ];
+
+      const defaultAssigneeName =
+        serviceCenterEnabled && targetDepartmentConfig?.responsibleUserIds?.length
+          ? (current.users || []).find((candidate) => candidate.id === targetDepartmentConfig.responsibleUserIds[0])?.name || ""
+          : "Triagem TI";
 
       createdTicket = {
         id: `${typeCodeMap[normalizeText(payload.type)] ?? "TCK"}-${nextNumber}`,
@@ -858,8 +990,10 @@ export function AppDataProvider({ children }) {
         requester,
         requesterId,
         requesterEmail,
-        assignee: String(payload.assignee || "Triagem TI").trim(),
-        queue: String(payload.queue || "Service Desk").trim(),
+        assignee: String(payload.assignee || defaultAssigneeName).trim(),
+        queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
+        departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
+        department: String(targetDepartment?.name || payload.department || "").trim(),
         category: String(payload.category || "Geral").trim(),
         source: String(payload.source || "Portal").trim(),
         location: String(payload.location || "").trim(),
@@ -894,7 +1028,7 @@ export function AppDataProvider({ children }) {
       ...current,
       tickets: current.tickets.map((ticket) => {
         if (ticket.id !== ticketId) return ticket;
-        if (!canAccessTicket(ticket, user)) return ticket;
+        if (!canAccessTicket(ticket, user, current.departments || [], current.serviceCenter || defaultServiceCenterSettings)) return ticket;
 
         const statusChanged = updates.status !== undefined && normalizeTicketStatus(updates.status) !== normalizeTicketStatus(ticket.status);
         const assigneeChanged = updates.assignee !== undefined && String(updates.assignee || "").trim() !== String(ticket.assignee || "").trim();
@@ -935,6 +1069,10 @@ export function AppDataProvider({ children }) {
         const nextDueDate = updates.dueDate ?? ticket.dueDate;
         const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
         const nextResolutionNotes = String((updates.resolutionNotes ?? ticket.resolutionNotes) || "").trim();
+        const nextDepartmentId = String(updates.departmentId ?? ticket.departmentId ?? "").trim();
+        const nextDepartment =
+          (current.departments || []).find((department) => department.id === nextDepartmentId)?.name ||
+          String((updates.department ?? ticket.department) || "").trim();
         const nextKnowledgeArticleIds = Array.isArray(updates.knowledgeArticleIds)
           ? [...new Set(updates.knowledgeArticleIds.filter(Boolean))]
           : ticket.knowledgeArticleIds || [];
@@ -1031,11 +1169,14 @@ export function AppDataProvider({ children }) {
           openedAtLabel: formatTimestampLabel(nextOpenedAt),
           dueDate: nextDueDate,
           dueDateLabel: nextDueDate ? formatDateLabel(nextDueDate) : "",
-          requester: canViewAllTickets(user) ? updates.requester ?? ticket.requester : ticket.requester,
-          requesterEmail: canViewAllTickets(user)
+          requester: canViewGlobalTickets ? updates.requester ?? ticket.requester : ticket.requester,
+          requesterEmail: canViewGlobalTickets
             ? String(updates.requesterEmail ?? ticket.requesterEmail ?? "").trim().toLowerCase()
             : String(ticket.requesterEmail || "").trim().toLowerCase(),
           assignee: nextAssignee,
+          departmentId: nextDepartmentId,
+          department: nextDepartment,
+          queue: String(updates.queue ?? ticket.queue ?? nextDepartment).trim() || nextDepartment || "Service Desk",
           resolutionNotes: nextResolutionNotes,
           resolvedAt,
           resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
@@ -1054,7 +1195,11 @@ export function AppDataProvider({ children }) {
     if (!hasAnyPermission(user, ["tickets_delete", "tickets_admin"])) return;
     applyState((current) => ({
       ...current,
-      tickets: current.tickets.filter((ticket) => ticket.id !== ticketId || !canAccessTicket(ticket, user)),
+      tickets: current.tickets.filter(
+        (ticket) =>
+          ticket.id !== ticketId ||
+          !canAccessTicket(ticket, user, current.departments || [], current.serviceCenter || defaultServiceCenterSettings),
+      ),
     }));
   };
 
@@ -1063,7 +1208,8 @@ export function AppDataProvider({ children }) {
     applyState((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
-        ticket.id === ticketId && canAccessTicket(ticket, user)
+        ticket.id === ticketId &&
+        canAccessTicket(ticket, user, current.departments || [], current.serviceCenter || defaultServiceCenterSettings)
           ? {
               ...ticket,
               attachments: [...(ticket.attachments || []), ...attachments],
@@ -1080,7 +1226,8 @@ export function AppDataProvider({ children }) {
     applyState((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
-        ticket.id === ticketId && canAccessTicket(ticket, user)
+        ticket.id === ticketId &&
+        canAccessTicket(ticket, user, current.departments || [], current.serviceCenter || defaultServiceCenterSettings)
           ? {
               ...ticket,
               attachments: (ticket.attachments || []).filter((attachment) => attachment.id !== attachmentId),
@@ -1294,10 +1441,57 @@ export function AppDataProvider({ children }) {
 
   const deleteDepartment = (departmentId) => {
     if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
+    applyState((current) => {
+      const nextServiceCenterDepartments = { ...(current.serviceCenter?.departments || {}) };
+      delete nextServiceCenterDepartments[departmentId];
+      return {
+        ...current,
+        departments: current.departments.filter((department) => department.id !== departmentId),
+        serviceCenter: {
+          ...(current.serviceCenter || defaultServiceCenterSettings),
+          departments: nextServiceCenterDepartments,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  };
+
+  const updateServiceCenterSettings = (payload = {}) => {
+    if (!hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"])) return;
     applyState((current) => ({
       ...current,
-      departments: current.departments.filter((department) => department.id !== departmentId),
+      serviceCenter: {
+        ...(current.serviceCenter || defaultServiceCenterSettings),
+        ...payload,
+        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.serviceCenter?.enabled),
+        updatedAt: new Date().toISOString(),
+      },
     }));
+  };
+
+  const saveServiceCenterDepartmentConfig = (departmentId, payload = {}) => {
+    if (!hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_edit", "users_admin"])) return;
+    applyState((current) => {
+      const currentConfig = getServiceCenterDepartmentConfig(current.serviceCenter, departmentId);
+      return {
+        ...current,
+        serviceCenter: {
+          ...(current.serviceCenter || defaultServiceCenterSettings),
+          departments: {
+            ...(current.serviceCenter?.departments || {}),
+            [departmentId]: sanitizeServiceCenterDepartmentConfig(
+              {
+                ...currentConfig,
+                ...payload,
+                updatedAt: new Date().toISOString(),
+              },
+              currentConfig,
+            ),
+          },
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
   };
 
   const addAsset = (payload) => {
@@ -1954,13 +2148,16 @@ export function AppDataProvider({ children }) {
       notificationLogs: data.notificationLogs || [],
       smtpSettings: data.smtpSettings || defaultSmtpSettings,
       emailServiceSettings: data.emailServiceSettings || defaultEmailServiceSettings,
+      serviceCenter: data.serviceCenter || defaultServiceCenterSettings,
       users: data.users || [],
       departments: data.departments || [],
+      linkedServiceDepartmentIds,
       locations: data.locations || [],
       tickets: visibleTickets,
       allTickets,
       operationalTickets,
-      canViewAllTickets: canViewAllTickets(user),
+      canViewAllTickets: canViewGlobalTickets,
+      canViewDepartmentTickets,
       assets: data.assets || [],
       brands: data.brands || [],
       models: data.models || [],
@@ -1992,6 +2189,8 @@ export function AppDataProvider({ children }) {
       addDepartment,
       updateDepartment,
       deleteDepartment,
+      updateServiceCenterSettings,
+      saveServiceCenterDepartmentConfig,
       addAsset,
       updateAsset,
       deleteAsset,
@@ -2035,6 +2234,9 @@ export function AppDataProvider({ children }) {
       visibleTickets,
       allTickets,
       operationalTickets,
+      linkedServiceDepartmentIds,
+      canViewDepartmentTickets,
+      canViewGlobalTickets,
       knowledgeArticles,
       statusBuckets,
       priorityBuckets,
