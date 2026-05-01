@@ -32,6 +32,15 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+function summarizeMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") return "";
+  const entries = Object.entries(metadata)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`);
+  return entries.join(" | ");
+}
+
 function buildQueryString(filters, page, limit) {
   const params = new URLSearchParams();
   Object.entries({
@@ -88,6 +97,9 @@ function SystemLogsPage() {
         .sort((left, right) => left.localeCompare(right)),
     [logs],
   );
+  const loginEvents = logs.filter((entry) => entry.eventType === "login").length;
+  const permissionEvents = logs.filter((entry) => entry.eventType === "permissao").length;
+  const settingsEvents = logs.filter((entry) => entry.eventType === "configuracao").length;
 
   useEffect(() => {
     if (!canViewLogs) return undefined;
@@ -148,9 +160,9 @@ function SystemLogsPage() {
     <div className="ticket-page system-logs-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">TI</span>
-          <h2>Log Geral do Sistema</h2>
-          <p className="module-caption">Auditoria centralizada de falhas, acessos, configuracoes e acoes por modulo.</p>
+          <span className="eyebrow">Configuracoes</span>
+          <h2>Auditoria e Acessos</h2>
+          <p className="module-caption">Rastreia logins, permissoes, falhas operacionais e mudancas sensiveis com origem e contexto.</p>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
@@ -158,12 +170,16 @@ function SystemLogsPage() {
             <span>eventos encontrados</span>
           </div>
           <div className="insight-chip">
-            <strong>{logs.filter((entry) => entry.status === "erro").length}</strong>
-            <span>erros na pagina</span>
+            <strong>{loginEvents}</strong>
+            <span>eventos de login</span>
           </div>
           <div className="insight-chip">
-            <strong>{logs.filter((entry) => entry.status === "alerta").length}</strong>
-            <span>alertas na pagina</span>
+            <strong>{permissionEvents}</strong>
+            <span>alteracoes de acesso</span>
+          </div>
+          <div className="insight-chip">
+            <strong>{settingsEvents}</strong>
+            <span>mudancas de configuracao</span>
           </div>
         </div>
       </section>
@@ -172,7 +188,7 @@ function SystemLogsPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Filtros e busca</h2>
-            <span>Os resultados sao ordenados pelos eventos mais recentes primeiro.</span>
+            <span>Os resultados priorizam acesso, seguranca e alteracoes sensiveis em ordem cronologica reversa.</span>
           </div>
           <div className="toolbar">
             <button className="ghost-button interactive-button" onClick={handleClearFilters} type="button">
@@ -185,7 +201,7 @@ function SystemLogsPage() {
           <div className="dashboard-filter-grid system-logs-filter-grid">
             <label>
               <span>Busca geral</span>
-              <input className="toolbar-search" onChange={updateFilter("search")} placeholder="Usuario, modulo, tipo ou descricao" value={filters.search} />
+              <input className="toolbar-search" onChange={updateFilter("search")} placeholder="Usuario, modulo, origem, rota ou descricao" value={filters.search} />
             </label>
             <label>
               <span>Periodo inicial</span>
@@ -298,6 +314,9 @@ function SystemLogsPage() {
                     <span>{entry.userDepartment || "-"}</span>
                     <span>{entry.origin || "-"}</span>
                   </div>
+                  {summarizeMetadata(entry.metadata) ? (
+                    <p className="system-log-metadata">{summarizeMetadata(entry.metadata)}</p>
+                  ) : null}
                 </div>
               </article>
             ))

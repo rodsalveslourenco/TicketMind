@@ -299,10 +299,12 @@ function buildCombinedState(appStateRaw = {}, collections = {}) {
 }
 
 function stripNormalizedCollections(state = {}) {
-  const { users, departments, locations, ...rest } = state || {};
   return {
-    ...rest,
-    currentUser: state.currentUser || null,
+    ...(state || {}),
+    currentUser: state?.currentUser || null,
+    users: Array.isArray(state?.users) ? state.users : [],
+    departments: Array.isArray(state?.departments) ? state.departments : [],
+    locations: Array.isArray(state?.locations) ? state.locations : [],
   };
 }
 
@@ -397,9 +399,23 @@ function resolveBootstrapCollections(legacyState = null) {
     if (hasCollectionRecords(migratedCollections) || hasLegacyCollectionData(legacyState)) {
       return migratedCollections;
     }
+
+    return { departments: [], locations: [], users: [] };
   }
 
   return buildSeedBootstrapCollections();
+}
+
+function shouldHydrateMissingCollections(collections = {}) {
+  return !collections.users?.length || !collections.departments?.length || !collections.locations?.length;
+}
+
+function mergeMissingCollections(currentCollections = {}, fallbackCollections = {}) {
+  return {
+    users: currentCollections.users?.length ? currentCollections.users : fallbackCollections.users || [],
+    departments: currentCollections.departments?.length ? currentCollections.departments : fallbackCollections.departments || [],
+    locations: currentCollections.locations?.length ? currentCollections.locations : fallbackCollections.locations || [],
+  };
 }
 
 let sqlitePromise = null;
@@ -1133,7 +1149,15 @@ export async function readState() {
   if (!isPostgresEnabled()) {
     await migrateSqliteCollectionsIfNeeded();
     const [sqliteState, collections] = await Promise.all([readSqliteStateRaw(), readSqliteCollections()]);
-    const initialState = buildCombinedState(sqliteState || buildStateDefaults({}), collections);
+    let hydratedCollections = collections;
+    if (shouldHydrateMissingCollections(collections)) {
+      const recoveredCollections = resolveBootstrapCollections(sqliteState);
+      hydratedCollections = mergeMissingCollections(collections, recoveredCollections);
+      if (JSON.stringify(hydratedCollections) !== JSON.stringify(collections) && hasCollectionRecords(hydratedCollections)) {
+        await writeSqliteCollections(hydratedCollections);
+      }
+    }
+    const initialState = buildCombinedState(sqliteState || buildStateDefaults({}), hydratedCollections);
     if (!sqliteState) {
       await writeSqliteState(initialState);
     }
@@ -1142,7 +1166,15 @@ export async function readState() {
 
   await migratePostgresCollectionsIfNeeded();
   const [postgresState, collections] = await Promise.all([readPostgresStateRaw(), readPostgresCollections()]);
-  const initialState = buildCombinedState(postgresState || (await loadBootstrapState()), collections);
+  let hydratedCollections = collections;
+  if (shouldHydrateMissingCollections(collections)) {
+    const recoveredCollections = resolveBootstrapCollections(postgresState);
+    hydratedCollections = mergeMissingCollections(collections, recoveredCollections);
+    if (JSON.stringify(hydratedCollections) !== JSON.stringify(collections) && hasCollectionRecords(hydratedCollections)) {
+      await writePostgresCollections(hydratedCollections);
+    }
+  }
+  const initialState = buildCombinedState(postgresState || (await loadBootstrapState()), hydratedCollections);
   if (!postgresState) {
     await writePostgresState(initialState);
   }

@@ -241,6 +241,17 @@ function UsersPage() {
     return <Navigate replace to="/app/dashboard" />;
   }
 
+  const describeUserScope = (candidate) => {
+    const activePermissions = permissionCatalog
+      .flatMap((group) => group.permissions)
+      .filter((permission) => candidate.permissions?.[permission.key]);
+
+    return {
+      highlightedPermissions: activePermissions.slice(0, 4),
+      totalPermissions: activePermissions.length,
+    };
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -268,6 +279,7 @@ function UsersPage() {
         <div className="glpi-toolbar">
           <div>
             <h2>Usuários cadastrados</h2>
+            <span>Clique em um usuário para abrir detalhes de acesso, permissões e redefinição de senha.</span>
           </div>
           <div className="toolbar">
             <input
@@ -285,67 +297,80 @@ function UsersPage() {
         </div>
 
         <div className="user-list">
-          {orderedUsers.map((candidate) => (
-            <button
-              className="table-row user-row interactive-button"
-              key={candidate.id}
-              onDoubleClick={() => openDetailModal(candidate)}
-              type="button"
-            >
-              <div className="user-row-main">
-                <div className="user-avatar user-avatar-list">
-                  {candidate.avatar ? (
-                    <img alt={candidate.name} className="user-avatar-image" src={candidate.avatar} />
-                  ) : (
-                    <span>{getInitials(candidate.name)}</span>
-                  )}
+          {orderedUsers.map((candidate) => {
+            const scope = describeUserScope(candidate);
+            return (
+              <button
+                className="table-row user-row user-card interactive-button"
+                key={candidate.id}
+                onClick={() => openDetailModal(candidate)}
+                type="button"
+              >
+                <div className="user-row-main">
+                  <div className="user-avatar user-avatar-list">
+                    {candidate.avatar ? (
+                      <img alt={candidate.name} className="user-avatar-image" src={candidate.avatar} />
+                    ) : (
+                      <span>{getInitials(candidate.name)}</span>
+                    )}
+                  </div>
+                  <div className="user-identity">
+                    <strong>{candidate.name}</strong>
+                    <span>{candidate.email}</span>
+                  </div>
+                  <div className="user-role-block">
+                    <span className="badge badge-neutral">{candidate.role}</span>
+                    <span>{candidate.team || "Sem equipe"}</span>
+                    <span>{candidate.department || "Sem departamento"}</span>
+                  </div>
+                  <div className="user-summary-stats">
+                    <div>
+                      <strong>{scope.totalPermissions}</strong>
+                      <span>permissões</span>
+                    </div>
+                    <div>
+                      <strong>{candidate.id}</strong>
+                      <span>identificador</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <strong>{candidate.name}</strong>
-                  <span>{candidate.email}</span>
-                </div>
-                <div className="row-stats row-stats-wrap">
-                  <span>{candidate.role}</span>
-                  <span>{candidate.team}</span>
-                  <span>{candidate.department}</span>
-                </div>
-              </div>
-              <div className="user-row-footer">
-                <div className="user-password-row">
-                  <strong>Senha:</strong>
-                  <span>
-                    {canRevealPasswords && revealedUserIds.includes(candidate.id)
-                      ? candidate.password
-                      : maskPassword(candidate.password)}
-                  </span>
-                  {canRevealPasswords ? (
-                    <button
-                      className="ghost-link"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        togglePassword(candidate.id);
-                      }}
-                      type="button"
-                    >
-                      {revealedUserIds.includes(candidate.id) ? "Ocultar" : "Revelar"}
-                    </button>
-                  ) : null}
-                </div>
-                <div className="permissions-inline">
-                  {permissionCatalog
-                    .flatMap((group) => group.permissions)
-                    .filter((permission) => candidate.permissions?.[permission.key])
-                    .slice(0, 4)
-                    .map((permission) => (
+                <div className="user-row-footer">
+                  <div className="user-password-row">
+                    <strong>Senha:</strong>
+                    <span>
+                      {canRevealPasswords && revealedUserIds.includes(candidate.id)
+                        ? candidate.password
+                        : maskPassword(candidate.password)}
+                    </span>
+                    {canRevealPasswords ? (
+                      <button
+                        className="ghost-link"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          togglePassword(candidate.id);
+                        }}
+                        type="button"
+                      >
+                        {revealedUserIds.includes(candidate.id) ? "Ocultar" : "Revelar"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="permissions-inline">
+                    {scope.highlightedPermissions.map((permission) => (
                       <span className="badge badge-neutral" key={permission.key}>
                         {permission.label}
                       </span>
                     ))}
+                    {scope.totalPermissions > scope.highlightedPermissions.length ? (
+                      <span className="badge badge-neutral">+{scope.totalPermissions - scope.highlightedPermissions.length} acessos</span>
+                    ) : null}
+                  </div>
+                  <span className="user-open-hint">Abrir detalhes</span>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </section>
 
