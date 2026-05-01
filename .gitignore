@@ -3,3 +3,4 @@ dist/
 *.log
 data/*.sqlite
 .tmp-db-test/
+.tmp-central-smoke/

@@ -50,7 +50,7 @@ function CentralServicesPage() {
   const [form, setForm] = useState(defaultForm);
 
   const canView = hasAnyPermission(user, ["service_center_manage", "service_center_departments_manage", "users_manage_permissions", "users_admin"]);
-  const canManage = hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_edit", "users_admin"]);
+  const canManage = hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_manage_permissions", "users_admin"]);
   const canToggleCentral = hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"]);
 
   const activeUsers = useMemo(
@@ -155,12 +155,16 @@ function CentralServicesPage() {
     };
 
     if (editingDepartmentId) {
-      updateDepartment(editingDepartmentId, {
+      const updatedDepartment = updateDepartment(editingDepartmentId, {
         code: form.code,
         name: form.name,
         status: form.status,
       });
-      saveServiceCenterDepartmentConfig(editingDepartmentId, servicePayload);
+      const savedConfig = saveServiceCenterDepartmentConfig(editingDepartmentId, servicePayload);
+      if (!updatedDepartment || !savedConfig) {
+        pushToast("Falha ao atualizar", "Revise as permissoes e tente novamente.", "warning");
+        return;
+      }
       pushToast("Central atualizada", form.name);
     } else {
       const createdDepartment = addDepartment({
@@ -168,8 +172,14 @@ function CentralServicesPage() {
         name: form.name,
         status: form.status,
       });
-      if (createdDepartment?.id) {
-        saveServiceCenterDepartmentConfig(createdDepartment.id, servicePayload);
+      if (!createdDepartment?.id) {
+        pushToast("Falha ao criar", "Revise as permissoes e tente novamente.", "warning");
+        return;
+      }
+      const savedConfig = saveServiceCenterDepartmentConfig(createdDepartment.id, servicePayload);
+      if (!savedConfig) {
+        pushToast("Falha ao configurar", "O departamento foi criado, mas a configuracao da Central nao foi salva.", "warning");
+        return;
       }
       pushToast("Departamento criado", form.name);
     }

@@ -730,8 +730,18 @@ function buildDailyOpenings(tickets, days = 5) {
   return buckets;
 }
 
-function buildTechnicianMetrics(tickets, users) {
-  const technicians = users.filter((candidate) => normalizeText(candidate.department) === "ti");
+function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter = defaultServiceCenterSettings) {
+  const serviceCenterResponsibleIds = new Set(
+    (departments || []).flatMap((department) => {
+      const config = getServiceCenterDepartmentConfig(serviceCenter, department.id);
+      return config.active ? config.responsibleUserIds || [] : [];
+    }),
+  );
+  const technicians = users.filter(
+    (candidate) =>
+      normalizeText(candidate.department) === "ti" ||
+      serviceCenterResponsibleIds.has(candidate.id),
+  );
   return technicians.map((technician) => {
     const assigned = tickets.filter((ticket) => normalizeText(ticket.assignee) === normalizeText(technician.name));
     const resolved = assigned.filter((ticket) => normalizeText(ticket.status) === "resolvido");
@@ -898,7 +908,10 @@ export function AppDataProvider({ children }) {
   const statusBuckets = useMemo(() => buildStatusBuckets(operationalTickets), [operationalTickets]);
   const priorityBuckets = useMemo(() => buildPriorityBuckets(operationalTickets), [operationalTickets]);
   const dailyOpenings = useMemo(() => buildDailyOpenings(operationalTickets, 5), [operationalTickets]);
-  const technicianMetrics = useMemo(() => buildTechnicianMetrics(allTickets, data.users || []), [allTickets, data.users]);
+  const technicianMetrics = useMemo(
+    () => buildTechnicianMetrics(allTickets, data.users || [], data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
+    [allTickets, data.departments, data.serviceCenter, data.users],
+  );
 
   const slaAlerts = useMemo(
     () =>
@@ -1374,7 +1387,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addDepartment = (payload) => {
-    if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
+    if (!hasAnyPermission(user, ["users_create", "users_admin", "service_center_departments_manage", "service_center_manage"])) return null;
     let createdDepartment = null;
     applyState((current) => {
       const nowIso = new Date().toISOString();
@@ -1395,25 +1408,30 @@ export function AppDataProvider({ children }) {
   };
 
   const updateDepartment = (departmentId, payload) => {
-    if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
+    if (!hasAnyPermission(user, ["users_edit", "users_admin", "service_center_departments_manage", "service_center_manage"])) return null;
+    let updatedDepartment = null;
     applyState((current) => {
       const nowIso = new Date().toISOString();
       const nextDepartments = current.departments.map((department) =>
         department.id === departmentId
-          ? {
-              ...department,
-              ...sanitizeDepartmentPayload(
-                {
-                  ...department,
-                  ...payload,
-                  createdAt: department.createdAt,
-                  updatedAt: nowIso,
-                },
-                department,
-              ),
-            }
+          ? (() => {
+              updatedDepartment = {
+                ...department,
+                ...sanitizeDepartmentPayload(
+                  {
+                    ...department,
+                    ...payload,
+                    createdAt: department.createdAt,
+                    updatedAt: nowIso,
+                  },
+                  department,
+                ),
+              };
+              return updatedDepartment;
+            })()
           : department,
       );
+      if (!updatedDepartment) return current;
       const nextCurrentUser = syncUserDepartment(current.currentUser, nextDepartments);
       if (nextCurrentUser?.id === user?.id) {
         setSessionUser(nextCurrentUser);
@@ -1435,12 +1453,25 @@ export function AppDataProvider({ children }) {
               }
             : location,
         ),
+        tickets: current.tickets.map((ticket) =>
+          String(ticket.departmentId || "").trim() === departmentId
+            ? {
+                ...ticket,
+                department: updatedDepartment.name,
+                queue:
+                  String(ticket.queue || "").trim() === String(ticket.department || "").trim()
+                    ? updatedDepartment.name
+                    : ticket.queue,
+              }
+            : ticket,
+        ),
       };
     });
+    return updatedDepartment;
   };
 
   const deleteDepartment = (departmentId) => {
-    if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
+    if (!hasAnyPermission(user, ["users_delete", "users_admin", "service_center_departments_manage", "service_center_manage"])) return;
     applyState((current) => {
       const nextServiceCenterDepartments = { ...(current.serviceCenter?.departments || {}) };
       delete nextServiceCenterDepartments[departmentId];
@@ -1470,28 +1501,33 @@ export function AppDataProvider({ children }) {
   };
 
   const saveServiceCenterDepartmentConfig = (departmentId, payload = {}) => {
-    if (!hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_edit", "users_admin"])) return;
+    if (!hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_manage_permissions", "users_admin"])) return null;
+    let savedConfig = null;
     applyState((current) => {
+      const departmentExists = (current.departments || []).some((department) => department.id === departmentId);
+      if (!departmentExists) return current;
       const currentConfig = getServiceCenterDepartmentConfig(current.serviceCenter, departmentId);
+      savedConfig = sanitizeServiceCenterDepartmentConfig(
+        {
+          ...currentConfig,
+          ...payload,
+          updatedAt: new Date().toISOString(),
+        },
+        currentConfig,
+      );
       return {
         ...current,
         serviceCenter: {
           ...(current.serviceCenter || defaultServiceCenterSettings),
           departments: {
             ...(current.serviceCenter?.departments || {}),
-            [departmentId]: sanitizeServiceCenterDepartmentConfig(
-              {
-                ...currentConfig,
-                ...payload,
-                updatedAt: new Date().toISOString(),
-              },
-              currentConfig,
-            ),
+            [departmentId]: savedConfig,
           },
           updatedAt: new Date().toISOString(),
         },
       };
     });
+    return savedConfig;
   };
 
   const addAsset = (payload) => {

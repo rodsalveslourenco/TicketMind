@@ -120,7 +120,7 @@ export function normalizeUserPermissions(
 
   if (rawPermissions.tickets_view) {
     nextPermissions.tickets_view_own = true;
-    if (user.department === "TI") nextPermissions.tickets_view_all = true;
+    if (isTechnologyDepartment(user)) nextPermissions.tickets_view_all = true;
   }
 
   if (rawPermissions.tickets_manage) {

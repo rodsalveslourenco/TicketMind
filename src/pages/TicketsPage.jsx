@@ -193,6 +193,7 @@ function TicketsPage() {
     ? requestableDepartments.find((department) => department.id === createForm.departmentId) || null
     : null;
 
+  const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
@@ -251,7 +252,6 @@ function TicketsPage() {
     return currentTickets;
   }, [priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
 
-  const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
   const linkedArticles = useMemo(
     () =>
       detailTicket
