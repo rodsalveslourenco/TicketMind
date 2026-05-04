@@ -252,11 +252,14 @@ function DepartmentsPage() {
                   <span>Cor do departamento</span>
                   <div className="department-color-field">
                     <input
-                      onChange={(event) => setForm((current) => ({ ...current, color: String(event.target.value || "").trim().toUpperCase() }))}
-                      placeholder="#2563EB"
-                      value={form.color}
+                      aria-label="Selecionar cor do departamento"
+                      className="department-color-picker"
+                      onChange={(event) => setForm((current) => ({ ...current, color: normalizeDepartmentColor(event.target.value) }))}
+                      type="color"
+                      value={normalizeDepartmentColor(form.color) || "#94A3B8"}
                     />
                     <span className="department-color-swatch" style={getDepartmentColorStyle(form.color, { alpha: 0.35 })} />
+                    <strong className="department-color-value">{normalizeDepartmentColor(form.color) || "Neutra"}</strong>
                   </div>
                 </label>
                 <label className="field-block field-full">

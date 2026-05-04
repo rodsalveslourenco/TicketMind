@@ -1506,6 +1506,35 @@ textarea:focus {
   gap: 0.55rem;
 }
 
+.department-color-field {
+  flex-wrap: wrap;
+}
+
+.department-color-picker {
+  width: 44px;
+  min-width: 44px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.department-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.department-color-picker::-webkit-color-swatch {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 10px;
+}
+
+.department-color-value {
+  font-size: 0.78rem;
+  color: #475569;
+}
+
 .department-color-swatch {
   width: 18px;
   height: 18px;
@@ -4380,7 +4409,102 @@ textarea:focus {
   box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1);
 }
 
+.app-shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  position: relative;
+  align-self: stretch;
+  height: 100vh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.sidebar-nav {
+  min-height: 0;
+  overflow: auto;
+}
+
+.workspace {
+  height: 100vh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.page-content {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.tickets-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px) auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.tickets-header-copy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.tickets-header-search {
+  min-width: 0;
+}
+
+.tickets-header-search .toolbar-search {
+  width: 100%;
+}
+
+.tickets-header-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 0.6rem;
+}
+
+.ticket-overview-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.8rem;
+}
+
+.ticket-overview-strip .insight-chip {
+  min-height: 78px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
 @media (max-width: 1100px) {
+  .app-shell,
+  .workspace,
+  .sidebar {
+    height: auto;
+    overflow: visible;
+  }
+
+  .app-shell {
+    overflow: visible;
+  }
+
+  .tickets-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .tickets-header-actions {
+    justify-self: stretch;
+  }
+
   .system-logs-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4400,6 +4524,11 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
+  .tickets-header-actions .ghost-button,
+  .tickets-header-actions .primary-button {
+    flex: 1;
+  }
+
   .system-logs-filter-grid {
     grid-template-columns: 1fr;
   }

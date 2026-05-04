@@ -229,9 +229,13 @@ function TicketsPage() {
         ...getFreshCreateForm(),
         departmentId: serviceCenterEnabled && requestableDepartments.length ? requestableDepartments[0].id : "",
       });
+      setWatcherQuery("");
       setCreateKnowledgeQuery("");
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("new");
+      setSearchParams(nextParams, { replace: true });
     }
-  }, [canCreateTicket, requestableDepartments, searchParams, serviceCenterEnabled]);
+  }, [canCreateTicket, requestableDepartments, searchParams, serviceCenterEnabled, setSearchParams]);
 
   const filteredTickets = useMemo(() => {
     let currentTickets = searchTickets(search, tickets);
@@ -376,6 +380,9 @@ function TicketsPage() {
   };
 
   const handleCloseCreateModal = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("new");
+    setSearchParams(nextParams, { replace: true });
     setShowCreateForm(false);
     setWatcherQuery("");
     setCreateKnowledgeQuery("");
@@ -451,32 +458,57 @@ function TicketsPage() {
 
   return (
     <div className="ticket-page">
-      <section className="module-hero board-card">
-        <div>
-          <span className="eyebrow">Helpdesk</span>
-          <h2>Fila de chamados</h2>
+      <section className="tickets-header board-card">
+        <div className="tickets-header-copy">
+          <span className="eyebrow">Central de Operacoes</span>
+          <h2>Chamados</h2>
+          {!canSeeAllTickets ? (
+            <p className="module-caption">
+              {serviceCenterEnabled
+                ? "Visualizacao restrita aos seus chamados e aos departamentos em que voce atua, conforme permissao."
+                : "Visualizacao restrita aos seus proprios chamados."}
+            </p>
+          ) : null}
         </div>
-        <div className="insight-strip">
-          <div className="insight-chip">
-            <strong>{tickets.length}</strong>
-            <span>tickets visiveis</span>
-          </div>
-          <div className="insight-chip">
-            <strong>{tickets.filter((ticket) => ticket.dueSoon || ticket.isOverdue).length}</strong>
-            <span>alertas de SLA</span>
-          </div>
-          <div className="insight-chip">
-            <strong>{serviceCenterEnabled ? requestableDepartments.length : users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
-            <span>{serviceCenterEnabled ? "departamentos de abertura" : "tecnicos TI"}</span>
-          </div>
+        <form
+          className="tickets-header-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSearchChange(search);
+          }}
+        >
+          <input
+            className="toolbar-search"
+            onChange={(event) => handleSearchChange(event.target.value)}
+            placeholder="Buscar por nº, usuario ou assunto"
+            value={search}
+          />
+        </form>
+        <div className="tickets-header-actions">
+          <button className="ghost-button interactive-button" onClick={() => handleSearchChange(search)} type="button">
+            Buscar
+          </button>
+          {canCreateTicket ? (
+            <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
+              Abrir chamado
+            </button>
+          ) : null}
         </div>
-        {!canSeeAllTickets ? (
-          <p className="module-caption">
-            {serviceCenterEnabled
-              ? "Visualizacao restrita aos seus chamados e aos departamentos em que voce atua, conforme permissao."
-              : "Visualizacao restrita aos seus proprios chamados."}
-          </p>
-        ) : null}
+      </section>
+
+      <section className="ticket-overview-strip">
+        <div className="insight-chip">
+          <strong>{tickets.length}</strong>
+          <span>tickets visiveis</span>
+        </div>
+        <div className="insight-chip">
+          <strong>{tickets.filter((ticket) => ticket.dueSoon || ticket.isOverdue).length}</strong>
+          <span>alertas de SLA</span>
+        </div>
+        <div className="insight-chip">
+          <strong>{serviceCenterEnabled ? requestableDepartments.length : users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
+          <span>{serviceCenterEnabled ? "departamentos de abertura" : "tecnicos TI"}</span>
+        </div>
       </section>
 
       <section className="board-card glpi-panel">
@@ -543,6 +575,7 @@ function TicketsPage() {
                 className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
                 key={ticket.id}
                 onClick={() => setDetailTicketId(ticket.id)}
+                style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.06 })}
                 type="button"
               >
                 <div className="ticket-row-main">
