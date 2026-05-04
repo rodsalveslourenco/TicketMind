@@ -570,6 +570,16 @@ function getLinkedServiceDepartmentIds(user, departments = [], serviceCenter = d
     .map((department) => department.id);
 }
 
+function getScopedServiceDepartmentIds(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
+  if (!user || !serviceCenter?.enabled) return [];
+  const userDepartmentId = String(user.departmentId || "").trim();
+  if (!userDepartmentId) return [];
+  const department = departments.find((candidate) => candidate.id === userDepartmentId);
+  if (!department || normalizeText(department.status) !== "ativo") return [];
+  const config = getServiceCenterDepartmentConfig(serviceCenter, userDepartmentId);
+  return config.active ? [userDepartmentId] : [];
+}
+
 function canViewAllTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
   if (!user) return false;
   if (!serviceCenter?.enabled) return canViewAllTickets(user);
@@ -581,19 +591,19 @@ function canViewDepartmentTicketsForContext(user, departments = [], serviceCente
   if (!hasAnyPermission(user, ["service_center_view_department_tickets", "service_center_attend_linked_departments", "tickets_admin"])) {
     return false;
   }
-  return getLinkedServiceDepartmentIds(user, departments, serviceCenter).length > 0;
+  return getScopedServiceDepartmentIds(user, departments, serviceCenter).length > 0;
 }
 
 function filterTicketsForUser(tickets, user, departments = [], serviceCenter = defaultServiceCenterSettings) {
   if (!user) return [];
   if (canViewAllTicketsForContext(user, departments, serviceCenter)) return tickets;
-  const linkedDepartmentIds = new Set(getLinkedServiceDepartmentIds(user, departments, serviceCenter));
+  const scopedDepartmentIds = new Set(getScopedServiceDepartmentIds(user, departments, serviceCenter));
   const canViewDepartmentTickets = canViewDepartmentTicketsForContext(user, departments, serviceCenter);
   if (!canViewOwnTickets(user) && !canViewDepartmentTickets) return [];
   return tickets.filter((ticket) => {
     if (canViewOwnTickets(user) && ticket.requesterId === user.id) return true;
     if (!canViewDepartmentTickets) return false;
-    return linkedDepartmentIds.has(String(ticket.departmentId || "").trim());
+    return scopedDepartmentIds.has(String(ticket.departmentId || "").trim());
   });
 }
 
@@ -602,7 +612,7 @@ function canAccessTicket(ticket, user, departments = [], serviceCenter = default
   if (canViewAllTicketsForContext(user, departments, serviceCenter)) return true;
   if (ticket.requesterId === user.id) return true;
   if (!canViewDepartmentTicketsForContext(user, departments, serviceCenter)) return false;
-  return getLinkedServiceDepartmentIds(user, departments, serviceCenter).includes(String(ticket.departmentId || "").trim());
+  return getScopedServiceDepartmentIds(user, departments, serviceCenter).includes(String(ticket.departmentId || "").trim());
 }
 
 function mergeCollections(stored) {
