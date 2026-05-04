@@ -998,11 +998,6 @@ export function AppDataProvider({ children }) {
         }),
       ];
 
-      const defaultAssigneeName =
-        serviceCenterEnabled && targetDepartmentConfig?.responsibleUserIds?.length
-          ? (current.users || []).find((candidate) => candidate.id === targetDepartmentConfig.responsibleUserIds[0])?.name || ""
-          : "Triagem TI";
-
       createdTicket = {
         id: `${typeCodeMap[normalizeText(payload.type)] ?? "TCK"}-${nextNumber}`,
         title: String(payload.title || "").trim(),
@@ -1014,7 +1009,7 @@ export function AppDataProvider({ children }) {
         requester,
         requesterId,
         requesterEmail,
-        assignee: String(payload.assignee || defaultAssigneeName).trim(),
+        assignee: String(payload.assignee || "").trim(),
         queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
         departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
         department: String(targetDepartment?.name || payload.department || "").trim(),
