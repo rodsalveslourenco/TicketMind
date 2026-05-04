@@ -902,9 +902,7 @@ async function writePostgresCollections(collections) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("DELETE FROM users");
-    await client.query("DELETE FROM locations");
-    await client.query("DELETE FROM departments");
+    await client.query("TRUNCATE TABLE users, locations, departments CASCADE");
 
     for (const department of collections.departments) {
       await client.query(
