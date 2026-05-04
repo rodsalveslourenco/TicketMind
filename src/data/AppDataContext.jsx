@@ -382,7 +382,7 @@ function hydratePermissionProfiles(storedProfiles) {
   const normalizedDefaults = defaultPermissionProfiles.map((profile) => ({
     ...profile,
     id: String(profile.id || profile.name || "").trim(),
-    name: normalizeRoleName(profile.name),
+    name: String(profile.name || "").trim(),
     description: String(profile.description || "").trim(),
     status: String(profile.status || "Ativo").trim() || "Ativo",
     permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
@@ -390,7 +390,7 @@ function hydratePermissionProfiles(storedProfiles) {
   const normalizedStored = profiles.map((profile) => ({
     ...profile,
     id: String(profile.id || profile.name || "").trim(),
-    name: normalizeRoleName(profile.name),
+    name: String(profile.name || "").trim(),
     description: String(profile.description || "").trim(),
     status: String(profile.status || "Ativo").trim() || "Ativo",
     permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
