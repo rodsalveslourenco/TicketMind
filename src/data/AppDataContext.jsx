@@ -572,12 +572,18 @@ function getLinkedServiceDepartmentIds(user, departments = [], serviceCenter = d
 
 function getScopedServiceDepartmentIds(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
   if (!user || !serviceCenter?.enabled) return [];
+  const scopedDepartmentIds = new Set(getLinkedServiceDepartmentIds(user, departments, serviceCenter));
   const userDepartmentId = String(user.departmentId || "").trim();
-  if (!userDepartmentId) return [];
-  const department = departments.find((candidate) => candidate.id === userDepartmentId);
-  if (!department || normalizeText(department.status) !== "ativo") return [];
-  const config = getServiceCenterDepartmentConfig(serviceCenter, userDepartmentId);
-  return config.active ? [userDepartmentId] : [];
+
+  if (userDepartmentId) {
+    const department = departments.find((candidate) => candidate.id === userDepartmentId);
+    if (department && normalizeText(department.status) === "ativo") {
+      const config = getServiceCenterDepartmentConfig(serviceCenter, userDepartmentId);
+      if (config.active) scopedDepartmentIds.add(userDepartmentId);
+    }
+  }
+
+  return Array.from(scopedDepartmentIds);
 }
 
 function canViewAllTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
