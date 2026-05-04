@@ -1560,6 +1560,109 @@ export function AppDataProvider({ children }) {
     return savedConfig;
   };
 
+  const saveServiceCenterDepartment = (departmentPayload = {}, servicePayload = {}, departmentId = null) => {
+    if (!hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_manage_permissions", "users_admin"])) {
+      return null;
+    }
+
+    let savedDepartment = null;
+    applyState((current) => {
+      const nowIso = new Date().toISOString();
+      const nextDepartmentId = departmentId || nextId("dep", current.departments || []);
+      const currentDepartment = (current.departments || []).find((department) => department.id === nextDepartmentId) || null;
+      const nextDepartments = currentDepartment
+        ? (current.departments || []).map((department) =>
+            department.id === nextDepartmentId
+              ? {
+                  ...department,
+                  ...sanitizeDepartmentPayload(
+                    {
+                      ...department,
+                      ...departmentPayload,
+                      createdAt: department.createdAt,
+                      updatedAt: nowIso,
+                    },
+                    department,
+                  ),
+                }
+              : department,
+          )
+        : [
+            {
+              id: nextDepartmentId,
+              ...sanitizeDepartmentPayload(
+                {
+                  ...departmentPayload,
+                  createdAt: nowIso,
+                  updatedAt: nowIso,
+                },
+                departmentPayload,
+              ),
+            },
+            ...(current.departments || []),
+          ];
+
+      savedDepartment = nextDepartments.find((department) => department.id === nextDepartmentId) || null;
+      if (!savedDepartment) return current;
+
+      const currentConfig = getServiceCenterDepartmentConfig(current.serviceCenter, nextDepartmentId);
+      const savedConfig = sanitizeServiceCenterDepartmentConfig(
+        {
+          ...currentConfig,
+          ...servicePayload,
+          updatedAt: nowIso,
+        },
+        currentConfig,
+      );
+
+      const nextCurrentUser = syncUserDepartment(current.currentUser, nextDepartments);
+      if (nextCurrentUser?.id === user?.id) {
+        setSessionUser(nextCurrentUser);
+      }
+
+      return {
+        ...current,
+        departments: nextDepartments,
+        users: (current.users || []).map((candidate) => syncUserDepartment(candidate, nextDepartments)),
+        currentUser: nextCurrentUser,
+        locations: (current.locations || []).map((location) =>
+          location.departmentId === nextDepartmentId
+            ? {
+                ...location,
+                ...sanitizeLocationPayload(
+                  { ...location, departmentId: nextDepartmentId, department: savedDepartment.name, updatedAt: nowIso },
+                  nextDepartments,
+                  location,
+                ),
+              }
+            : location,
+        ),
+        tickets: (current.tickets || []).map((ticket) =>
+          String(ticket.departmentId || "").trim() === nextDepartmentId
+            ? {
+                ...ticket,
+                department: savedDepartment.name,
+                queue:
+                  String(ticket.queue || "").trim() === String(ticket.department || "").trim()
+                    ? savedDepartment.name
+                    : ticket.queue,
+              }
+            : ticket,
+        ),
+        serviceCenter: {
+          ...(current.serviceCenter || defaultServiceCenterSettings),
+          departments: {
+            ...(current.serviceCenter?.departments || {}),
+            [nextDepartmentId]: savedConfig,
+          },
+          updatedAt: nowIso,
+        },
+      };
+    });
+
+    return savedDepartment;
+  };
+
   const addAsset = (payload) => {
     if (!hasAnyPermission(user, ["assets_create", "assets_admin"])) return;
     applyState((current) => ({
@@ -2257,6 +2360,7 @@ export function AppDataProvider({ children }) {
       deleteDepartment,
       updateServiceCenterSettings,
       saveServiceCenterDepartmentConfig,
+      saveServiceCenterDepartment,
       addAsset,
       updateAsset,
       deleteAsset,

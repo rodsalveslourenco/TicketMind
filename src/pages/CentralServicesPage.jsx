@@ -38,12 +38,10 @@ function formatDateTime(value) {
 function CentralServicesPage() {
   const { user } = useAuth();
   const {
-    addDepartment,
     departments,
     pushToast,
-    saveServiceCenterDepartmentConfig,
+    saveServiceCenterDepartment,
     serviceCenter,
-    updateDepartment,
     updateServiceCenterSettings,
     users,
   } = useAppData();
@@ -177,30 +175,33 @@ function CentralServicesPage() {
     };
 
     if (editingDepartmentId) {
-      const updatedDepartment = updateDepartment(editingDepartmentId, {
-        code: form.code,
-        name: form.name,
-        status: form.status,
-      });
-      const savedConfig = saveServiceCenterDepartmentConfig(editingDepartmentId, servicePayload);
-      if (!updatedDepartment || !savedConfig) {
+      const updatedDepartment = saveServiceCenterDepartment(
+        {
+          code: form.code,
+          name: form.name,
+          color: form.color,
+          status: form.status,
+        },
+        servicePayload,
+        editingDepartmentId,
+      );
+      if (!updatedDepartment) {
         pushToast("Falha ao atualizar", "Revise as permissoes e tente novamente.", "warning");
         return;
       }
       pushToast("Central atualizada", form.name);
     } else {
-      const createdDepartment = addDepartment({
-        code: form.code,
-        name: form.name,
-        status: form.status,
-      });
+      const createdDepartment = saveServiceCenterDepartment(
+        {
+          code: form.code,
+          name: form.name,
+          color: form.color,
+          status: form.status,
+        },
+        servicePayload,
+      );
       if (!createdDepartment?.id) {
         pushToast("Falha ao criar", "Revise as permissoes e tente novamente.", "warning");
-        return;
-      }
-      const savedConfig = saveServiceCenterDepartmentConfig(createdDepartment.id, servicePayload);
-      if (!savedConfig) {
-        pushToast("Falha ao configurar", "O departamento foi criado, mas a configuracao da Central nao foi salva.", "warning");
         return;
       }
       pushToast("Departamento criado", form.name);
