@@ -1389,11 +1389,22 @@ export function AppDataProvider({ children }) {
       let nextCurrentUser = null;
       const nextUsers = current.users.map((candidate) => {
         if (candidate.id !== user.id) return candidate;
-        nextCurrentUser = { ...candidate, avatar: String(payload.avatar || "").trim() };
+        nextCurrentUser = {
+          ...candidate,
+          avatar: String(payload.avatar || "").trim(),
+          updatedAt: new Date().toISOString(),
+        };
         return nextCurrentUser;
       });
       if (nextCurrentUser) setSessionUser(nextCurrentUser);
-      return { ...current, users: nextUsers };
+      return {
+        ...current,
+        users: nextUsers,
+        currentUser:
+          current.currentUser?.id === user.id
+            ? { ...current.currentUser, ...nextCurrentUser }
+            : current.currentUser,
+      };
     });
   };
 
