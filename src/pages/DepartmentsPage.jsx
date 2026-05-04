@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultForm = {
   code: "",
   name: "",
+  color: "",
   status: "Ativo",
 };
 
@@ -84,6 +86,7 @@ function DepartmentsPage() {
     setForm({
       code: department.code || "",
       name: department.name || "",
+      color: department.color || "",
       status: department.status || "Ativo",
     });
     setShowModal(true);
@@ -181,6 +184,7 @@ function DepartmentsPage() {
           <div className="sheet-row sheet-row-header">
             <strong>Codigo</strong>
             <strong>Departamento</strong>
+            <strong>Cor</strong>
             <strong>Status</strong>
             <strong>Criado em</strong>
             <strong>Atualizado em</strong>
@@ -192,7 +196,11 @@ function DepartmentsPage() {
             return (
               <div className="sheet-row" key={department.id}>
                 <strong>{department.code || "-"}</strong>
-                <span>{department.name}</span>
+                <span className="department-name-cell">
+                  <span className="department-color-swatch" style={getDepartmentColorStyle(department.color, { alpha: 0.35 })} />
+                  {department.name}
+                </span>
+                <span>{normalizeDepartmentColor(department.color) || "-"}</span>
                 <span>{department.status}</span>
                 <span>{formatDateTime(department.createdAt)}</span>
                 <span>{formatDateTime(department.updatedAt)}</span>
@@ -239,6 +247,17 @@ function DepartmentsPage() {
                     <option>Ativo</option>
                     <option>Inativo</option>
                   </select>
+                </label>
+                <label className="field-block">
+                  <span>Cor do departamento</span>
+                  <div className="department-color-field">
+                    <input
+                      onChange={(event) => setForm((current) => ({ ...current, color: String(event.target.value || "").trim().toUpperCase() }))}
+                      placeholder="#2563EB"
+                      value={form.color}
+                    />
+                    <span className="department-color-swatch" style={getDepartmentColorStyle(form.color, { alpha: 0.35 })} />
+                  </div>
                 </label>
                 <label className="field-block field-full">
                   <span>Nome do departamento</span>

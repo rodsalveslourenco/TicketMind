@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { getDepartmentColorStyle } from "../data/departments";
 import { useAppData } from "../data/AppDataContext";
 
 function normalizeText(value) {
@@ -41,21 +43,47 @@ function formatHours(value) {
   return `${(value / 24).toFixed(1)}d`;
 }
 
+function getDashboardStorageKey(userId = "") {
+  return `ticketmind.dashboard.hidden.${userId || "anon"}`;
+}
+
 function DashboardPage() {
-  const { apiConfigs, assets, knowledgeArticles, projects, reports, summary, tickets, users } = useAppData();
+  const { user } = useAuth();
+  const { departments, knowledgeArticles, summary, tickets } = useAppData();
   const [periodFilter, setPeriodFilter] = useState("90");
   const [queueFilter, setQueueFilter] = useState("Todas");
   const [assigneeFilter, setAssigneeFilter] = useState("Todos");
   const [search, setSearch] = useState("");
+  const [hiddenWidgets, setHiddenWidgets] = useState([]);
 
-  const activeProjects = useMemo(
-    () => projects.filter((project) => normalizeText(project.status) !== "concluido").slice(0, 3),
-    [projects],
-  );
+  useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(getDashboardStorageKey(user?.id));
+      setHiddenWidgets(storedValue ? JSON.parse(storedValue) : []);
+    } catch {
+      setHiddenWidgets([]);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    window.localStorage.setItem(getDashboardStorageKey(user?.id), JSON.stringify(hiddenWidgets));
+  }, [hiddenWidgets, user?.id]);
 
   const openStatuses = useMemo(
     () => new Set(["aberto", "em andamento", "em atendimento", "aguardando usuario", "aguardando aprovacao", "analise", "reaberto"]),
     [],
+  );
+
+  const departmentDirectory = useMemo(
+    () =>
+      departments.reduce(
+        (accumulator, department) => ({
+          ...accumulator,
+          [department.id]: department,
+        }),
+        {},
+      ),
+    [departments],
   );
 
   const queueOptions = useMemo(
@@ -104,6 +132,7 @@ function DashboardPage() {
         ticket.requesterEmail,
         ticket.assignee,
         ticket.queue,
+        ticket.department,
         ticket.status,
         ticket.priority,
         ticket.description,
@@ -122,73 +151,19 @@ function DashboardPage() {
   const criticalOpen = filteredTickets.filter(
     (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.has(normalizeText(ticket.status)),
   ).length;
-  const waitingApproval = filteredTickets.filter(
-    (ticket) => normalizeText(ticket.status) === "aguardando aprovacao" || normalizeText(ticket.status) === "aguardando usuario",
-  ).length;
-  const slaCompliance = openTickets
-    ? Number((((openTickets - overdueTickets) / openTickets) * 100).toFixed(1))
-    : 100;
-
-  const statusSummary = useMemo(
-    () => [
-      { label: "Abertos", value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "aberto").length },
-      {
-        label: "Em andamento",
-        value: filteredTickets.filter((ticket) => {
-          const status = normalizeText(ticket.status);
-          return status === "em atendimento" || status === "em andamento";
-        }).length,
-      },
-      {
-        label: "Aguardando usuario",
-        value: filteredTickets.filter((ticket) => {
-          const status = normalizeText(ticket.status);
-          return status === "aguardando usuario" || status === "aguardando aprovacao";
-        }).length,
-      },
-      { label: "Resolvidos", value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length },
-      { label: "Reaberto", value: filteredTickets.filter((ticket) => normalizeText(ticket.status) === "reaberto").length },
-    ],
-    [filteredTickets],
-  );
+  const waitingApproval = filteredTickets.filter((ticket) => {
+    const status = normalizeText(ticket.status);
+    return status === "aguardando aprovacao" || status === "aguardando usuario";
+  }).length;
+  const slaCompliance = openTickets ? Number((((openTickets - overdueTickets) / openTickets) * 100).toFixed(1)) : 100;
 
   const dashboardKpis = [
-    {
-      label: "Total de chamados",
-      value: totalTickets,
-      detail: `${openTickets} em fluxo | ${resolvedTickets} resolvidos`,
-      tone: "neutral",
-    },
-    {
-      label: "Chamados abertos",
-      value: openTickets,
-      detail: `${summary.backlogTrend}% no backlog recente`,
-      tone: "highlight",
-    },
-    {
-      label: "Em andamento",
-      value: inProgressTickets,
-      detail: "Chamados em tratamento ativo",
-      tone: "neutral",
-    },
-    {
-      label: "SLA sob risco",
-      value: overdueTickets,
-      detail: "Itens com prazo mais sensivel",
-      tone: "warning",
-    },
-    {
-      label: "Criticos",
-      value: criticalOpen,
-      detail: "Maior impacto para a operacao",
-      tone: "danger",
-    },
-    {
-      label: "Ativos monitorados",
-      value: summary.activeAssets,
-      detail: `${summary.activeProjects} projetos | ${summary.activeApis} APIs ativas`,
-      tone: "neutral",
-    },
+    { label: "Total", value: totalTickets, detail: `${openTickets} em fluxo | ${resolvedTickets} resolvidos`, tone: "neutral" },
+    { label: "Abertos", value: openTickets, detail: `${summary.backlogTrend}% de backlog recente`, tone: "highlight" },
+    { label: "Em andamento", value: inProgressTickets, detail: "Tratamento ativo", tone: "neutral" },
+    { label: "SLA sob risco", value: overdueTickets, detail: "Prioridade operacional", tone: "warning" },
+    { label: "Criticos", value: criticalOpen, detail: "Maior impacto", tone: "danger" },
+    { label: "Aguardando usuario", value: waitingApproval, detail: "Dependencia externa", tone: "neutral" },
   ];
 
   const statusItems = useMemo(() => {
@@ -234,28 +209,6 @@ function DashboardPage() {
     }));
   }, [filteredTickets, totalTickets]);
 
-  const queueBreakdown = useMemo(() => {
-    const grouped = filteredTickets.reduce((accumulator, ticket) => {
-      const queueName = String(ticket.queue || "Sem fila").trim() || "Sem fila";
-      if (!accumulator[queueName]) {
-        accumulator[queueName] = { label: queueName, total: 0, critical: 0, overdue: 0 };
-      }
-      accumulator[queueName].total += 1;
-      if (normalizeText(ticket.priority) === "critica") accumulator[queueName].critical += 1;
-      if (String(ticket.sla || "").toLowerCase().includes("min")) accumulator[queueName].overdue += 1;
-      return accumulator;
-    }, {});
-
-    const items = Object.values(grouped).sort((left, right) => right.total - left.total);
-    const maxValue = Math.max(...items.map((item) => item.total), 1);
-
-    return items.map((item) => ({
-      ...item,
-      share: percent(item.total, totalTickets),
-      width: Math.max((item.total / maxValue) * 100, item.total ? 18 : 0),
-    }));
-  }, [filteredTickets, totalTickets]);
-
   const lastFiveDaysSeries = useMemo(() => {
     const anchorDate = filteredTickets.length
       ? filteredTickets.reduce((latest, ticket) => {
@@ -270,11 +223,7 @@ function DashboardPage() {
       const currentDate = new Date(anchorDate);
       currentDate.setHours(0, 0, 0, 0);
       currentDate.setDate(currentDate.getDate() - index);
-      days.push({
-        key: currentDate.toISOString().slice(0, 10),
-        label: formatDayLabel(currentDate),
-        total: 0,
-      });
+      days.push({ key: currentDate.toISOString().slice(0, 10), label: formatDayLabel(currentDate), total: 0 });
     }
 
     const map = new Map(days.map((day) => [day.key, day]));
@@ -327,6 +276,38 @@ function DashboardPage() {
     }));
   }, [filteredTickets]);
 
+  const departmentBreakdown = useMemo(() => {
+    const grouped = filteredTickets.reduce((accumulator, ticket) => {
+      const departmentId = String(ticket.departmentId || "").trim();
+      const departmentName = String(ticket.department || ticket.queue || "Sem departamento").trim() || "Sem departamento";
+      const department = departmentDirectory[departmentId] || null;
+      const key = departmentId || departmentName;
+      if (!accumulator[key]) {
+        accumulator[key] = {
+          key,
+          id: departmentId,
+          label: department?.name || departmentName,
+          color: department?.color || "",
+          total: 0,
+          open: 0,
+          critical: 0,
+        };
+      }
+      accumulator[key].total += 1;
+      if (openStatuses.has(normalizeText(ticket.status))) accumulator[key].open += 1;
+      if (normalizeText(ticket.priority) === "critica") accumulator[key].critical += 1;
+      return accumulator;
+    }, {});
+
+    const items = Object.values(grouped).sort((left, right) => right.total - left.total);
+    const maxValue = Math.max(...items.map((item) => item.total), 1);
+    return items.map((item) => ({
+      ...item,
+      share: percent(item.total, totalTickets),
+      width: Math.max((item.total / maxValue) * 100, item.total ? 18 : 0),
+    }));
+  }, [departmentDirectory, filteredTickets, openStatuses, totalTickets]);
+
   const assigneePerformance = useMemo(() => {
     const grouped = filteredTickets.reduce((accumulator, ticket) => {
       const assignee = String(ticket.assignee || "Nao atribuido").trim() || "Nao atribuido";
@@ -336,6 +317,8 @@ function DashboardPage() {
           total: 0,
           resolved: 0,
           slaRisk: 0,
+          critical: 0,
+          inProgress: 0,
           openAgeHours: 0,
           openAgeCount: 0,
         };
@@ -344,6 +327,10 @@ function DashboardPage() {
       bucket.total += 1;
       if (normalizeText(ticket.status) === "resolvido") bucket.resolved += 1;
       if (String(ticket.sla || "").toLowerCase().includes("min")) bucket.slaRisk += 1;
+      if (normalizeText(ticket.priority) === "critica") bucket.critical += 1;
+      if (normalizeText(ticket.status) === "em atendimento" || normalizeText(ticket.status) === "em andamento") {
+        bucket.inProgress += 1;
+      }
       const openedAt = parseTicketDate(ticket);
       if (openedAt) {
         bucket.openAgeHours += Math.max((Date.now() - openedAt.getTime()) / (1000 * 60 * 60), 0);
@@ -354,7 +341,7 @@ function DashboardPage() {
 
     return Object.values(grouped)
       .sort((left, right) => right.total - left.total)
-      .slice(0, 6)
+      .slice(0, 8)
       .map((item) => ({
         ...item,
         slaRate: item.total ? Math.max(100 - percent(item.slaRisk, item.total), 0) : 100,
@@ -362,33 +349,16 @@ function DashboardPage() {
       }));
   }, [filteredTickets]);
 
-  const assigneeWorkload = useMemo(() => {
-    const grouped = filteredTickets.reduce((accumulator, ticket) => {
-      const assignee = String(ticket.assignee || "Nao atribuido").trim() || "Nao atribuido";
-      if (!accumulator[assignee]) {
-        accumulator[assignee] = { label: assignee, total: 0, critical: 0, inProgress: 0 };
-      }
-      accumulator[assignee].total += 1;
-      if (normalizeText(ticket.priority) === "critica") accumulator[assignee].critical += 1;
-      if (normalizeText(ticket.status) === "em atendimento" || normalizeText(ticket.status) === "em andamento") {
-        accumulator[assignee].inProgress += 1;
-      }
-      return accumulator;
-    }, {});
-
-    const items = Object.values(grouped).sort((left, right) => right.total - left.total).slice(0, 6);
-    const maxValue = Math.max(...items.map((item) => item.total), 1);
-
-    return {
-      technicians: items.length,
-      total: items.reduce((sum, item) => sum + item.total, 0),
-      items: items.map((item) => ({
-        ...item,
-        share: percent(item.total, totalTickets),
-        width: Math.max((item.total / maxValue) * 100, item.total ? 18 : 0),
-      })),
-    };
-  }, [filteredTickets, totalTickets]);
+  const actionTickets = useMemo(
+    () =>
+      filteredTickets
+        .filter((ticket) => {
+          const status = normalizeText(ticket.status);
+          return normalizeText(ticket.priority) === "critica" || status === "em atendimento" || status === "em andamento";
+        })
+        .slice(0, 5),
+    [filteredTickets],
+  );
 
   const slaAlerts = useMemo(() => {
     const urgentAlerts = filteredTickets
@@ -400,22 +370,18 @@ function DashboardPage() {
       .map((ticket) => ({
         id: `${ticket.id}-sla`,
         tone: "warning",
-        title: `${ticket.id} estoura SLA em ${ticket.sla}`,
-        detail: `${ticket.queue} | ${ticket.assignee || "Sem tecnico"} | ${ticket.title}`,
+        title: `${ticket.id} com risco de SLA`,
+        detail: `${ticket.department || ticket.queue} | ${ticket.assignee || "Sem tecnico"} | ${ticket.title}`,
       }));
 
     const criticalUnassigned = filteredTickets
-      .filter((ticket) => normalizeText(ticket.priority) === "critica")
-      .filter((ticket) => {
-        const assignee = normalizeText(ticket.assignee);
-        return !assignee || assignee === "triagem ti" || assignee === "nao atribuido";
-      })
+      .filter((ticket) => normalizeText(ticket.priority) === "critica" && (!normalizeText(ticket.assignee) || normalizeText(ticket.assignee) === "nao atribuido"))
       .slice(0, 4)
       .map((ticket) => ({
         id: `${ticket.id}-critical`,
         tone: "danger",
-        title: `${ticket.id} critico aguardando tecnico`,
-        detail: `${ticket.queue} | ${ticket.title}`,
+        title: `${ticket.id} critico sem tecnico`,
+        detail: `${ticket.department || ticket.queue} | ${ticket.title}`,
       }));
 
     return [...urgentAlerts, ...criticalUnassigned].slice(0, 6);
@@ -436,25 +402,35 @@ function DashboardPage() {
         id: `${ticket.id}-${index}`,
         title: ticket.title,
         owner: ticket.assignee || "Sem responsavel",
-        category: ticket.queue || "Operacao",
+        category: ticket.department || ticket.queue || "Operacao",
         summary: ticket.resolutionNotes,
       }));
     return [...articles, ...notes].slice(0, 5);
   }, [filteredTickets, knowledgeArticles]);
 
-  const platformPulse = [
-    { label: "Usuarios TI", value: users.filter((user) => normalizeText(user.department) === "ti").length },
-    { label: "Filas ativas", value: queueBreakdown.length },
-    { label: "Projetos em curso", value: summary.activeProjects },
-    { label: "Integracoes ativas", value: summary.activeApis },
+  const widgets = [
+    { id: "overview", title: "Visao geral dos chamados", category: "Visao geral dos chamados" },
+    { id: "department", title: "Chamados por departamento", category: "Chamados por departamento" },
+    { id: "alerts", title: "SLA e criticidade", category: "SLA e criticidade" },
+    { id: "status", title: "Distribuicao por status", category: "SLA e criticidade" },
+    { id: "priority", title: "Distribuicao por prioridade", category: "SLA e criticidade" },
+    { id: "volume", title: "Volume por periodo", category: "Volume por periodo" },
+    { id: "performance", title: "Performance dos tecnicos", category: "Performance dos tecnicos" },
+    { id: "actions", title: "Chamados que exigem acao", category: "Visao geral dos chamados" },
+    { id: "knowledge", title: "Base de conhecimento", category: "Base de conhecimento" },
   ];
 
-  const serviceDeskHealth = [
-    { label: "SLA", value: `${slaCompliance}%`, note: "Conformidade atual" },
-    { label: "CSAT", value: `${summary.csat}/5`, note: "Satisfacao media" },
-    { label: "1 resposta", value: `${summary.firstResponseMinutes} min`, note: "Tempo medio" },
-    { label: "Aguardando", value: waitingApproval, note: "Dependencia do usuario" },
-  ];
+  const visibleWidgets = widgets.filter((widget) => !hiddenWidgets.includes(widget.id));
+  const hiddenWidgetDefs = widgets.filter((widget) => hiddenWidgets.includes(widget.id));
+  const widgetCategories = [...new Set(visibleWidgets.map((widget) => widget.category))];
+
+  const hideWidget = (widgetId) => {
+    setHiddenWidgets((current) => (current.includes(widgetId) ? current : [...current, widgetId]));
+  };
+
+  const showWidget = (widgetId) => {
+    setHiddenWidgets((current) => current.filter((item) => item !== widgetId));
+  };
 
   const resetFilters = () => {
     setPeriodFilter("90");
@@ -463,18 +439,354 @@ function DashboardPage() {
     setSearch("");
   };
 
+  const renderWidget = (widgetId) => {
+    if (widgetId === "overview") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Visao geral dos chamados</h2>
+              <span>Resumo objetivo da operacao filtrada</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-kpi-strip">
+            {dashboardKpis.map((item) => (
+              <article
+                className={`dashboard-kpi-card ${
+                  item.tone === "highlight"
+                    ? "dashboard-kpi-card-highlight"
+                    : item.tone === "warning"
+                      ? "dashboard-kpi-card-warning"
+                      : item.tone === "danger"
+                        ? "dashboard-kpi-card-danger"
+                        : ""
+                }`}
+                key={item.label}
+              >
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{item.detail}</small>
+              </article>
+            ))}
+          </div>
+          <div className="dashboard-status-strip">
+            <article className="dashboard-status-card">
+              <span>SLA atual</span>
+              <strong>{slaCompliance}%</strong>
+            </article>
+            <article className="dashboard-status-card">
+              <span>CSAT</span>
+              <strong>{summary.csat}/5</strong>
+            </article>
+            <article className="dashboard-status-card">
+              <span>1 resposta</span>
+              <strong>{summary.firstResponseMinutes} min</strong>
+            </article>
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "department") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Chamados por departamento</h2>
+              <span>Volume, abertos e criticos por area atendida</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-chart-list">
+            {departmentBreakdown.length ? (
+              departmentBreakdown.map((item) => (
+                <div className="dashboard-chart-row dashboard-chart-row-queue" key={item.key}>
+                  <div className="dashboard-chart-label">
+                    <strong className="department-badge" style={getDepartmentColorStyle(item.color, { alpha: 0.16 })}>
+                      {item.label}
+                    </strong>
+                    <span>
+                      {item.open} abertos | {item.critical} criticos
+                    </span>
+                  </div>
+                  <div className="dashboard-bar-track">
+                    <div className="dashboard-bar-fill dashboard-bar-fill-queue" style={{ width: `${item.width}%`, background: item.color || undefined }} />
+                  </div>
+                  <strong className="dashboard-chart-value">
+                    {item.total} <span>{item.share}%</span>
+                  </strong>
+                </div>
+              ))
+            ) : (
+              <div className="dashboard-empty-state">Nenhum chamado no recorte atual.</div>
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "alerts") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>SLA e criticidade</h2>
+              <span>Itens que exigem atencao imediata</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-alert-list">
+            {slaAlerts.length ? (
+              slaAlerts.map((alert) => (
+                <article className={`dashboard-alert-card dashboard-alert-${alert.tone}`} key={alert.id}>
+                  <strong>{alert.title}</strong>
+                  <span>{alert.detail}</span>
+                </article>
+              ))
+            ) : (
+              <div className="dashboard-empty-state">Nenhum alerta critico no recorte atual.</div>
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "status") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Distribuicao por status</h2>
+              <span>Leitura direta do fluxo atual</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-chart-list">
+            {statusItems.map((item) => (
+              <div className="dashboard-chart-row" key={item.label}>
+                <div className="dashboard-chart-label">
+                  <strong>{item.label}</strong>
+                  <span>{item.value} chamados</span>
+                </div>
+                <div className="dashboard-bar-track">
+                  <div className="dashboard-bar-fill" style={{ width: `${item.width}%` }} />
+                </div>
+                <strong className="dashboard-chart-value">{item.percentage}%</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "priority") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Distribuicao por prioridade</h2>
+              <span>Criticidade do backlog filtrado</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-chart-list">
+            {priorityItems.map((item) => (
+              <div className="dashboard-chart-row" key={item.label}>
+                <div className="dashboard-chart-label">
+                  <strong>{item.label}</strong>
+                  <span>{item.value} chamados</span>
+                </div>
+                <div className="dashboard-bar-track dashboard-bar-track-priority">
+                  <div className={`dashboard-bar-fill dashboard-bar-fill-${normalizeText(item.label)}`} style={{ width: `${item.width}%` }} />
+                </div>
+                <strong className="dashboard-chart-value">{item.percentage}%</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "volume") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Volume por periodo</h2>
+              <span>Abertura recente e comportamento mensal</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="split-grid split-grid-wide">
+            <div>
+              <strong className="dashboard-section-title">Ultimos 5 dias</strong>
+              <div className="dashboard-daily-chart">
+                {lastFiveDaysSeries.map((item) => (
+                  <article className="dashboard-daily-column" key={item.key}>
+                    <div className="dashboard-daily-bar-shell">
+                      <div className="dashboard-daily-bar" style={{ height: `${item.height}%` }} />
+                    </div>
+                    <strong>{item.total}</strong>
+                    <span>{item.label}</span>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div>
+              <strong className="dashboard-section-title">Ultimos 6 meses</strong>
+              <div className="dashboard-monthly-chart">
+                {monthlyTrend.map((item) => (
+                  <article className="dashboard-month-column" key={item.key}>
+                    <div className="dashboard-month-metrics">
+                      <strong>{item.total}</strong>
+                      <span>{item.resolved} resolvidos</span>
+                    </div>
+                    <div className="dashboard-month-bar-shell">
+                      <div className="dashboard-month-bar-track">
+                        <div className="dashboard-month-bar-open" style={{ height: `${item.height}%` }} />
+                        <div className="dashboard-month-bar-resolved" style={{ height: `${item.total ? (item.resolved / item.total) * item.height : 0}%` }} />
+                      </div>
+                    </div>
+                    <span className="dashboard-month-label">{item.label}</span>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "performance") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Performance dos tecnicos</h2>
+              <span>Volume, SLA, criticidade e media de atendimento</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-performance-table">
+            <div className="dashboard-performance-head">
+              <span>Tecnico</span>
+              <span>Chamados</span>
+              <span>SLA</span>
+              <span>Criticos</span>
+              <span>Andamento</span>
+              <span>Media</span>
+            </div>
+            {assigneePerformance.map((item) => (
+              <div className="dashboard-performance-row" key={item.label}>
+                <strong>{item.label}</strong>
+                <span>{item.total}</span>
+                <span>{item.slaRate}%</span>
+                <span>{item.critical}</span>
+                <span>{item.inProgress}</span>
+                <span>{item.averageResolution}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "actions") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Chamados que exigem acao</h2>
+              <span>Criticos ou em tratamento no momento</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="ticket-stack">
+            {actionTickets.length ? (
+              actionTickets.map((ticket) => (
+                <article className={`ticket-card priority-ticket-card priority-ticket-card-${getPriorityTone(ticket.priority)}`} key={ticket.id}>
+                  <div className="ticket-top">
+                    <strong>{ticket.id}</strong>
+                    <span className={`badge badge-${getPriorityTone(ticket.priority)}`}>{ticket.priority}</span>
+                  </div>
+                  <h3>{ticket.title}</h3>
+                  <p>{ticket.department || ticket.queue} | {ticket.assignee || "Sem tecnico"} | {ticket.status}</p>
+                  <div className="ticket-meta">
+                    <span>{ticket.requester}</span>
+                    <span>{ticket.sla}</span>
+                    <span>{ticket.updatedAt}</span>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="dashboard-empty-state">Nenhum chamado exige acao imediata no recorte atual.</div>
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "knowledge") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Base de conhecimento</h2>
+              <span>Artigos e solucoes reaproveitaveis do atendimento</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-knowledge-list">
+            {knowledgeInsights.length ? (
+              knowledgeInsights.map((item) => (
+                <article className="record-card" key={item.id}>
+                  <strong>{item.title}</strong>
+                  <span>{item.category} | {item.owner}</span>
+                  <p>{item.summary}</p>
+                </article>
+              ))
+            ) : (
+              <div className="dashboard-empty-state">Nenhuma solucao aplicada foi registrada no recorte atual.</div>
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div className="page-grid dashboard-grid">
       <section className="module-hero board-card dashboard-filter-shell">
         <div>
           <h2>Dashboard operacional</h2>
-          <p>Filtre, busque e aja rapido sobre os chamados e a operacao do service desk.</p>
+          <p>Leitura objetiva da operacao do helpdesk, com widgets personalizaveis por usuario.</p>
         </div>
         <div className="dashboard-action-row">
           <input
             className="toolbar-search"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por numero do chamado, usuario, tecnico, fila ou assunto"
+            placeholder="Buscar por chamado, usuario, tecnico, departamento ou assunto"
             value={search}
           />
           <Link className="ghost-button interactive-button" to="/app/tickets">
@@ -515,393 +827,34 @@ function DashboardPage() {
             Limpar filtros
           </button>
         </div>
-      </section>
-
-      <section className="dashboard-kpi-strip">
-        {dashboardKpis.map((item) => (
-          <article
-            className={`dashboard-kpi-card ${
-              item.tone === "highlight"
-                ? "dashboard-kpi-card-highlight"
-                : item.tone === "warning"
-                  ? "dashboard-kpi-card-warning"
-                  : item.tone === "danger"
-                    ? "dashboard-kpi-card-danger"
-                    : ""
-            }`}
-            key={item.label}
-          >
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.detail}</small>
-          </article>
-        ))}
-      </section>
-
-      <section className="dashboard-status-strip">
-        {statusSummary.map((item) => (
-          <article className="dashboard-status-card" key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </section>
-
-      <section className="split-grid split-grid-wide">
-        <div className="board-card dashboard-overview-card">
-          <div className="card-heading">
-            <div>
-              <h2>Visao executiva do atendimento</h2>
-              <span>Leitura rapida do volume e da qualidade operacional</span>
-            </div>
-          </div>
-
-          <div className="dashboard-overview-grid">
-            <div className="dashboard-overview-main">
-              <strong>{openTickets}</strong>
-              <span>chamados ativos na operacao</span>
-            </div>
-            <div className="dashboard-overview-list">
-              {serviceDeskHealth.map((item) => (
-                <article className="dashboard-stat-card" key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <small>{item.note}</small>
-                </article>
+        {hiddenWidgetDefs.length ? (
+          <div className="board-card compact-record-card">
+            <strong>Widgets ocultos</strong>
+            <span>Reexiba qualquer bloco ocultado neste dashboard.</span>
+            <div className="permissions-inline users-grid-config">
+              {hiddenWidgetDefs.map((widget) => (
+                <button className="ghost-button compact-button interactive-button" key={widget.id} onClick={() => showWidget(widget.id)} type="button">
+                  Mostrar {widget.title}
+                </button>
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Alertas de SLA</h2>
-              <span>Chamados mais proximos de impacto imediato</span>
-            </div>
-          </div>
-          <div className="dashboard-alert-list">
-            {slaAlerts.length ? (
-              slaAlerts.map((alert) => (
-                <article className={`dashboard-alert-card dashboard-alert-${alert.tone}`} key={alert.id}>
-                  <strong>{alert.title}</strong>
-                  <span>{alert.detail}</span>
-                </article>
-              ))
-            ) : (
-              <div className="dashboard-empty-state">Nenhum alerta critico no recorte atual.</div>
-            )}
-          </div>
-        </div>
+        ) : null}
       </section>
 
-      <section className="split-grid split-grid-wide">
-        <div className="board-card">
+      {widgetCategories.map((category) => (
+        <section className="dashboard-category-section" key={category}>
           <div className="card-heading">
             <div>
-              <h2>Distribuicao por status</h2>
-              <span>Abertos, andamento, usuario, resolvidos e reabertos</span>
+              <h2>{category}</h2>
+              <span>Painel organizado por contexto operacional.</span>
             </div>
           </div>
-          <div className="dashboard-chart-list">
-            {statusItems.map((item) => (
-              <div className="dashboard-chart-row" key={item.label}>
-                <div className="dashboard-chart-label">
-                  <strong>{item.label}</strong>
-                  <span>{item.value} chamados</span>
-                </div>
-                <div className="dashboard-bar-track">
-                  <div className="dashboard-bar-fill" style={{ width: `${item.width}%` }} />
-                </div>
-                <strong className="dashboard-chart-value">{item.percentage}%</strong>
-              </div>
-            ))}
+          <div className="split-grid split-grid-wide">
+            {visibleWidgets.filter((widget) => widget.category === category).map((widget) => renderWidget(widget.id))}
           </div>
-        </div>
-
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Prioridades</h2>
-              <span>Critico vermelho, alto laranja, medio amarelo, baixo verde</span>
-            </div>
-          </div>
-          <div className="dashboard-chart-list">
-            {priorityItems.map((item) => (
-              <div className="dashboard-chart-row" key={item.label}>
-                <div className="dashboard-chart-label">
-                  <strong>{item.label}</strong>
-                  <span>{item.value} chamados</span>
-                </div>
-                <div className="dashboard-bar-track dashboard-bar-track-priority">
-                  <div
-                    className={`dashboard-bar-fill dashboard-bar-fill-${normalizeText(item.label)}`}
-                    style={{ width: `${item.width}%` }}
-                  />
-                </div>
-                <strong className="dashboard-chart-value">{item.percentage}%</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="split-grid split-grid-wide">
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Chamados abertos nos ultimos 5 dias</h2>
-              <span>Leitura diaria simples para abertura recente</span>
-            </div>
-          </div>
-          <div className="dashboard-daily-chart">
-            {lastFiveDaysSeries.map((item) => (
-              <article className="dashboard-daily-column" key={item.key}>
-                <div className="dashboard-daily-bar-shell">
-                  <div className="dashboard-daily-bar" style={{ height: `${item.height}%` }} />
-                </div>
-                <strong>{item.total}</strong>
-                <span>{item.label}</span>
-              </article>
-            ))}
-          </div>
-        </div>
-
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Chamados abertos por mes</h2>
-              <span>Ultimos 6 meses de abertura e resolucao</span>
-            </div>
-          </div>
-          <div className="dashboard-monthly-chart">
-            {monthlyTrend.map((item) => (
-              <article className="dashboard-month-column" key={item.key}>
-                <div className="dashboard-month-metrics">
-                  <strong>{item.total}</strong>
-                  <span>{item.resolved} resolvidos</span>
-                </div>
-                <div className="dashboard-month-bar-shell">
-                  <div className="dashboard-month-bar-track">
-                    <div className="dashboard-month-bar-open" style={{ height: `${item.height}%` }} />
-                    <div
-                      className="dashboard-month-bar-resolved"
-                      style={{ height: `${item.total ? (item.resolved / item.total) * item.height : 0}%` }}
-                    />
-                  </div>
-                </div>
-                <span className="dashboard-month-label">{item.label}</span>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="split-grid split-grid-wide">
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Performance dos tecnicos</h2>
-              <span>Chamados, SLA e media estimada com base no recorte atual</span>
-            </div>
-          </div>
-          <div className="dashboard-performance-table">
-            <div className="dashboard-performance-head">
-              <span>Tecnico</span>
-              <span>Chamados</span>
-              <span>SLA</span>
-              <span>Media</span>
-              <span>Resolvidos</span>
-            </div>
-            {assigneePerformance.map((item) => (
-              <div className="dashboard-performance-row" key={item.label}>
-                <strong>{item.label}</strong>
-                <span>{item.total}</span>
-                <span>{item.slaRate}%</span>
-                <span>{item.averageResolution}</span>
-                <span>{item.resolved}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Carga de trabalho dos tecnicos</h2>
-              <span>
-                {assigneeWorkload.total} chamados distribuidos entre {assigneeWorkload.technicians} tecnicos
-              </span>
-            </div>
-          </div>
-          <div className="dashboard-chart-list">
-            {assigneeWorkload.items.map((item) => (
-              <div className="dashboard-chart-row dashboard-chart-row-queue" key={item.label}>
-                <div className="dashboard-chart-label">
-                  <strong>{item.label}</strong>
-                  <span>
-                    {item.inProgress} em andamento | {item.critical} criticos
-                  </span>
-                </div>
-                <div className="dashboard-bar-track">
-                  <div className="dashboard-bar-fill dashboard-bar-fill-assignee" style={{ width: `${item.width}%` }} />
-                </div>
-                <strong className="dashboard-chart-value">
-                  {item.total} <span>{item.share}%</span>
-                </strong>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="split-grid split-grid-wide">
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Backlog por fila</h2>
-              <span>Volume real por area com risco de SLA e criticidade</span>
-            </div>
-          </div>
-          <div className="dashboard-chart-list">
-            {queueBreakdown.map((item) => (
-              <div className="dashboard-chart-row dashboard-chart-row-queue" key={item.label}>
-                <div className="dashboard-chart-label">
-                  <strong>{item.label}</strong>
-                  <span>
-                    {item.critical} criticos | {item.overdue} sob risco de SLA
-                  </span>
-                </div>
-                <div className="dashboard-bar-track">
-                  <div className="dashboard-bar-fill dashboard-bar-fill-queue" style={{ width: `${item.width}%` }} />
-                </div>
-                <strong className="dashboard-chart-value">
-                  {item.total} <span>{item.share}%</span>
-                </strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Chamados que exigem acao</h2>
-              <span>Fila mais quente no momento</span>
-            </div>
-          </div>
-          <div className="ticket-stack">
-            {filteredTickets
-              .filter((ticket) => {
-                const status = normalizeText(ticket.status);
-                return normalizeText(ticket.priority) === "critica" || status === "em atendimento" || status === "em andamento";
-              })
-              .slice(0, 5)
-              .map((ticket) => (
-                <article className={`ticket-card priority-ticket-card priority-ticket-card-${getPriorityTone(ticket.priority)}`} key={ticket.id}>
-                  <div className="ticket-top">
-                    <strong>{ticket.id}</strong>
-                    <span className={`badge badge-${getPriorityTone(ticket.priority)}`}>{ticket.priority}</span>
-                  </div>
-                  <h3>{ticket.title}</h3>
-                  <p>{ticket.queue} | {ticket.assignee} | {ticket.status}</p>
-                  <div className="ticket-meta">
-                    <span>{ticket.requester}</span>
-                    <span>{ticket.sla}</span>
-                    <span>{ticket.updatedAt}</span>
-                  </div>
-                </article>
-              ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="split-grid split-grid-wide">
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Base de conhecimento aplicada</h2>
-              <span>Artigos e solucoes reaproveitaveis a partir dos chamados resolvidos</span>
-            </div>
-          </div>
-          <div className="dashboard-knowledge-list">
-            {knowledgeInsights.length ? (
-              knowledgeInsights.map((item) => (
-                <article className="record-card" key={item.id}>
-                  <strong>{item.title}</strong>
-                  <span>{item.category} | {item.owner}</span>
-                  <p>{item.summary}</p>
-                </article>
-              ))
-            ) : (
-              <div className="dashboard-empty-state">Nenhuma solucao aplicada foi registrada no recorte atual.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="board-card">
-          <div className="card-heading">
-            <div>
-              <h2>Projetos, integracoes e ativos</h2>
-              <span>Contexto complementar para operacao e sustentacao</span>
-            </div>
-          </div>
-          <div className="dashboard-column">
-            {activeProjects.map((project) => (
-              <div className="project-snapshot" key={project.id}>
-                <div>
-                  <strong>{project.name}</strong>
-                  <span>{project.manager} | entrega {project.dueDate}</span>
-                </div>
-                <div className="progress-shell">
-                  <div className="progress-bar" style={{ width: `${project.progress}%` }} />
-                </div>
-              </div>
-            ))}
-            {apiConfigs.map((config) => (
-              <div className="integration-row" key={config.id}>
-                <div>
-                  <strong>{config.name}</strong>
-                  <span>{config.baseUrl}</span>
-                </div>
-                <span className="badge badge-neutral">{config.status}</span>
-              </div>
-            ))}
-            {assets.slice(0, 3).map((asset) => (
-              <div className="integration-row" key={asset.id}>
-                <div>
-                  <strong>{asset.name}</strong>
-                  <span>{asset.type} | {asset.location}</span>
-                </div>
-                <span className="badge badge-neutral">{asset.status}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="board-card">
-        <div className="card-heading">
-          <div>
-            <h2>Indicadores executivos</h2>
-            <span>Leitura consolidada de performance do service desk</span>
-          </div>
-        </div>
-        <div className="kpi-list kpi-list-wide">
-          {reports.map((report) => (
-            <div className="kpi-item" key={report.id}>
-              <div>
-                <strong>{report.label}</strong>
-                <span>Tendencia no periodo</span>
-              </div>
-              <div className="kpi-value">
-                <strong>{report.value}</strong>
-                <span>{report.trend}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+        </section>
+      ))}
     </div>
   );
 }

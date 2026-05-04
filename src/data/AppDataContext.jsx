@@ -42,6 +42,7 @@ import {
   syncHelpdeskState,
   toLocalDatetimeInput,
 } from "./helpdesk";
+import { normalizeDepartmentColor } from "./departments";
 
 const AppDataContext = createContext(null);
 
@@ -101,6 +102,7 @@ function sanitizeDepartmentPayload(payload, currentDepartment = {}) {
   return {
     code,
     name,
+    color: normalizeDepartmentColor(payload.color || currentDepartment.color || ""),
     status: String(payload.status || currentDepartment.status || "Ativo").trim() || "Ativo",
     createdAt: payload.createdAt || currentDepartment.createdAt || nowIso,
     updatedAt: payload.updatedAt || currentDepartment.updatedAt || nowIso,
@@ -979,7 +981,7 @@ export function AppDataProvider({ children }) {
       const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
       const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
       const nowIso = new Date().toISOString();
-      const openedAt = payload.openedAt || nowIso;
+      const openedAt = nowIso;
       const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
       const slaTargetMinutes = getSlaPolicyMinutes(priority);
       const serviceCenterEnabled = Boolean(current.serviceCenter?.enabled);
@@ -1028,7 +1030,7 @@ export function AppDataProvider({ children }) {
         priority,
         urgency: payload.urgency || priority,
         impact: payload.impact || priority,
-        status: normalizeTicketStatus(payload.status || "Aberto"),
+        status: "Aberto",
         requester,
         requesterId,
         requesterEmail,
@@ -1107,7 +1109,6 @@ export function AppDataProvider({ children }) {
         const nextPriority = requestedPriority;
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
-        const nextOpenedAt = updates.openedAt ?? ticket.openedAt;
         const nextDueDate = updates.dueDate ?? ticket.dueDate;
         const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
         const nextResolutionNotes = String((updates.resolutionNotes ?? ticket.resolutionNotes) || "").trim();
@@ -1206,9 +1207,9 @@ export function AppDataProvider({ children }) {
           impact: nextImpact,
           sla: computeSlaFromMinutes(getSlaPolicyMinutes(nextPriority)),
           slaTargetMinutes: getSlaPolicyMinutes(nextPriority),
-          slaDeadlineAt: new Date(new Date(nextOpenedAt).getTime() + getSlaPolicyMinutes(nextPriority) * 60 * 1000).toISOString(),
-          openedAt: nextOpenedAt,
-          openedAtLabel: formatTimestampLabel(nextOpenedAt),
+          slaDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + getSlaPolicyMinutes(nextPriority) * 60 * 1000).toISOString(),
+          openedAt: ticket.openedAt,
+          openedAtLabel: formatTimestampLabel(ticket.openedAt),
           dueDate: nextDueDate,
           dueDateLabel: nextDueDate ? formatDateLabel(nextDueDate) : "",
           requester: canViewGlobalTickets ? updates.requester ?? ticket.requester : ticket.requester,

@@ -1499,6 +1499,26 @@ textarea:focus {
   gap: 0.85rem;
 }
 
+.department-name-cell,
+.department-color-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.department-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: var(--department-color, rgba(148, 163, 184, 0.45));
+  flex-shrink: 0;
+}
+
+.department-badge {
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.2));
+}
+
 .user-grid-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1638,6 +1658,25 @@ textarea:focus {
 
 .user-quick-actions {
   justify-content: flex-end;
+}
+
+.dashboard-widget-heading {
+  align-items: flex-start;
+}
+
+.dashboard-category-section {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.dashboard-section-title {
+  display: inline-block;
+  margin-bottom: 0.85rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .permission-override-card {

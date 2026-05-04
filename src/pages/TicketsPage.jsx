@@ -2,20 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
+import { getDepartmentColorStyle } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
-import { PRIORITY_LEVELS, TICKET_STATUSES, normalizeText, toLocalDatetimeInput } from "../data/helpdesk";
+import { PRIORITY_LEVELS, TICKET_STATUSES, normalizeText } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultCreateForm = {
   title: "",
   type: "Incidente",
-  status: "Aberto",
   departmentId: "",
   location: "",
   priority: "Media",
   urgency: "Media",
   impact: "Media",
-  openedAt: new Date().toISOString(),
   watchers: [],
   description: "",
   attachments: [],
@@ -49,10 +48,6 @@ function formatBytes(size) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function toIsoOrEmpty(value) {
-  return value ? new Date(value).toISOString() : "";
 }
 
 function getPriorityBadgeClass(priority) {
@@ -90,7 +85,6 @@ function getSlaTone(ticket) {
 function getFreshCreateForm() {
   return {
     ...defaultCreateForm,
-    openedAt: new Date().toISOString(),
     watchers: [],
     attachments: [],
     knowledgeArticleIds: [],
@@ -172,6 +166,18 @@ function TicketsPage() {
         {},
       ),
     [departments, serviceCenter],
+  );
+
+  const departmentDirectory = useMemo(
+    () =>
+      departments.reduce(
+        (accumulator, department) => ({
+          ...accumulator,
+          [department.id]: department,
+        }),
+        {},
+      ),
+    [departments],
   );
 
   const selectableDepartmentOptions = useMemo(() => {
@@ -310,7 +316,6 @@ function TicketsPage() {
       priority: detailTicket.priority,
       urgency: detailTicket.urgency || detailTicket.priority,
       impact: detailTicket.impact || detailTicket.priority,
-      openedAt: toLocalDatetimeInput(detailTicket.openedAt),
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
       knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
@@ -406,7 +411,6 @@ function TicketsPage() {
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
       assignee: "",
-      openedAt: toIsoOrEmpty(createForm.openedAt) || new Date().toISOString(),
     });
 
     if (!createdTicket) {
@@ -424,7 +428,6 @@ function TicketsPage() {
 
     updateTicket(detailTicket.id, {
       ...detailForm,
-      openedAt: toIsoOrEmpty(detailForm.openedAt),
       dueDate: detailForm.dueDate || "",
     });
     pushToast("Chamado atualizado", detailForm.title);
@@ -557,7 +560,9 @@ function TicketsPage() {
                   <span>{ticket.requester}</span>
                   <span>{ticket.requesterEmail || "-"}</span>
                   <span>{ticket.assignee || "Sem tecnico"}</span>
-                  <span>{ticket.queue}</span>
+                  <span className="department-badge" style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.16 })}>
+                    {ticket.department || ticket.queue}
+                  </span>
                 </div>
               </button>
             ))
@@ -615,6 +620,7 @@ function TicketsPage() {
                           className={`service-request-card interactive-button${createForm.departmentId === department.id ? " is-selected" : ""}`}
                           key={department.id}
                           onClick={() => setCreateForm((current) => ({ ...current, departmentId: department.id }))}
+                          style={getDepartmentColorStyle(department.color, { alpha: 0.14 })}
                           type="button"
                         >
                           <strong>Chamado para {department.name}</strong>
@@ -637,14 +643,6 @@ function TicketsPage() {
                     <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
                   </div>
                 </div>
-                <label className="field-block">
-                  <span>Status</span>
-                  <select onChange={updateCreateField("status")} value={createForm.status}>
-                    {TICKET_STATUSES.map((status) => (
-                      <option key={status}>{status}</option>
-                    ))}
-                  </select>
-                </label>
                 <label className="field-block">
                   <span>Localizacao</span>
                   <input onChange={updateCreateField("location")} value={createForm.location} />
@@ -672,10 +670,6 @@ function TicketsPage() {
                       <option key={priority}>{priority}</option>
                     ))}
                   </select>
-                </label>
-                <label className="field-block">
-                  <span>Data e hora da abertura</span>
-                  <input onChange={updateCreateField("openedAt")} type="datetime-local" value={toLocalDatetimeInput(createForm.openedAt)} />
                 </label>
                 <label className="field-block">
                   <span>Pesquisar artigo</span>
@@ -812,6 +806,12 @@ function TicketsPage() {
                   <strong className={`badge ${getPriorityBadgeClass(detailForm.priority)}`}>{detailForm.priority}</strong>
                 </div>
                 <div>
+                  <span>Departamento</span>
+                  <strong className="badge department-badge" style={getDepartmentColorStyle(detailDepartment?.color, { alpha: 0.16 })}>
+                    {detailDepartment?.name || detailForm.department || detailForm.queue}
+                  </strong>
+                </div>
+                <div>
                   <span>Status</span>
                   <strong className={`badge ${getStatusBadgeClass(detailForm.status)}`}>{detailForm.status}</strong>
                 </div>
@@ -932,7 +932,7 @@ function TicketsPage() {
                 </label>
                 <label className="field-block">
                   <span>Abertura</span>
-                  <input disabled={!canEditTicket} onChange={updateDetailField("openedAt")} type="datetime-local" value={detailForm.openedAt || ""} />
+                  <input disabled readOnly value={detailTicket.openedAtLabel || "-"} />
                 </label>
                 <label className="field-block">
                   <span>Observadores</span>

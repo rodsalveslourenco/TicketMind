@@ -17,6 +17,19 @@ function normalizeText(value) {
     .trim();
 }
 
+function normalizeTicketStatusForMerge(status) {
+  const normalized = normalizeText(status);
+  if (normalized === "em atendimento" || normalized === "em andamento" || normalized === "analise") {
+    return "Em andamento";
+  }
+  if (normalized === "aguardando aprovacao" || normalized === "aguardando usuario") {
+    return "Aguardando usuario";
+  }
+  if (normalized === "resolvido") return "Resolvido";
+  if (normalized === "reaberto") return "Reaberto";
+  return "Aberto";
+}
+
 function parseEmails(value) {
   if (Array.isArray(value)) {
     return value.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean);
@@ -303,8 +316,29 @@ export function mergeIncomingState(previousState = {}, nextState = {}) {
     ? encryptSecret(incomingService.apiKey)
     : String(previousService.apiKey || "").trim();
 
+  const previousTicketsMap = new Map((previousState.tickets || []).map((ticket) => [ticket.id, ticket]));
+  const mergedTickets = Array.isArray(nextState.tickets)
+    ? nextState.tickets.map((ticket) => {
+        const previousTicket = previousTicketsMap.get(ticket.id) || null;
+        if (!previousTicket) {
+          const openedAt = new Date().toISOString();
+          return {
+            ...ticket,
+            status: "Aberto",
+            openedAt,
+          };
+        }
+        return {
+          ...ticket,
+          status: normalizeTicketStatusForMerge(ticket.status ?? previousTicket.status),
+          openedAt: previousTicket.openedAt,
+        };
+      })
+    : nextState.tickets;
+
   return {
     ...nextState,
+    tickets: mergedTickets,
     smtpSettings: {
       ...previousSmtp,
       ...incomingSmtp,

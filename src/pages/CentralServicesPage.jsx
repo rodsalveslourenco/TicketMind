@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import UserAutocomplete from "../components/UserAutocomplete";
+import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultForm = {
   code: "",
   name: "",
+  color: "",
   status: "Ativo",
   active: true,
   acceptsTickets: true,
@@ -121,6 +123,7 @@ function CentralServicesPage() {
     setForm({
       code: department.code || "",
       name: department.name || "",
+      color: department.color || "",
       status: department.status || "Ativo",
       active: department.active !== false,
       acceptsTickets: department.acceptsTickets !== false,
@@ -276,7 +279,7 @@ function CentralServicesPage() {
         <div className="service-center-grid">
           {departmentRows.map((department) => (
             <article className="service-center-card" key={department.id}>
-              <div className="service-center-card-head">
+              <div className="service-center-card-head" style={getDepartmentColorStyle(department.color, { alpha: 0.12 })}>
                 <div>
                   <strong>{department.name}</strong>
                   <span>{department.code || "SEM-CODIGO"} | cadastro {department.status}</span>
@@ -346,6 +349,17 @@ function CentralServicesPage() {
                     <option>Ativo</option>
                     <option>Inativo</option>
                   </select>
+                </label>
+                <label className="field-block">
+                  <span>Cor do departamento</span>
+                  <div className="department-color-field">
+                    <input
+                      onChange={(event) => setForm((current) => ({ ...current, color: String(event.target.value || "").trim().toUpperCase() }))}
+                      placeholder="#2563EB"
+                      value={form.color}
+                    />
+                    <span className="department-color-swatch" style={getDepartmentColorStyle(form.color, { alpha: 0.35 })} />
+                  </div>
                 </label>
                 <label className="field-block field-full">
                   <span>Nome do departamento</span>

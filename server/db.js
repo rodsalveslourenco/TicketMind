@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import initSqlJs from "sql.js";
 import { seedData } from "../src/data/seedData.js";
+import { normalizeDepartmentColor } from "../src/data/departments.js";
 import { normalizeRoleName, normalizeUserPermissions } from "../src/data/permissions.js";
 import { normalizeKnowledgeArticle, syncHelpdeskState } from "../src/data/helpdesk.js";
 import {
@@ -59,6 +60,7 @@ function normalizeDepartmentRecord(record = {}) {
     id: String(record.id || "").trim(),
     code: normalizeCode(record.code || name, "DEP"),
     name,
+    color: normalizeDepartmentColor(record.color || ""),
     status: String(record.status || "Ativo").trim() || "Ativo",
     createdAt: String(record.createdAt || nowIso),
     updatedAt: String(record.updatedAt || nowIso),
@@ -455,6 +457,7 @@ async function getSqliteDb() {
           id TEXT PRIMARY KEY,
           code TEXT NOT NULL,
           name TEXT NOT NULL,
+          color TEXT NOT NULL DEFAULT '',
           status TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -502,6 +505,7 @@ async function getSqliteDb() {
         );
       `);
       [
+        "ALTER TABLE departments ADD COLUMN color TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'Ativo'",
         "ALTER TABLE users ADD COLUMN permission_profile_id TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN additional_permissions TEXT NOT NULL DEFAULT '{}'",
@@ -566,7 +570,7 @@ async function readSqliteStateRaw() {
 
 async function readSqliteCollections() {
   const db = await getSqliteDb();
-  const departmentsResult = db.exec("SELECT id, code, name, status, created_at, updated_at FROM departments ORDER BY name");
+  const departmentsResult = db.exec("SELECT id, code, name, color, status, created_at, updated_at FROM departments ORDER BY name");
   const locationsResult = db.exec(`
     SELECT locations.id, locations.code, locations.name, locations.department_id, departments.name AS department_name,
            locations.status, locations.created_at, locations.updated_at
@@ -595,6 +599,7 @@ async function readSqliteCollections() {
       id: row.id,
       code: row.code,
       name: row.name,
+      color: row.color || "",
       status: row.status,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -645,14 +650,15 @@ async function writeSqliteCollections(collections) {
     db.run("DELETE FROM departments");
 
     const insertDepartment = db.prepare(`
-      INSERT INTO departments (id, code, name, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO departments (id, code, name, color, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     collections.departments.forEach((department) => {
       insertDepartment.run([
         department.id,
         department.code,
         department.name,
+        department.color || "",
         department.status,
         department.createdAt,
         department.updatedAt,
@@ -760,6 +766,7 @@ async function ensurePgSchema() {
       id TEXT PRIMARY KEY,
       code TEXT NOT NULL,
       name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
@@ -805,6 +812,7 @@ async function ensurePgSchema() {
     )
   `);
   await pool.query(`
+    ALTER TABLE departments ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Ativo';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS permission_profile_id TEXT NOT NULL DEFAULT '';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
@@ -823,7 +831,7 @@ async function readPostgresCollections() {
   await ensurePgSchema();
   const pool = getPgPool();
   const [departmentsResult, locationsResult, usersResult] = await Promise.all([
-    pool.query("SELECT id, code, name, status, created_at, updated_at FROM departments ORDER BY name"),
+    pool.query("SELECT id, code, name, color, status, created_at, updated_at FROM departments ORDER BY name"),
     pool.query(`
       SELECT locations.id, locations.code, locations.name, locations.department_id, departments.name AS department_name,
              locations.status, locations.created_at, locations.updated_at
@@ -845,6 +853,7 @@ async function readPostgresCollections() {
       id: row.id,
       code: row.code,
       name: row.name,
+      color: row.color || "",
       status: row.status,
       createdAt: row.created_at?.toISOString?.() || row.created_at,
       updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
@@ -900,10 +909,10 @@ async function writePostgresCollections(collections) {
     for (const department of collections.departments) {
       await client.query(
         `
-          INSERT INTO departments (id, code, name, status, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO departments (id, code, name, color, status, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
         `,
-        [department.id, department.code, department.name, department.status, department.createdAt, department.updatedAt],
+        [department.id, department.code, department.name, department.color || "", department.status, department.createdAt, department.updatedAt],
       );
     }
 
