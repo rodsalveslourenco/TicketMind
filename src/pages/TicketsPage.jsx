@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
-import { getDepartmentColorStyle } from "../data/departments";
+import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { PRIORITY_LEVELS, TICKET_STATUSES, normalizeText } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
@@ -88,6 +88,15 @@ function getFreshCreateForm() {
     watchers: [],
     attachments: [],
     knowledgeArticleIds: [],
+  };
+}
+
+function toDepartmentOptionStyle(color) {
+  const normalizedColor = normalizeDepartmentColor(color);
+  if (!normalizedColor) return {};
+  return {
+    backgroundColor: `${normalizedColor}22`,
+    color: "#0f172a",
   };
 }
 
@@ -645,10 +654,15 @@ function TicketsPage() {
                 {serviceCenterEnabled ? (
                   <label className="field-block field-full">
                     <span>Departamento de destino</span>
-                    <select onChange={updateCreateField("departmentId")} required value={createForm.departmentId}>
+                    <select
+                      onChange={updateCreateField("departmentId")}
+                      required
+                      style={getDepartmentColorStyle(selectedCreateDepartment?.color, { alpha: 0.16 })}
+                      value={createForm.departmentId}
+                    >
                       <option value="">Selecione o departamento</option>
                       {requestableDepartments.map((department) => (
-                        <option key={department.id} value={department.id}>
+                        <option key={department.id} style={toDepartmentOptionStyle(department.color)} value={department.id}>
                           {department.name}{department.code ? ` | ${department.code}` : ""}
                         </option>
                       ))}
