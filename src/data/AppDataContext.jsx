@@ -412,6 +412,19 @@ function hydratePermissionProfiles(storedProfiles) {
 }
 
 function hydrateNavigationSections(storedSections) {
+  const dedupeNavigationItems = (items = []) => {
+    const seenRoutes = new Set();
+    const seenModuleLabels = new Set();
+    return items.filter((item) => {
+      const routeKey = String(item.to || "").trim();
+      const moduleLabelKey = `${String(item.module || "").trim()}::${normalizeText(item.label)}`;
+      if ((routeKey && seenRoutes.has(routeKey)) || seenModuleLabels.has(moduleLabelKey)) return false;
+      if (routeKey) seenRoutes.add(routeKey);
+      seenModuleLabels.add(moduleLabelKey);
+      return true;
+    });
+  };
+
   const sections = Array.isArray(storedSections) && storedSections.length ? storedSections : defaultNavigationSections;
   const normalizedDefaults = defaultNavigationSections.map((section) => ({
     ...section,
@@ -456,10 +469,14 @@ function hydrateNavigationSections(storedSections) {
       return {
         ...defaultSection,
         ...storedSection,
-        items: [...mergedItems, ...extraItems].filter((item) => item.to !== "/app/locations"),
+        items: dedupeNavigationItems([...mergedItems, ...extraItems].filter((item) => item.to !== "/app/locations")),
       };
     })
     .concat(normalizedStored.filter((section) => !normalizedDefaults.some((candidate) => candidate.key === section.key)))
+    .map((section) => ({
+      ...section,
+      items: dedupeNavigationItems(section.items || []),
+    }))
     .filter((section) => section.key && section.items.length)
     .sort((left, right) => left.order - right.order);
 }
