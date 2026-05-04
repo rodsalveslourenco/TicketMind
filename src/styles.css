@@ -1499,6 +1499,13 @@ textarea:focus {
   gap: 0.85rem;
 }
 
+.user-grid-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+}
+
 .user-row,
 .asset-row {
   width: 100%;
@@ -1520,6 +1527,40 @@ textarea:focus {
   gap: 0.85rem;
 }
 
+.user-grid-main {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.user-grid-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.user-grid-cell {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.user-grid-cell small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.user-grid-cell span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .user-row-footer {
   margin-top: 0.8rem;
 }
@@ -1539,6 +1580,10 @@ textarea:focus {
   background: transparent;
   border: none;
   padding: 0;
+}
+
+.user-grid-open {
+  min-width: 0;
 }
 
 .user-identity {
@@ -1725,6 +1770,12 @@ textarea:focus {
   box-shadow: 0 20px 32px rgba(23, 41, 61, 0.12);
 }
 
+.autocomplete-empty {
+  padding: 0.75rem 0.85rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .autocomplete-item {
   display: grid;
   gap: 0.12rem;
@@ -1770,6 +1821,14 @@ textarea:focus {
   .glpi-toolbar-stack {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .user-grid-row {
+    grid-template-columns: 1fr;
+  }
+
+  .user-grid-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2362,6 +2421,11 @@ textarea:focus {
 .ticket-page .kanban-card h3,
 .users-page .user-row strong {
   font-size: 0.92rem;
+}
+
+.users-grid-config {
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .ticket-page .toolbar-search,
@@ -4062,11 +4126,16 @@ textarea:focus {
 .recipient-option {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 0.55rem;
   padding: 0.7rem 0.8rem;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
   background: #f8fafc;
+}
+
+.recipient-option-selected {
+  align-items: center;
 }
 
 .recipient-option span {
@@ -4282,6 +4351,10 @@ textarea:focus {
     flex-wrap: wrap;
   }
 
+  .user-grid-columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .user-summary-stats {
     min-width: 100%;
   }
@@ -4302,6 +4375,10 @@ textarea:focus {
   }
 
   .user-summary-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .user-grid-columns {
     grid-template-columns: 1fr;
   }
 }

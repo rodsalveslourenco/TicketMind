@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import UserAutocomplete from "../components/UserAutocomplete";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 
@@ -47,6 +48,7 @@ function CentralServicesPage() {
   const [search, setSearch] = useState("");
   const [editingDepartmentId, setEditingDepartmentId] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [responsibleQuery, setResponsibleQuery] = useState("");
   const [form, setForm] = useState(defaultForm);
 
   const canView = hasAnyPermission(user, ["service_center_manage", "service_center_departments_manage", "users_manage_permissions", "users_admin"]);
@@ -92,6 +94,11 @@ function CentralServicesPage() {
       .sort((left, right) => left.name.localeCompare(right.name));
   }, [activeUsers, departments, search, serviceCenter]);
 
+  const selectedResponsibleUsers = useMemo(
+    () => activeUsers.filter((candidate) => form.responsibleUserIds.includes(candidate.id)),
+    [activeUsers, form.responsibleUserIds],
+  );
+
   if (!canView) {
     return <Navigate replace to="/app/dashboard" />;
   }
@@ -99,6 +106,7 @@ function CentralServicesPage() {
   const resetForm = () => {
     setForm(defaultForm);
     setEditingDepartmentId(null);
+    setResponsibleQuery("");
   };
 
   const openCreateModal = () => {
@@ -119,6 +127,7 @@ function CentralServicesPage() {
       showInRequestPortal: Boolean(department.showInRequestPortal),
       responsibleUserIds: department.responsibleUserIds || [],
     });
+    setResponsibleQuery("");
     setShowModal(true);
   };
 
@@ -129,6 +138,16 @@ function CentralServicesPage() {
         ? current.responsibleUserIds.filter((currentUserId) => currentUserId !== userId)
         : [...current.responsibleUserIds, userId],
     }));
+  };
+
+  const addResponsibleUser = (candidate) => {
+    if (!candidate?.id) return;
+    setForm((current) =>
+      current.responsibleUserIds.includes(candidate.id)
+        ? current
+        : { ...current, responsibleUserIds: [...current.responsibleUserIds, candidate.id] },
+    );
+    setResponsibleQuery("");
   };
 
   const handleSubmit = (event) => {
@@ -356,16 +375,36 @@ function CentralServicesPage() {
                   <strong>Responsaveis e tecnicos do departamento</strong>
                   <span>Somente usuarios ativos podem ser vinculados para atendimento do setor.</span>
                 </div>
-                <div className="recipient-grid">
-                  {activeUsers.map((candidate) => (
-                    <label className="recipient-option" key={candidate.id}>
-                      <input checked={form.responsibleUserIds.includes(candidate.id)} onChange={() => toggleResponsibleUser(candidate.id)} type="checkbox" />
-                      <span>
-                        <strong>{candidate.name}</strong>
-                        <small>{candidate.department || "Sem departamento"} | {candidate.team || "Sem equipe"}</small>
-                      </span>
-                    </label>
-                  ))}
+                <div className="recipient-picker">
+                  <UserAutocomplete
+                    emptyMessage="Nenhum usuario ativo encontrado."
+                    filterFn={(candidate) => !form.responsibleUserIds.includes(candidate.id)}
+                    onChange={setResponsibleQuery}
+                    onSelect={addResponsibleUser}
+                    placeholder="Digite nome, email ou equipe para buscar um responsavel"
+                    users={activeUsers}
+                    value={responsibleQuery}
+                  />
+                  <div className="recipient-grid">
+                    {selectedResponsibleUsers.length ? (
+                      selectedResponsibleUsers.map((candidate) => (
+                        <div className="recipient-option recipient-option-selected" key={candidate.id}>
+                          <span>
+                            <strong>{candidate.name}</strong>
+                            <small>{candidate.email || "Sem email"} | {candidate.department || "Sem departamento"}</small>
+                          </span>
+                          <button className="ghost-button compact-button interactive-button" onClick={() => toggleResponsibleUser(candidate.id)} type="button">
+                            Remover
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="empty-state">
+                        <strong>Nenhum responsavel vinculado.</strong>
+                        <span>Pesquise por nome ou email para adicionar tecnicos e responsaveis ao departamento.</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
@@ -67,6 +67,32 @@ function buildOverrideForm(rawMap = {}, permissionCatalog = []) {
   };
 }
 
+const USER_GRID_CONFIG_KEY = "ticketmind.users.grid.columns";
+
+const USER_GRID_COLUMNS = [
+  { key: "name", label: "Usuario", defaultVisible: true, render: (candidate) => candidate.name || "-" },
+  { key: "email", label: "Login", defaultVisible: true, render: (candidate) => candidate.email || "Sem email definido" },
+  { key: "status", label: "Status", defaultVisible: true, render: (candidate) => candidate.status || "-" },
+  { key: "role", label: "Perfil", defaultVisible: true, render: (candidate) => candidate.role || "Sem perfil" },
+  { key: "team", label: "Equipe", defaultVisible: true, render: (candidate) => candidate.team || "Sem equipe" },
+  { key: "department", label: "Departamento", defaultVisible: true, render: (candidate) => candidate.department || "Sem departamento" },
+  { key: "permissionCount", label: "Acessos", defaultVisible: false, render: (_candidate, activePermissionCount) => activePermissionCount },
+  { key: "id", label: "Identificador", defaultVisible: false, render: (candidate) => candidate.id || "-" },
+];
+
+function loadUserGridColumns() {
+  try {
+    const storedValue = window.localStorage.getItem(USER_GRID_CONFIG_KEY);
+    if (!storedValue) return USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
+    const parsed = JSON.parse(storedValue);
+    const allowedKeys = new Set(USER_GRID_COLUMNS.map((column) => column.key));
+    const filtered = (Array.isArray(parsed) ? parsed : []).filter((key) => allowedKeys.has(key));
+    return filtered.length ? filtered : USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
+  } catch {
+    return USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
+  }
+}
+
 function UsersPage() {
   const { user } = useAuth();
   const {
@@ -87,6 +113,8 @@ function UsersPage() {
   const [detailUserId, setDetailUserId] = useState(null);
   const [editingUserId, setEditingUserId] = useState(null);
   const [revealedUserIds, setRevealedUserIds] = useState([]);
+  const [showGridConfig, setShowGridConfig] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState(loadUserGridColumns);
   const [form, setForm] = useState(() => createDefaultUserForm(permissionProfiles, permissionCatalog));
 
   const canRevealPasswords = normalizeText(user?.department) === "ti";
@@ -96,6 +124,10 @@ function UsersPage() {
   const canDeleteUsers = hasAnyPermission(user, ["users_delete", "users_admin"]);
   const canResetPasswords = hasAnyPermission(user, ["users_reset_password", "users_admin"]);
   const canManagePermissions = hasAnyPermission(user, ["users_manage_permissions", "users_admin"]);
+
+  useEffect(() => {
+    window.localStorage.setItem(USER_GRID_CONFIG_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
 
   const activeProfiles = useMemo(
     () => permissionProfiles.filter((profile) => profile.status !== "Inativo" || profile.id === form.permissionProfileId),
@@ -126,6 +158,10 @@ function UsersPage() {
 
   const detailUser = users.find((candidate) => candidate.id === detailUserId) || null;
   const selectedProfile = permissionProfiles.find((profile) => profile.id === form.permissionProfileId) || permissionProfiles[0] || null;
+  const visibleGridColumns = useMemo(
+    () => USER_GRID_COLUMNS.filter((column) => visibleColumns.includes(column.key)),
+    [visibleColumns],
+  );
 
   const permissionGroups = useMemo(
     () =>
@@ -306,6 +342,15 @@ function UsersPage() {
     openDetailModal(duplicated);
   };
 
+  const toggleGridColumn = (columnKey) => {
+    setVisibleColumns((current) => {
+      if (current.includes(columnKey)) {
+        return current.length > 1 ? current.filter((key) => key !== columnKey) : current;
+      }
+      return [...current, columnKey];
+    });
+  };
+
   const activePermissionCount = (candidate) =>
     permissionCatalog.flatMap((group) => group.permissions).filter((permission) => candidate.permissions?.[permission.key]).length;
 
@@ -387,6 +432,9 @@ function UsersPage() {
               placeholder="Buscar por nome, email, equipe, perfil ou status"
               value={search}
             />
+            <button className="ghost-button interactive-button" onClick={() => setShowGridConfig((current) => !current)} type="button">
+              Configurar grade
+            </button>
             {canCreateUsers ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
                 + Novo usuario
@@ -395,11 +443,31 @@ function UsersPage() {
           </div>
         </div>
 
+        {showGridConfig ? (
+          <div className="board-card compact-record-card">
+            <strong>Colunas visiveis</strong>
+            <span>Escolha quais informacoes aparecem na lista unica. A configuracao fica salva neste navegador.</span>
+            <div className="permissions-inline users-grid-config">
+              {USER_GRID_COLUMNS.map((column) => (
+                <label className="inline-toggle" key={column.key}>
+                  <input
+                    checked={visibleColumns.includes(column.key)}
+                    disabled={visibleColumns.length === 1 && visibleColumns.includes(column.key)}
+                    onChange={() => toggleGridColumn(column.key)}
+                    type="checkbox"
+                  />
+                  <span>{column.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="user-list">
           {orderedUsers.map((candidate) => (
-            <article className="table-row user-row user-card" key={candidate.id}>
-              <button className="user-card-open interactive-button" onClick={() => openDetailModal(candidate)} type="button">
-                <div className="user-row-main">
+            <article className="table-row user-row user-grid-row" key={candidate.id}>
+              <button className="user-card-open user-grid-open interactive-button" onClick={() => openDetailModal(candidate)} type="button">
+                <div className="user-row-main user-grid-main">
                   <div className="user-avatar user-avatar-list">
                     {candidate.avatar ? (
                       <img alt={candidate.name} className="user-avatar-image" src={candidate.avatar} />
@@ -407,34 +475,22 @@ function UsersPage() {
                       <span>{getInitials(candidate.name)}</span>
                     )}
                   </div>
-                  <div className="user-identity">
-                    <strong>{candidate.name}</strong>
-                    <span>{candidate.email || "Sem email definido"}</span>
+                  <div className="user-grid-columns">
+                    {visibleGridColumns.map((column) => (
+                      <div className="user-grid-cell" key={`${candidate.id}-${column.key}`}>
+                        <small>{column.label}</small>
+                        <span>
+                          {column.key === "status" ? (
+                            <span className={`badge ${candidate.status === "Ativo" ? "status-badge-resolvido" : candidate.status === "Inativo" ? "status-badge-aguardando" : "status-badge-reaberto"}`}>
+                              {column.render(candidate, activePermissionCount(candidate))}
+                            </span>
+                          ) : (
+                            column.render(candidate, activePermissionCount(candidate))
+                          )}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="user-role-block">
-                    <span className={`badge ${candidate.status === "Ativo" ? "status-badge-resolvido" : candidate.status === "Inativo" ? "status-badge-aguardando" : "status-badge-reaberto"}`}>
-                      {candidate.status}
-                    </span>
-                    <span>{candidate.role || "Sem perfil"}</span>
-                    <span>{candidate.team || "Sem equipe"} | {candidate.department || "Sem departamento"}</span>
-                  </div>
-                  <div className="user-summary-stats">
-                    <div>
-                      <strong>{activePermissionCount(candidate)}</strong>
-                      <span>acessos efetivos</span>
-                    </div>
-                    <div>
-                      <strong>{candidate.id}</strong>
-                      <span>identificador</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="user-row-footer">
-                  <div className="user-password-row">
-                    <strong>Senha:</strong>
-                    <span>{maskPassword(candidate.password)}</span>
-                  </div>
-                  <span className="user-open-hint">Abrir detalhes</span>
                 </div>
               </button>
               <div className="compact-row-actions user-quick-actions">

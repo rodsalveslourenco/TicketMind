@@ -11,9 +11,11 @@ function UserAutocomplete({
   users,
   value,
   onChange,
-  placeholder = "Comece a digitar um usuário",
+  onSelect,
+  placeholder = "Comece a digitar um usuario",
   filterFn,
   disabled = false,
+  emptyMessage = "Nenhum usuario encontrado.",
 }) {
   const [query, setQuery] = useState(value || "");
   const [isOpen, setIsOpen] = useState(false);
@@ -62,25 +64,30 @@ function UserAutocomplete({
         placeholder={placeholder}
         value={query}
       />
-      {isOpen && !disabled && suggestions.length ? (
+      {isOpen && !disabled ? (
         <div className="autocomplete-list">
-          {suggestions.map((candidate) => (
-            <button
-              className="autocomplete-item interactive-button"
-              key={candidate.id}
-              onClick={() => {
-                setQuery(candidate.name);
-                onChange(candidate.name);
-                setIsOpen(false);
-              }}
-              type="button"
-            >
-              <strong>{candidate.name}</strong>
-              <span>
-                {candidate.email} | {candidate.team}
-              </span>
-            </button>
-          ))}
+          {suggestions.length ? (
+            suggestions.map((candidate) => (
+              <button
+                className="autocomplete-item interactive-button"
+                key={candidate.id}
+                onClick={() => {
+                  setQuery(candidate.name);
+                  onChange(candidate.name);
+                  onSelect?.(candidate);
+                  setIsOpen(false);
+                }}
+                type="button"
+              >
+                <strong>{candidate.name}</strong>
+                <span>
+                  {candidate.email} | {candidate.team}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="autocomplete-empty">{emptyMessage}</div>
+          )}
         </div>
       ) : null}
     </div>
