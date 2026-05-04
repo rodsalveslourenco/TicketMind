@@ -3,6 +3,7 @@ import { requestJson } from "../lib/api";
 
 const AuthContext = createContext(null);
 const SESSION_STORAGE_KEY = "ticketmind-session";
+const PERSISTENT_STORAGE_KEY = "ticketmind-session-persistent";
 
 function parseStoredSession(rawSession) {
   if (!rawSession) return null;
@@ -13,6 +14,29 @@ function parseStoredSession(rawSession) {
   }
 }
 
+function readStoredSession() {
+  if (typeof window === "undefined") return null;
+  const persistentSession = parseStoredSession(window.localStorage.getItem(PERSISTENT_STORAGE_KEY));
+  if (persistentSession?.userId) return persistentSession;
+  const transientSession = parseStoredSession(window.sessionStorage.getItem(SESSION_STORAGE_KEY));
+  if (!transientSession?.userId) return null;
+  window.localStorage.setItem(PERSISTENT_STORAGE_KEY, JSON.stringify(transientSession));
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  return transientSession;
+}
+
+function clearStoredSession() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  window.localStorage.removeItem(PERSISTENT_STORAGE_KEY);
+}
+
+function persistSession(nextSession) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PERSISTENT_STORAGE_KEY, JSON.stringify(nextSession));
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,25 +45,20 @@ export function AuthProvider({ children }) {
     let cancelled = false;
 
     async function restoreSession() {
-      const rawSession = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-      if (!rawSession) {
+      const storedSession = readStoredSession();
+      if (!storedSession) {
         if (!cancelled) setLoading(false);
         return;
       }
 
       try {
-        const storedSession = parseStoredSession(rawSession);
-        if (!storedSession?.userId) {
-          window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-          if (!cancelled) setLoading(false);
-          return;
-        }
-
         const user = await requestJson(`/api/auth/session/${storedSession.userId}`);
         if (cancelled) return;
-        setSession({ ...storedSession, user });
+        const nextSession = { ...storedSession, user };
+        persistSession(nextSession);
+        setSession(nextSession);
       } catch {
-        window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        clearStoredSession();
         if (!cancelled) setSession(null);
       } finally {
         if (!cancelled) setLoading(false);
@@ -70,12 +89,12 @@ export function AuthProvider({ children }) {
       issuedAt: new Date().toISOString(),
     };
 
-    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+    persistSession(nextSession);
     setSession(nextSession);
   };
 
   const logout = () => {
-    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    clearStoredSession();
     setSession(null);
   };
 
@@ -84,7 +103,7 @@ export function AuthProvider({ children }) {
     setSession((current) => {
       if (!current?.userId || current.userId !== nextUser.id) return current;
       const nextSession = { ...current, user: nextUser };
-      window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+      persistSession(nextSession);
       return nextSession;
     });
   };

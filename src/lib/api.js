@@ -1,9 +1,10 @@
 const SESSION_STORAGE_KEY = "ticketmind-session";
+const PERSISTENT_STORAGE_KEY = "ticketmind-session-persistent";
 
 function getSessionUserId() {
   if (typeof window === "undefined") return "";
   try {
-    const rawSession = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const rawSession = window.localStorage.getItem(PERSISTENT_STORAGE_KEY) || window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     const session = rawSession ? JSON.parse(rawSession) : null;
     return String(session?.userId || "").trim();
   } catch {
