@@ -227,7 +227,6 @@ function TicketsPage() {
       setShowCreateForm(true);
       setCreateForm({
         ...getFreshCreateForm(),
-        departmentId: serviceCenterEnabled && requestableDepartments.length ? requestableDepartments[0].id : "",
       });
       setWatcherQuery("");
       setCreateKnowledgeQuery("");
@@ -372,8 +371,7 @@ function TicketsPage() {
   };
 
   const handleOpenCreateModal = () => {
-    const nextDepartmentId = serviceCenterEnabled && requestableDepartments.length ? requestableDepartments[0].id : "";
-    setCreateForm({ ...getFreshCreateForm(), departmentId: nextDepartmentId });
+    setCreateForm(getFreshCreateForm());
     setWatcherQuery("");
     setCreateKnowledgeQuery("");
     setShowCreateForm(true);
@@ -645,29 +643,23 @@ function TicketsPage() {
                   </select>
                 </label>
                 {serviceCenterEnabled ? (
-                  <div className="field-block field-full">
+                  <label className="field-block field-full">
                     <span>Departamento de destino</span>
-                    <div className="service-request-grid">
+                    <select onChange={updateCreateField("departmentId")} required value={createForm.departmentId}>
+                      <option value="">Selecione o departamento</option>
                       {requestableDepartments.map((department) => (
-                        <button
-                          className={`service-request-card interactive-button${createForm.departmentId === department.id ? " is-selected" : ""}`}
-                          key={department.id}
-                          onClick={() => setCreateForm((current) => ({ ...current, departmentId: department.id }))}
-                          style={getDepartmentColorStyle(department.color, { alpha: 0.14 })}
-                          type="button"
-                        >
-                          <strong>Chamado para {department.name}</strong>
-                          <span>{department.code || "SEM-CODIGO"}</span>
-                        </button>
+                        <option key={department.id} value={department.id}>
+                          {department.name}{department.code ? ` | ${department.code}` : ""}
+                        </option>
                       ))}
-                    </div>
+                    </select>
                     {!requestableDepartments.length ? (
                       <div className="empty-state">
                         <strong>Nenhum departamento disponivel.</strong>
                         <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
                       </div>
                     ) : null}
-                  </div>
+                  </label>
                 ) : null}
                 <div className="field-block">
                   <span>Solicitante</span>
