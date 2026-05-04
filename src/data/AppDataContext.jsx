@@ -1823,13 +1823,38 @@ export function AppDataProvider({ children }) {
         current.permissionProfiles.find((profile) => profile.id === profileId) || {},
       );
       if (profileId) {
+        const nextPermissionProfiles = current.permissionProfiles.map((profile) =>
+          profile.id === profileId
+            ? { ...profile, ...sanitizedPayload, updatedAt: nowIso }
+            : profile,
+        );
+        let nextCurrentUser = current.currentUser;
+        const nextUsers = current.users.map((candidate) => {
+          if (candidate.permissionProfileId !== profileId) return candidate;
+          const nextUser = {
+            ...candidate,
+            role: sanitizedPayload.name,
+            permissions: normalizeUserPermissions(
+              {},
+              {
+                ...candidate,
+                role: sanitizedPayload.name,
+                permissionProfileId: profileId,
+              },
+              current.permissionCatalog || defaultPermissionCatalog,
+              nextPermissionProfiles,
+            ),
+            updatedAt: nowIso,
+          };
+          if (nextCurrentUser?.id === nextUser.id) nextCurrentUser = nextUser;
+          return nextUser;
+        });
+        if (nextCurrentUser?.id === user?.id) setSessionUser(nextCurrentUser);
         return {
           ...current,
-          permissionProfiles: current.permissionProfiles.map((profile) =>
-            profile.id === profileId
-              ? { ...profile, ...sanitizedPayload, updatedAt: nowIso }
-              : profile,
-          ),
+          permissionProfiles: nextPermissionProfiles,
+          users: nextUsers,
+          currentUser: nextCurrentUser,
         };
       }
       savedProfileId = nextId("profile", current.permissionProfiles || []);
