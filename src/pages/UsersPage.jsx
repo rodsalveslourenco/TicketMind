@@ -23,7 +23,9 @@ function readImageFileAsDataUrl(file) {
 }
 
 function maskPassword(password) {
-  return "*".repeat(Math.max(String(password || "").length, 8));
+  const normalizedPassword = String(password || "");
+  if (!normalizedPassword) return "Sem senha definida";
+  return "*".repeat(Math.max(normalizedPassword.length, 8));
 }
 
 function createOverrideMap(permissionCatalog) {
@@ -45,7 +47,7 @@ function createDefaultUserForm(permissionProfiles, permissionCatalog) {
   return {
     name: "",
     email: "",
-    password: "admin0123",
+    password: "",
     status: "Ativo",
     role: defaultProfile?.name || "Solicitante Interno",
     permissionProfileId: defaultProfile?.id || "",
@@ -178,7 +180,7 @@ function UsersPage() {
     setForm({
       name: candidate.name || "",
       email: candidate.email || "",
-      password: candidate.password || "admin0123",
+      password: candidate.password || "",
       status: candidate.status || "Ativo",
       role: candidate.role || "",
       permissionProfileId: candidate.permissionProfileId || "",
@@ -233,6 +235,11 @@ function UsersPage() {
 
     if (!form.name.trim() || !form.team.trim()) {
       pushToast("Campos obrigatorios", "Preencha nome e equipe do usuario.", "warning");
+      return;
+    }
+
+    if (!editingUserId && !String(form.password || "").trim()) {
+      pushToast("Senha obrigatoria", "Informe uma senha inicial para o novo usuario.", "warning");
       return;
     }
 
@@ -295,7 +302,7 @@ function UsersPage() {
     if (!canCreateUsers) return;
     const duplicated = duplicateUser(candidate.id);
     if (!duplicated) return;
-    pushToast("Usuario duplicado", `${duplicated.name} criado em modo inativo.`);
+    pushToast("Usuario duplicado", `${duplicated.name} criado em modo inativo e sem senha definida.`);
     openDetailModal(duplicated);
   };
 
@@ -425,24 +432,7 @@ function UsersPage() {
                 <div className="user-row-footer">
                   <div className="user-password-row">
                     <strong>Senha:</strong>
-                    <span>
-                      {canRevealPasswords && revealedUserIds.includes(candidate.id)
-                        ? candidate.password
-                        : maskPassword(candidate.password)}
-                    </span>
-                    {canRevealPasswords ? (
-                      <button
-                        className="ghost-link"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          togglePassword(candidate.id);
-                        }}
-                        type="button"
-                      >
-                        {revealedUserIds.includes(candidate.id) ? "Ocultar" : "Revelar"}
-                      </button>
-                    ) : null}
+                    <span>{maskPassword(candidate.password)}</span>
                   </div>
                   <span className="user-open-hint">Abrir detalhes</span>
                 </div>
@@ -618,7 +608,27 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Senha</span>
-                  <input disabled={!canResetPasswords} onChange={updateField("password")} type="password" value={form.password} />
+                  <div className="user-password-row">
+                    <input
+                      disabled={!canResetPasswords}
+                      onChange={updateField("password")}
+                      type={canRevealPasswords && revealedUserIds.includes(detailUser.id) ? "text" : "password"}
+                      value={form.password}
+                    />
+                    {canRevealPasswords ? (
+                      <button
+                        className="ghost-link"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          togglePassword(detailUser.id);
+                        }}
+                        type="button"
+                      >
+                        {revealedUserIds.includes(detailUser.id) ? "Ocultar" : "Revelar"}
+                      </button>
+                    ) : null}
+                  </div>
                 </label>
                 <label className="field-block">
                   <span>Status</span>

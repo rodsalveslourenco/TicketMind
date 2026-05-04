@@ -49,7 +49,7 @@ function hydrateUsers(users, permissionCatalog, permissionProfiles) {
   const baseUsers = Array.isArray(users) ? users : [];
   return baseUsers.map((candidate) => ({
     ...candidate,
-    password: candidate.password || "admin0123",
+    password: String(candidate.password || ""),
     status: String(candidate.status || "Ativo").trim() || "Ativo",
     role: normalizeRoleName(candidate.role),
     permissionProfileId: String(candidate.permissionProfileId || "").trim(),
@@ -223,7 +223,7 @@ function sanitizeUserPayload(payload, departments = [], permissionCatalog = defa
   return {
     name: String(payload.name || "").trim(),
     email: String(payload.email || "").trim().toLowerCase(),
-    password: payload.password || "admin0123",
+    password: String(payload.password || ""),
     status: String(payload.status || "Ativo").trim() || "Ativo",
     role: permissionProfile?.name || normalizeRoleName(payload.role),
     permissionProfileId: String(permissionProfile?.id || payload.permissionProfileId || "").trim(),
@@ -1294,7 +1294,7 @@ export function AppDataProvider({ children }) {
         name: `${sourceUser.name} (Copia)`,
         email: "",
         status: "Inativo",
-        password: "admin0123",
+        password: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
