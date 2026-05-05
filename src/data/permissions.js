@@ -93,16 +93,26 @@ export function normalizeUserPermissions(
     ...buildPermissionsFromKeys(profile?.permissions || [], permissionCatalog),
   };
   const permissionKeys = listPermissionKeys(permissionCatalog);
-  let hasExplicitPermission = false;
+  const hasProfileLink = Boolean(String(user.permissionProfileId || "").trim());
+  const hasUserOverrides =
+    Object.keys(user.additionalPermissions || {}).length > 0 || Object.keys(user.restrictedPermissions || {}).length > 0;
+  const shouldApplyExplicitPermissionMap = !hasProfileLink && !hasUserOverrides;
 
-  permissionKeys.forEach((key) => {
-    if (rawPermissions[key] !== undefined) {
-      nextPermissions[key] = Boolean(rawPermissions[key]);
-      hasExplicitPermission = true;
+  if (shouldApplyExplicitPermissionMap) {
+    let hasExplicitPermission = false;
+    permissionKeys.forEach((key) => {
+      if (rawPermissions[key] !== undefined) {
+        nextPermissions[key] = Boolean(rawPermissions[key]);
+        hasExplicitPermission = true;
+      }
+    });
+
+    if (hasExplicitPermission) {
+      return nextPermissions;
     }
-  });
+  }
 
-  if (!hasExplicitPermission && !Object.keys(rawPermissions || {}).length) {
+  if (!Object.keys(rawPermissions || {}).length) {
     return nextPermissions;
   }
 

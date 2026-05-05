@@ -650,20 +650,23 @@ function mergeCollections(stored) {
   const baseCurrentUser = stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null;
   const departments = hydrateDepartments(stored?.departments);
   const users = rawUsers.map((candidate) => syncUserDepartment(candidate, departments));
-  const currentUser = baseCurrentUser
-    ? syncUserDepartment(
-        {
-          ...baseCurrentUser,
-          permissions: normalizeUserPermissions(
-            baseCurrentUser.permissions || {},
-            baseCurrentUser,
-            permissionCatalog,
-            permissionProfiles,
-          ),
-        },
-        departments,
-      )
-    : null;
+  const currentUserFromUsers = baseCurrentUser?.id ? users.find((candidate) => candidate.id === baseCurrentUser.id) || null : null;
+  const currentUser = currentUserFromUsers
+    ? currentUserFromUsers
+    : baseCurrentUser
+      ? syncUserDepartment(
+          {
+            ...baseCurrentUser,
+            permissions: normalizeUserPermissions(
+              baseCurrentUser.permissions || {},
+              baseCurrentUser,
+              permissionCatalog,
+              permissionProfiles,
+            ),
+          },
+          departments,
+        )
+      : null;
   const locations = hydrateLocations(stored?.locations, departments);
   const assets = (Array.isArray(stored?.assets) ? stored.assets : []).map((asset) => syncAssetLocation(asset, locations));
   const emailLayouts = hydrateEmailLayouts(stored?.emailLayouts, notificationEvents);
