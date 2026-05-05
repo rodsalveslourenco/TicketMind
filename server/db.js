@@ -5,7 +5,7 @@ import { Pool } from "pg";
 import initSqlJs from "sql.js";
 import { seedData } from "../src/data/seedData.js";
 import { normalizeDepartmentColor } from "../src/data/departments.js";
-import { normalizeRoleName, normalizeUserPermissions } from "../src/data/permissions.js";
+import { getUserPermissionProfile, hydratePermissionProfiles, normalizeRoleName, normalizeUserPermissions } from "../src/data/permissions.js";
 import { normalizeKnowledgeArticle, syncHelpdeskState } from "../src/data/helpdesk.js";
 import {
   defaultEmailPlaceholders,
@@ -110,21 +110,40 @@ function normalizeUserRecord(
     ) ||
     null;
 
+  const permissionProfile =
+    getUserPermissionProfile(
+      {
+        permissionProfileId: record.permissionProfileId,
+        role: record.role,
+      },
+      permissionProfiles,
+    ) || null;
+  const normalizedRole = permissionProfile?.name || normalizeRoleName(record.role);
+
   const normalizedRecord = {
     id: String(record.id || "").trim(),
     name: String(record.name || "").trim(),
     email: String(record.email || "").trim().toLowerCase(),
     password: String(record.password || "").trim(),
     status: String(record.status || "Ativo").trim() || "Ativo",
-    role: normalizeRoleName(record.role),
-    permissionProfileId: String(record.permissionProfileId || "").trim(),
+    role: normalizedRole,
+    permissionProfileId: String(permissionProfile?.id || record.permissionProfileId || "").trim(),
     team: String(record.team || "").trim(),
     departmentId: matchedDepartment?.id || departmentId,
     department: matchedDepartment?.name || departmentName,
     avatar: String(record.avatar || "").trim(),
     additionalPermissions: record.additionalPermissions && typeof record.additionalPermissions === "object" ? record.additionalPermissions : {},
     restrictedPermissions: record.restrictedPermissions && typeof record.restrictedPermissions === "object" ? record.restrictedPermissions : {},
-    permissions: normalizeUserPermissions(record.permissions || {}, record, permissionCatalog, permissionProfiles),
+    permissions: normalizeUserPermissions(
+      record.permissions || {},
+      {
+        ...record,
+        role: normalizedRole,
+        permissionProfileId: permissionProfile?.id || record.permissionProfileId,
+      },
+      permissionCatalog,
+      permissionProfiles,
+    ),
     createdAt: String(record.createdAt || nowIso),
     updatedAt: String(record.updatedAt || nowIso),
   };
@@ -153,8 +172,8 @@ function buildStateDefaults(stored = {}) {
         : defaultPermissionCatalog,
     permissionProfiles:
       Array.isArray(stored.permissionProfiles) && stored.permissionProfiles.length
-        ? stored.permissionProfiles
-        : defaultPermissionProfiles,
+        ? hydratePermissionProfiles(stored.permissionProfiles)
+        : hydratePermissionProfiles(defaultPermissionProfiles),
     navigationSections:
       Array.isArray(stored.navigationSections) && stored.navigationSections.length
         ? stored.navigationSections
@@ -289,8 +308,8 @@ function buildCombinedState(appStateRaw = {}, collections = {}) {
       : defaultPermissionCatalog;
   const permissionProfiles =
     Array.isArray(appStateRaw?.permissionProfiles) && appStateRaw.permissionProfiles.length
-      ? appStateRaw.permissionProfiles
-      : defaultPermissionProfiles;
+      ? hydratePermissionProfiles(appStateRaw.permissionProfiles)
+      : hydratePermissionProfiles(defaultPermissionProfiles);
   const departments = sanitizeDepartmentCollection(collections.departments || []);
   const locations = sanitizeLocationCollection(collections.locations || [], departments);
   const users = sanitizeUserCollection(collections.users || [], departments, permissionCatalog, permissionProfiles);

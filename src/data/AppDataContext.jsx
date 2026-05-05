@@ -4,6 +4,7 @@ import { requestJson } from "../lib/api";
 import {
   buildEmptyPermissions,
   getRolePermissions,
+  hydratePermissionProfiles,
   getUserPermissionProfile,
   canViewAllTickets,
   canViewOwnTickets,
@@ -48,16 +49,36 @@ const AppDataContext = createContext(null);
 
 function hydrateUsers(users, permissionCatalog, permissionProfiles) {
   const baseUsers = Array.isArray(users) ? users : [];
-  return baseUsers.map((candidate) => ({
-    ...candidate,
-    password: String(candidate.password || ""),
-    status: String(candidate.status || "Ativo").trim() || "Ativo",
-    role: normalizeRoleName(candidate.role),
-    permissionProfileId: String(candidate.permissionProfileId || "").trim(),
-    additionalPermissions: sanitizePermissionOverridePayload(candidate.additionalPermissions, permissionCatalog),
-    restrictedPermissions: sanitizePermissionOverridePayload(candidate.restrictedPermissions, permissionCatalog),
-    permissions: normalizeUserPermissions(candidate.permissions || {}, candidate, permissionCatalog, permissionProfiles),
-  }));
+  return baseUsers.map((candidate) => {
+    const permissionProfile =
+      getUserPermissionProfile(
+        {
+          permissionProfileId: candidate.permissionProfileId,
+          role: candidate.role,
+        },
+        permissionProfiles,
+      ) || null;
+    const normalizedRole = permissionProfile?.name || normalizeRoleName(candidate.role);
+    return {
+      ...candidate,
+      password: String(candidate.password || ""),
+      status: String(candidate.status || "Ativo").trim() || "Ativo",
+      role: normalizedRole,
+      permissionProfileId: String(permissionProfile?.id || candidate.permissionProfileId || "").trim(),
+      additionalPermissions: sanitizePermissionOverridePayload(candidate.additionalPermissions, permissionCatalog),
+      restrictedPermissions: sanitizePermissionOverridePayload(candidate.restrictedPermissions, permissionCatalog),
+      permissions: normalizeUserPermissions(
+        candidate.permissions || {},
+        {
+          ...candidate,
+          role: normalizedRole,
+          permissionProfileId: permissionProfile?.id || candidate.permissionProfileId,
+        },
+        permissionCatalog,
+        permissionProfiles,
+      ),
+    };
+  });
 }
 
 function nextId(prefix, list) {
@@ -375,42 +396,6 @@ function hydratePermissionCatalog(storedCatalog) {
     })
     .concat(normalizedStored.filter((module) => !normalizedDefaults.some((candidate) => candidate.module === module.module)))
     .sort((left, right) => (left.order || 0) - (right.order || 0));
-}
-
-function hydratePermissionProfiles(storedProfiles) {
-  const profiles = Array.isArray(storedProfiles) && storedProfiles.length ? storedProfiles : defaultPermissionProfiles;
-  const normalizedDefaults = defaultPermissionProfiles.map((profile) => ({
-    ...profile,
-    id: String(profile.id || profile.name || "").trim(),
-    name: String(profile.name || "").trim(),
-    description: String(profile.description || "").trim(),
-    status: String(profile.status || "Ativo").trim() || "Ativo",
-    permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
-  }));
-  const normalizedStored = profiles.map((profile) => ({
-    ...profile,
-    id: String(profile.id || profile.name || "").trim(),
-    name: String(profile.name || "").trim(),
-    description: String(profile.description || "").trim(),
-    status: String(profile.status || "Ativo").trim() || "Ativo",
-    permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
-  }));
-
-  return normalizedDefaults
-    .map((defaultProfile) => {
-      const storedProfile =
-        normalizedStored.find((profile) => profile.id === defaultProfile.id) ||
-        normalizedStored.find((profile) => profile.name === defaultProfile.name) ||
-        null;
-      if (!storedProfile) return defaultProfile;
-      return {
-        ...defaultProfile,
-        ...storedProfile,
-        permissions: storedProfile.permissions === "ALL" ? "ALL" : [...(storedProfile.permissions || [])],
-      };
-    })
-    .concat(normalizedStored.filter((profile) => !normalizedDefaults.some((candidate) => candidate.id === profile.id)))
-    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function hydrateNavigationSections(storedSections) {

@@ -13,6 +13,20 @@ const roleAliases = {
   Solicitante: "Solicitante Interno",
 };
 
+const defaultProfilePermissionBackfills = {
+  "profile-analyst": ["service_center_view_department_tickets", "service_center_attend_linked_departments"],
+  "profile-infra": ["service_center_view_department_tickets", "service_center_attend_linked_departments"],
+  "profile-area-manager": [
+    "tickets_edit",
+    "tickets_assign",
+    "tickets_change_status",
+    "tickets_close",
+    "tickets_reopen",
+    "service_center_view_department_tickets",
+    "service_center_attend_linked_departments",
+  ],
+};
+
 export function normalizeRoleName(role) {
   const sanitizedRole = String(role || "").trim();
   return roleAliases[sanitizedRole] || sanitizedRole || "Solicitante Interno";
@@ -72,6 +86,52 @@ export function getUserPermissionProfile(user = {}, permissionProfiles = default
     getPermissionProfileById(user.permissionProfileId, permissionProfiles) ||
     getRoleProfile(user.role, permissionProfiles)
   );
+}
+
+function applyProfilePermissionBackfill(profile = {}) {
+  if (profile.permissions === "ALL") return profile;
+  const requiredPermissions = defaultProfilePermissionBackfills[profile.id] || [];
+  if (!requiredPermissions.length) return profile;
+  return {
+    ...profile,
+    permissions: Array.from(new Set([...(Array.isArray(profile.permissions) ? profile.permissions : []), ...requiredPermissions])),
+  };
+}
+
+export function hydratePermissionProfiles(storedProfiles) {
+  const profiles = Array.isArray(storedProfiles) && storedProfiles.length ? storedProfiles : defaultPermissionProfiles;
+  const normalizedDefaults = defaultPermissionProfiles.map((profile) => ({
+    ...profile,
+    id: String(profile.id || profile.name || "").trim(),
+    name: String(profile.name || "").trim(),
+    description: String(profile.description || "").trim(),
+    status: String(profile.status || "Ativo").trim() || "Ativo",
+    permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
+  }));
+  const normalizedStored = profiles.map((profile) => ({
+    ...profile,
+    id: String(profile.id || profile.name || "").trim(),
+    name: String(profile.name || "").trim(),
+    description: String(profile.description || "").trim(),
+    status: String(profile.status || "Ativo").trim() || "Ativo",
+    permissions: profile.permissions === "ALL" ? "ALL" : Array.isArray(profile.permissions) ? profile.permissions.filter(Boolean) : [],
+  }));
+
+  return normalizedDefaults
+    .map((defaultProfile) => {
+      const storedProfile =
+        normalizedStored.find((profile) => profile.id === defaultProfile.id) ||
+        normalizedStored.find((profile) => profile.name === defaultProfile.name) ||
+        null;
+      if (!storedProfile) return applyProfilePermissionBackfill(defaultProfile);
+      return applyProfilePermissionBackfill({
+        ...defaultProfile,
+        ...storedProfile,
+        permissions: storedProfile.permissions === "ALL" ? "ALL" : [...(storedProfile.permissions || [])],
+      });
+    })
+    .concat(normalizedStored.filter((profile) => !normalizedDefaults.some((candidate) => candidate.id === profile.id)))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function normalizePermissionOverrideMap(rawMap = {}, permissionCatalog = defaultPermissionCatalog) {
