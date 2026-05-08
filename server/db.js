@@ -407,6 +407,15 @@ function buildSeedBootstrapCollections() {
   return { departments, locations, users };
 }
 
+function withSeedFallbackCollections(collections = {}) {
+  const seedCollections = buildSeedBootstrapCollections();
+  return {
+    users: collections.users?.length ? collections.users : seedCollections.users,
+    departments: collections.departments?.length ? collections.departments : seedCollections.departments,
+    locations: collections.locations?.length ? collections.locations : seedCollections.locations,
+  };
+}
+
 function hasCollectionRecords(collections = {}) {
   return Boolean(
     (Array.isArray(collections.users) && collections.users.length) ||
@@ -427,10 +436,9 @@ function resolveBootstrapCollections(legacyState = null) {
   if (legacyState && Object.keys(legacyState).length) {
     const migratedCollections = buildMigrationCollections(legacyState);
     if (hasCollectionRecords(migratedCollections) || hasLegacyCollectionData(legacyState)) {
-      return migratedCollections;
+      return withSeedFallbackCollections(migratedCollections);
     }
-
-    return { departments: [], locations: [], users: [] };
+    return buildSeedBootstrapCollections();
   }
 
   return buildSeedBootstrapCollections();
@@ -446,6 +454,17 @@ function mergeMissingCollections(currentCollections = {}, fallbackCollections = 
     departments: currentCollections.departments?.length ? currentCollections.departments : fallbackCollections.departments || [],
     locations: currentCollections.locations?.length ? currentCollections.locations : fallbackCollections.locations || [],
   };
+}
+
+function isLegacyBootstrapUserCollection(collections = {}) {
+  const users = Array.isArray(collections.users) ? collections.users : [];
+  if (users.length !== 1) return false;
+
+  const [user] = users;
+  return (
+    String(user?.email || "").trim().toLowerCase() === "admin@test.local" &&
+    String(user?.password || "").trim() === "123"
+  );
 }
 
 let sqlitePromise = null;
@@ -1233,10 +1252,15 @@ export async function readState() {
     await migrateSqliteCollectionsIfNeeded();
     const [sqliteState, collections] = await Promise.all([readSqliteStateRaw(), readSqliteCollections()]);
     let hydratedCollections = collections;
-    if (shouldHydrateMissingCollections(collections)) {
+    if (isLegacyBootstrapUserCollection(collections)) {
+      hydratedCollections = buildSeedBootstrapCollections();
+      await writeSqliteCollections(hydratedCollections);
+    }
+    if (shouldHydrateMissingCollections(hydratedCollections)) {
       const recoveredCollections = resolveBootstrapCollections(sqliteState);
-      hydratedCollections = mergeMissingCollections(collections, recoveredCollections);
-      if (JSON.stringify(hydratedCollections) !== JSON.stringify(collections) && hasCollectionRecords(hydratedCollections)) {
+      const mergedCollections = mergeMissingCollections(hydratedCollections, recoveredCollections);
+      if (JSON.stringify(mergedCollections) !== JSON.stringify(hydratedCollections) && hasCollectionRecords(mergedCollections)) {
+        hydratedCollections = mergedCollections;
         await writeSqliteCollections(hydratedCollections);
       }
     }
@@ -1250,10 +1274,15 @@ export async function readState() {
   await migratePostgresCollectionsIfNeeded();
   const [postgresState, collections] = await Promise.all([readPostgresStateRaw(), readPostgresCollections()]);
   let hydratedCollections = collections;
-  if (shouldHydrateMissingCollections(collections)) {
+  if (isLegacyBootstrapUserCollection(collections)) {
+    hydratedCollections = buildSeedBootstrapCollections();
+    await writePostgresCollections(hydratedCollections);
+  }
+  if (shouldHydrateMissingCollections(hydratedCollections)) {
     const recoveredCollections = resolveBootstrapCollections(postgresState);
-    hydratedCollections = mergeMissingCollections(collections, recoveredCollections);
-    if (JSON.stringify(hydratedCollections) !== JSON.stringify(collections) && hasCollectionRecords(hydratedCollections)) {
+    const mergedCollections = mergeMissingCollections(hydratedCollections, recoveredCollections);
+    if (JSON.stringify(mergedCollections) !== JSON.stringify(hydratedCollections) && hasCollectionRecords(mergedCollections)) {
+      hydratedCollections = mergedCollections;
       await writePostgresCollections(hydratedCollections);
     }
   }
