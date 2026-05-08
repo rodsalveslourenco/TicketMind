@@ -407,6 +407,20 @@ function buildSeedBootstrapCollections() {
   return { departments, locations, users };
 }
 
+function isSeedUserEmail(email) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  return Boolean(normalizedEmail && normalizedEmail.endsWith("@ticketmind.local"));
+}
+
+function hasRealUsers(users = []) {
+  return (Array.isArray(users) ? users : []).some((user) => !isSeedUserEmail(user?.email));
+}
+
+function isSeedOnlyUserCollection(users = []) {
+  const normalizedUsers = Array.isArray(users) ? users.filter(Boolean) : [];
+  return Boolean(normalizedUsers.length) && normalizedUsers.every((user) => isSeedUserEmail(user?.email));
+}
+
 function withSeedFallbackCollections(collections = {}) {
   const seedCollections = buildSeedBootstrapCollections();
   return {
@@ -444,6 +458,18 @@ function resolveBootstrapCollections(legacyState = null) {
   return buildSeedBootstrapCollections();
 }
 
+function resolveRecoveryCollections(...states) {
+  for (const state of states) {
+    if (!state || !Object.keys(state).length) continue;
+    const migratedCollections = buildMigrationCollections(state);
+    if (hasCollectionRecords(migratedCollections)) {
+      return withSeedFallbackCollections(migratedCollections);
+    }
+  }
+
+  return buildSeedBootstrapCollections();
+}
+
 function shouldHydrateMissingCollections(collections = {}) {
   return !collections.users?.length || !collections.departments?.length || !collections.locations?.length;
 }
@@ -465,6 +491,28 @@ function isLegacyBootstrapUserCollection(collections = {}) {
     String(user?.email || "").trim().toLowerCase() === "admin@test.local" &&
     String(user?.password || "").trim() === "123"
   );
+}
+
+function protectProductionCollections(nextCollections = {}, existingCollections = {}) {
+  const nextUsers = Array.isArray(nextCollections.users) ? nextCollections.users : [];
+  const existingUsers = Array.isArray(existingCollections.users) ? existingCollections.users : [];
+  const shouldPreserveUsers =
+    hasRealUsers(existingUsers) &&
+    (!nextUsers.length || isSeedOnlyUserCollection(nextUsers));
+
+  if (!shouldPreserveUsers) return nextCollections;
+
+  const nextDepartments = Array.isArray(nextCollections.departments) ? nextCollections.departments : [];
+  const nextLocations = Array.isArray(nextCollections.locations) ? nextCollections.locations : [];
+  const existingDepartments = Array.isArray(existingCollections.departments) ? existingCollections.departments : [];
+  const existingLocations = Array.isArray(existingCollections.locations) ? existingCollections.locations : [];
+
+  return {
+    ...nextCollections,
+    users: existingUsers,
+    departments: nextDepartments.length ? nextDepartments : existingDepartments,
+    locations: nextLocations.length ? nextLocations : existingLocations,
+  };
 }
 
 let sqlitePromise = null;
@@ -490,6 +538,11 @@ async function getSqliteDb() {
           id INTEGER PRIMARY KEY,
           data TEXT NOT NULL,
           updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS app_state_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          data TEXT NOT NULL,
+          created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS departments (
           id TEXT PRIMARY KEY,
@@ -759,27 +812,38 @@ async function writeSqliteCollections(collections) {
 
 async function writeSqliteState(nextState) {
   const db = await getSqliteDb();
+  const existingCollections = await readSqliteCollections();
   const normalizedState = buildCombinedState(stripNormalizedCollections(nextState), {
     users: nextState.users || [],
     departments: nextState.departments || [],
     locations: nextState.locations || [],
   });
+  const protectedCollections = protectProductionCollections(
+    {
+      users: normalizedState.users || [],
+      departments: normalizedState.departments || [],
+      locations: normalizedState.locations || [],
+    },
+    existingCollections,
+  );
+  const protectedState = buildCombinedState(stripNormalizedCollections(normalizedState), protectedCollections);
   const now = new Date().toISOString();
 
   await writeSqliteCollections({
-    departments: normalizedState.departments || [],
-    locations: normalizedState.locations || [],
-    users: normalizedState.users || [],
+    departments: protectedState.departments || [],
+    locations: protectedState.locations || [],
+    users: protectedState.users || [],
   });
 
   db.run("DELETE FROM app_state WHERE id = 1");
   db.run("INSERT INTO app_state (id, data, updated_at) VALUES (?, ?, ?)", [
     1,
-    JSON.stringify(stripNormalizedCollections(normalizedState)),
+    JSON.stringify(stripNormalizedCollections(protectedState)),
     now,
   ]);
+  db.run("INSERT INTO app_state_history (data, created_at) VALUES (?, ?)", [JSON.stringify(protectedState), now]);
   await persistSqliteDb(db);
-  return normalizedState;
+  return protectedState;
 }
 
 function getPgPool() {
@@ -799,6 +863,11 @@ async function ensurePgSchema() {
       id INTEGER PRIMARY KEY,
       data JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS app_state_history (
+      id BIGSERIAL PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS departments (
       id TEXT PRIMARY KEY,
@@ -862,6 +931,20 @@ async function readPostgresStateRaw() {
   await ensurePgSchema();
   const pool = getPgPool();
   const { rows } = await pool.query("SELECT data FROM app_state WHERE id = 1");
+  return rows[0]?.data || null;
+}
+
+async function readSqliteStateBackupRaw() {
+  const db = await getSqliteDb();
+  const result = db.exec("SELECT data FROM app_state_history ORDER BY created_at DESC, id DESC LIMIT 1");
+  const rawData = result?.[0]?.values?.[0]?.[0];
+  return parseJson(rawData, null);
+}
+
+async function readPostgresStateBackupRaw() {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const { rows } = await pool.query("SELECT data FROM app_state_history ORDER BY created_at DESC, id DESC LIMIT 1");
   return rows[0]?.data || null;
 }
 
@@ -1003,16 +1086,26 @@ async function writePostgresCollections(collections) {
 async function writePostgresState(nextState) {
   await ensurePgSchema();
   const pool = getPgPool();
+  const existingCollections = await readPostgresCollections();
   const normalizedState = buildCombinedState(stripNormalizedCollections(nextState), {
     users: nextState.users || [],
     departments: nextState.departments || [],
     locations: nextState.locations || [],
   });
+  const protectedCollections = protectProductionCollections(
+    {
+      users: normalizedState.users || [],
+      departments: normalizedState.departments || [],
+      locations: normalizedState.locations || [],
+    },
+    existingCollections,
+  );
+  const protectedState = buildCombinedState(stripNormalizedCollections(normalizedState), protectedCollections);
 
   await writePostgresCollections({
-    departments: normalizedState.departments || [],
-    locations: normalizedState.locations || [],
-    users: normalizedState.users || [],
+    departments: protectedState.departments || [],
+    locations: protectedState.locations || [],
+    users: protectedState.users || [],
   });
 
   await pool.query(
@@ -1023,10 +1116,11 @@ async function writePostgresState(nextState) {
         data = EXCLUDED.data,
         updated_at = EXCLUDED.updated_at
     `,
-    [JSON.stringify(stripNormalizedCollections(normalizedState))],
+    [JSON.stringify(stripNormalizedCollections(protectedState))],
   );
+  await pool.query("INSERT INTO app_state_history (data, created_at) VALUES ($1::jsonb, NOW())", [JSON.stringify(protectedState)]);
 
-  return normalizedState;
+  return protectedState;
 }
 
 async function migrateSqliteCollectionsIfNeeded() {
@@ -1065,6 +1159,28 @@ async function loadBootstrapState() {
   const sqliteState = await readSqliteStateRaw();
   if (sqliteState) return sqliteState;
   return buildStateDefaults(bootstrapSeedState);
+}
+
+async function restoreSqliteCollectionsFromRecoveryState(currentCollections = {}, primaryState = null) {
+  const backupState = await readSqliteStateBackupRaw();
+  const recoveredCollections = resolveRecoveryCollections(backupState, primaryState);
+  const mergedCollections = mergeMissingCollections(currentCollections, recoveredCollections);
+  if (JSON.stringify(mergedCollections) !== JSON.stringify(currentCollections) && hasCollectionRecords(mergedCollections)) {
+    await writeSqliteCollections(mergedCollections);
+    return mergedCollections;
+  }
+  return currentCollections;
+}
+
+async function restorePostgresCollectionsFromRecoveryState(currentCollections = {}, primaryState = null) {
+  const backupState = await readPostgresStateBackupRaw();
+  const recoveredCollections = resolveRecoveryCollections(backupState, primaryState);
+  const mergedCollections = mergeMissingCollections(currentCollections, recoveredCollections);
+  if (JSON.stringify(mergedCollections) !== JSON.stringify(currentCollections) && hasCollectionRecords(mergedCollections)) {
+    await writePostgresCollections(mergedCollections);
+    return mergedCollections;
+  }
+  return currentCollections;
 }
 
 async function insertSqliteSystemLog(entry) {
@@ -1257,12 +1373,7 @@ export async function readState() {
       await writeSqliteCollections(hydratedCollections);
     }
     if (shouldHydrateMissingCollections(hydratedCollections)) {
-      const recoveredCollections = resolveBootstrapCollections(sqliteState);
-      const mergedCollections = mergeMissingCollections(hydratedCollections, recoveredCollections);
-      if (JSON.stringify(mergedCollections) !== JSON.stringify(hydratedCollections) && hasCollectionRecords(mergedCollections)) {
-        hydratedCollections = mergedCollections;
-        await writeSqliteCollections(hydratedCollections);
-      }
+      hydratedCollections = await restoreSqliteCollectionsFromRecoveryState(hydratedCollections, sqliteState);
     }
     const initialState = buildCombinedState(sqliteState || buildStateDefaults({}), hydratedCollections);
     if (!sqliteState) {
@@ -1279,12 +1390,7 @@ export async function readState() {
     await writePostgresCollections(hydratedCollections);
   }
   if (shouldHydrateMissingCollections(hydratedCollections)) {
-    const recoveredCollections = resolveBootstrapCollections(postgresState);
-    const mergedCollections = mergeMissingCollections(hydratedCollections, recoveredCollections);
-    if (JSON.stringify(mergedCollections) !== JSON.stringify(hydratedCollections) && hasCollectionRecords(mergedCollections)) {
-      hydratedCollections = mergedCollections;
-      await writePostgresCollections(hydratedCollections);
-    }
+    hydratedCollections = await restorePostgresCollectionsFromRecoveryState(hydratedCollections, postgresState);
   }
   const initialState = buildCombinedState(postgresState || (await loadBootstrapState()), hydratedCollections);
   if (!postgresState) {
