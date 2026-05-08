@@ -114,6 +114,7 @@ function UsersPage() {
   const [editingUserId, setEditingUserId] = useState(null);
   const [revealedUserIds, setRevealedUserIds] = useState([]);
   const [showGridConfig, setShowGridConfig] = useState(false);
+  const [showExcluded, setShowExcluded] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(loadUserGridColumns);
   const [form, setForm] = useState(() => createDefaultUserForm(permissionProfiles, permissionCatalog));
 
@@ -139,7 +140,7 @@ function UsersPage() {
     [departments, form.departmentId],
   );
 
-  const orderedUsers = useMemo(() => {
+  const matchingUsers = useMemo(() => {
     const normalizedSearch = normalizeText(search);
     return users
       .slice()
@@ -155,6 +156,11 @@ function UsersPage() {
               .includes(normalizedSearch),
       );
   }, [search, users]);
+
+  const orderedUsers = useMemo(
+    () => matchingUsers.filter((candidate) => showExcluded || candidate.status !== "Excluido"),
+    [matchingUsers, showExcluded],
+  );
 
   const detailUser = users.find((candidate) => candidate.id === detailUserId) || null;
   const selectedProfile = permissionProfiles.find((profile) => profile.id === form.permissionProfileId) || permissionProfiles[0] || null;
@@ -331,7 +337,7 @@ function UsersPage() {
     if (!window.confirm(`Confirma a exclusao logica de ${candidate.name}?`)) return;
     deleteUser(candidate.id);
     setDetailUserId(null);
-    pushToast("Usuario excluido", candidate.name);
+    pushToast("Usuario excluido", `${candidate.name} movido para exclusao logica.`);
   };
 
   const handleDuplicateUser = (candidate) => {
@@ -413,7 +419,7 @@ function UsersPage() {
             <span>usuarios inativos</span>
           </div>
           <div className="insight-chip">
-            <strong>{orderedUsers.filter((candidate) => candidate.status === "Excluido").length}</strong>
+            <strong>{matchingUsers.filter((candidate) => candidate.status === "Excluido").length}</strong>
             <span>exclusoes logicas</span>
           </div>
         </div>
@@ -432,6 +438,10 @@ function UsersPage() {
               placeholder="Buscar por nome, email, equipe, perfil ou status"
               value={search}
             />
+            <label className="inline-toggle">
+              <input checked={showExcluded} onChange={(event) => setShowExcluded(event.target.checked)} type="checkbox" />
+              <span>Mostrar excluidos</span>
+            </label>
             <button className="ghost-button interactive-button" onClick={() => setShowGridConfig((current) => !current)} type="button">
               Configurar grade
             </button>
