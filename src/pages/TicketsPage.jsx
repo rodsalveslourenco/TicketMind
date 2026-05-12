@@ -4,7 +4,7 @@ import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
-import { PRIORITY_LEVELS, TICKET_STATUSES, normalizeText } from "../data/helpdesk";
+import { PRIORITY_LEVELS, TICKET_STATUSES, createFollowUpEntry, normalizeText } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
 
 const defaultCreateForm = {
@@ -133,12 +133,14 @@ function TicketsPage() {
   const [createKnowledgeQuery, setCreateKnowledgeQuery] = useState("");
   const [detailTicketId, setDetailTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
+  const [followUpDraft, setFollowUpDraft] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
+  const canCloseTicket = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
   const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);
   const canAssignTicket = hasAnyPermission(user, ["tickets_assign", "tickets_admin"]);
   const canChangePriority = hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"]);
@@ -307,6 +309,7 @@ function TicketsPage() {
   useEffect(() => {
     if (!detailTicket) {
       setDetailForm(null);
+      setFollowUpDraft("");
       return;
     }
 
@@ -332,6 +335,7 @@ function TicketsPage() {
       watchers: detailTicket.watchers || "",
       knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
     });
+    setFollowUpDraft("");
   }, [detailTicket]);
 
   useEffect(() => {
@@ -445,6 +449,36 @@ function TicketsPage() {
       dueDate: detailForm.dueDate || "",
     });
     pushToast("Chamado atualizado", detailForm.title);
+  };
+
+  const handleAddFollowUp = () => {
+    if (!detailTicket || !followUpDraft.trim()) return;
+    const nextFollowUp = createFollowUpEntry({
+      message: followUpDraft,
+      actorId: user?.id,
+      actorName: user?.name || "Sistema",
+    });
+    updateTicket(detailTicket.id, {
+      followUps: [nextFollowUp, ...(detailTicket.followUps || [])],
+    });
+    setFollowUpDraft("");
+    pushToast("Acompanhamento incluido", detailTicket.title);
+  };
+
+  const handleFinishTicket = () => {
+    if (!detailTicket || !detailForm) return;
+    if (!detailForm.resolutionNotes.trim()) {
+      pushToast("Solucao obrigatoria", "Informe a solucao final antes de encerrar o chamado.", "warning");
+      return;
+    }
+
+    updateTicket(detailTicket.id, {
+      ...detailForm,
+      status: "Resolvido",
+      dueDate: detailForm.dueDate || "",
+      resolutionNotes: detailForm.resolutionNotes.trim(),
+    });
+    pushToast("Chamado finalizado", detailForm.title);
   };
 
   const handleDeleteTicket = () => {
@@ -986,7 +1020,14 @@ function TicketsPage() {
                         : normalizeText(candidate.department) === "ti"
                     }
                     disabled={!canAssignTicket}
-                    onChange={(nextValue) => setDetailForm((current) => ({ ...current, assignee: nextValue }))}
+                    onChange={(nextValue) =>
+                      setDetailForm((current) => ({
+                        ...current,
+                        assignee: nextValue,
+                        status:
+                          nextValue && ["aberto", "reaberto"].includes(normalizeText(current.status)) ? "Em andamento" : current.status,
+                      }))
+                    }
                     placeholder={serviceCenterEnabled ? "Comece a digitar um responsavel do departamento" : "Comece a digitar um tecnico de TI"}
                     users={assigneeUsers}
                     value={detailForm.assignee || ""}
@@ -1000,9 +1041,59 @@ function TicketsPage() {
               </label>
 
               <label className="field-block field-full">
-                <span>Solucao / acompanhamento tecnico</span>
+                <span>Solucao tecnica</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
+
+              <section className="ticket-attachment-panel">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Acompanhamentos</strong>
+                    <span>Registre novas interacoes tecnicas sem sobrescrever o historico do chamado.</span>
+                  </div>
+                </div>
+                <label className="field-block field-full">
+                  <span>Novo acompanhamento</span>
+                  <textarea
+                    disabled={!canEditTicket}
+                    onChange={(event) => setFollowUpDraft(event.target.value)}
+                    placeholder="Descreva a analise, teste executado, retorno ao usuario ou proximo passo."
+                    value={followUpDraft}
+                  />
+                </label>
+                {canEditTicket ? (
+                  <div className="ticket-create-actions compact-actions">
+                    <button className="ghost-button interactive-button" onClick={handleAddFollowUp} type="button">
+                      Incluir acompanhamento
+                    </button>
+                  </div>
+                ) : null}
+                {detailTicket.followUps?.length ? (
+                  <div className="ticket-rows">
+                    {detailTicket.followUps.map((followUp) => (
+                      <article className="ticket-row-card" key={followUp.id}>
+                        <div className="ticket-row-main">
+                          <div className="ticket-row-title">
+                            <strong>{followUp.actorName || "Sistema"}</strong>
+                            <h3>{followUp.message}</h3>
+                          </div>
+                          <div className="ticket-row-badges">
+                            <span className="badge badge-neutral">acompanhamento</span>
+                          </div>
+                        </div>
+                        <div className="ticket-row-meta">
+                          <span>{followUp.createdAtLabel}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Nenhum acompanhamento registrado.</strong>
+                    <span>Use o campo acima para documentar cada interacao tecnica deste chamado.</span>
+                  </div>
+                )}
+              </section>
 
               <section className="ticket-attachment-panel">
                 <div className="attachment-toolbar glpi-subbar">
@@ -1153,6 +1244,11 @@ function TicketsPage() {
                 {canEditTicket ? (
                   <button className="primary-button interactive-button" type="submit">
                     Salvar alteracoes
+                  </button>
+                ) : null}
+                {canCloseTicket ? (
+                  <button className="ghost-button interactive-button" onClick={handleFinishTicket} type="button">
+                    Finalizar chamado
                   </button>
                 ) : null}
               </div>

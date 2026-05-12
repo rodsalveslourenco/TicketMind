@@ -126,6 +126,35 @@ export function normalizeHistory(history) {
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
+export function createFollowUpEntry({ message, actorId = "", actorName = "Sistema", createdAt }) {
+  const timestamp = createdAt || new Date().toISOString();
+  return {
+    id: `follow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    message: String(message || "").trim(),
+    actorId: String(actorId || "").trim(),
+    actorName: String(actorName || "Sistema").trim(),
+    createdAt: timestamp,
+    createdAtLabel: formatTimestampLabel(timestamp),
+  };
+}
+
+export function normalizeFollowUps(followUps) {
+  return (Array.isArray(followUps) ? followUps : [])
+    .map((item) => {
+      const timestamp = item?.createdAt || new Date().toISOString();
+      return {
+        id: item?.id || `follow-${Math.random().toString(36).slice(2, 8)}`,
+        message: String(item?.message || "").trim(),
+        actorId: String(item?.actorId || "").trim(),
+        actorName: String(item?.actorName || "Sistema").trim(),
+        createdAt: timestamp,
+        createdAtLabel: formatTimestampLabel(timestamp),
+      };
+    })
+    .filter((item) => item.message)
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
 export function resolveTicketRequesterId(ticket, users) {
   if (ticket.requesterId && users.some((candidate) => candidate.id === ticket.requesterId)) {
     return ticket.requesterId;
@@ -155,6 +184,7 @@ export function buildTicketSearchText(ticket) {
     ticket.queue,
     ticket.category,
     ticket.resolutionNotes,
+    ...(Array.isArray(ticket.followUps) ? ticket.followUps.map((followUp) => followUp.message) : []),
   ]
     .map((item) => normalizeText(item))
     .join(" ");
@@ -208,6 +238,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
   const slaDeadlineAt =
     ticket.slaDeadlineAt || new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString();
   const history = normalizeHistory(ticket.history);
+  const followUps = normalizeFollowUps(ticket.followUps);
   const isResolved = normalizeText(status) === "resolvido";
   let resolvedAt = ticket.resolvedAt || "";
   if (isResolved && !resolvedAt) {
@@ -246,6 +277,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     updatedAtIso: ticket.updatedAtIso || openedAt,
     updatedAt: ticket.updatedAt && ticket.updatedAt !== "Agora" ? ticket.updatedAt : formatTimestampLabel(ticket.updatedAtIso || openedAt),
     resolutionNotes: String(ticket.resolutionNotes || "").trim(),
+    followUps,
     attachments: Array.isArray(ticket.attachments) ? ticket.attachments : [],
     history: nextHistory,
     slaTargetMinutes,

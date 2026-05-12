@@ -29,12 +29,14 @@ import {
   buildKnowledgeSearchText,
   buildTicketSearchText,
   computePriorityFromMatrix,
+  createFollowUpEntry,
   createHistoryEntry,
   formatDateLabel,
   formatTimestampLabel,
   getSlaPolicyMinutes,
   isOpenTicketStatus,
   normalizeKnowledgeArticle,
+  normalizeFollowUps,
   normalizePriorityLabel,
   normalizeText,
   normalizeTicketStatus,
@@ -1062,13 +1064,22 @@ export function AppDataProvider({ children }) {
         if (ticket.id !== ticketId) return ticket;
         if (!canAccessTicket(ticket, user, current.departments || [], current.serviceCenter || defaultServiceCenterSettings)) return ticket;
 
-        const statusChanged = updates.status !== undefined && normalizeTicketStatus(updates.status) !== normalizeTicketStatus(ticket.status);
         const assigneeChanged = updates.assignee !== undefined && String(updates.assignee || "").trim() !== String(ticket.assignee || "").trim();
         const requestedPriority =
           updates.priority !== undefined
             ? normalizePriorityLabel(updates.priority)
             : normalizePriorityLabel(computePriorityFromMatrix(updates.urgency ?? ticket.urgency, updates.impact ?? ticket.impact));
         const priorityChanged = normalizeText(requestedPriority) !== normalizeText(ticket.priority);
+        const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
+        const requestedStatus = normalizeTicketStatus(
+          updates.status ??
+            (assigneeChanged &&
+            nextAssignee &&
+            ["aberto", "reaberto"].includes(normalizeText(ticket.status))
+              ? "Em andamento"
+              : ticket.status),
+        );
+        const statusChanged = normalizeTicketStatus(requestedStatus) !== normalizeTicketStatus(ticket.status);
 
         if (assigneeChanged && !hasAnyPermission(user, ["tickets_assign", "tickets_admin"])) {
           return ticket;
@@ -1076,8 +1087,15 @@ export function AppDataProvider({ children }) {
         if (priorityChanged && !hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"])) {
           return ticket;
         }
+        const autoProgressFromAssignment =
+          updates.status === undefined &&
+          assigneeChanged &&
+          nextAssignee &&
+          normalizeText(requestedStatus) === "em andamento" &&
+          ["aberto", "reaberto"].includes(normalizeText(ticket.status));
+
         if (statusChanged) {
-          if (!hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
+          if (!autoProgressFromAssignment && !hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
             return ticket;
           }
           if (normalizeText(updates.status) === "resolvido" && !hasAnyPermission(user, ["tickets_close", "tickets_admin"])) {
@@ -1093,13 +1111,14 @@ export function AppDataProvider({ children }) {
         }
 
         const nowIso = new Date().toISOString();
-        const nextStatus = normalizeTicketStatus(updates.status ?? ticket.status);
+        const nextStatus = requestedStatus;
         const nextPriority = requestedPriority;
         const nextUrgency = updates.urgency ?? ticket.urgency;
         const nextImpact = updates.impact ?? ticket.impact;
         const nextDueDate = updates.dueDate ?? ticket.dueDate;
-        const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
         const nextResolutionNotes = String((updates.resolutionNotes ?? ticket.resolutionNotes) || "").trim();
+        const nextFollowUps = updates.followUps !== undefined ? normalizeFollowUps(updates.followUps) : normalizeFollowUps(ticket.followUps);
+        const followUpsChanged = JSON.stringify(nextFollowUps) !== JSON.stringify(normalizeFollowUps(ticket.followUps));
         const nextDepartmentId = String(updates.departmentId ?? ticket.departmentId ?? "").trim();
         const nextDepartment =
           (current.departments || []).find((department) => department.id === nextDepartmentId)?.name ||
@@ -1185,6 +1204,19 @@ export function AppDataProvider({ children }) {
             }),
           );
         }
+        if (followUpsChanged && nextFollowUps.length) {
+          const latestFollowUp = nextFollowUps[0];
+          historyEntries.push(
+            createHistoryEntry({
+              type: "follow_up",
+              actorId: latestFollowUp.actorId || user?.id,
+              actorName: latestFollowUp.actorName || user?.name || "Sistema",
+              message: "Acompanhamento registrado",
+              metadata: { followUpId: latestFollowUp.id },
+              createdAt: latestFollowUp.createdAt || nowIso,
+            }),
+          );
+        }
 
         const nextTicket = {
           ...ticket,
@@ -1209,6 +1241,7 @@ export function AppDataProvider({ children }) {
           department: nextDepartment,
           queue: String(updates.queue ?? ticket.queue ?? nextDepartment).trim() || nextDepartment || "Service Desk",
           resolutionNotes: nextResolutionNotes,
+          followUps: nextFollowUps,
           resolvedAt,
           resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
           updatedAtIso: nowIso,
