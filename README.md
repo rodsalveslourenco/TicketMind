@@ -1,50 +1,149 @@
 # TicketMind
 
-Sistema web de service desk e operacao interna, com frontend React e backend Express, pensado para uso estilo GLPI/ITSM.
+Sistema web de service desk e operacao interna inspirado em fluxos GLPI/ITSM, com frontend em React e backend em Express.
 
 ## Visao geral
 
-O projeto entrega uma aplicacao unica com:
+O TicketMind foi pensado para centralizar operacao de atendimento, cadastro administrativo e acompanhamento interno em uma unica aplicacao.
 
-- frontend React servido pelo Vite no build
-- backend Express servindo API e arquivos estaticos
-- autenticacao simples por email e senha
-- controle de acesso por permissoes
-- persistencia de estado completa em SQLite local ou Postgres
+Hoje o sistema entrega:
 
-Hoje a aplicacao funciona como um monolito simples:
+- autenticacao por email e senha
+- controle de acesso por perfil e permissao
+- central de chamados com fluxo operacional
+- dashboard com indicadores e fila de atendimento
+- cadastro de usuarios, departamentos, ativos, marcas, modelos e projetos
+- base de conhecimento vinculada a chamados
+- persistencia local em SQLite ou remota em Postgres
+- deploy simples no Render com `render.yaml`
+
+Arquiteturalmente, o projeto funciona como um monolito simples:
 
 - o backend expoe endpoints `/api/*`
-- o frontend consome esses endpoints com `fetch`
-- o estado completo da aplicacao e salvo como um documento unico em `app_state`
+- o frontend consome a API com `fetch`
+- o estado completo da plataforma e persistido em `app_state`
 
-## Principais modulos funcionais
+## Principais funcoes do sistema
 
-- `Login`: autenticacao inicial e restauracao de sessao no navegador
-- `Dashboard`: indicadores operacionais, fila e visao resumida
-- `Tickets`: abertura, edicao e acompanhamento de chamados
+### Autenticacao e acesso
+
+- login por email e senha
+- restauracao de sessao no navegador
+- controle de acesso por permissao
+- protecao de rotas no frontend
+- validacao de acoes por permissao no contexto de dados
+
+### Dashboard operacional
+
+- visao resumida de fila
+- indicadores por status
+- indicadores por prioridade
+- acompanhamento de alertas de SLA
+- visao de tecnicos e carga operacional
+
+### Gestao de chamados
+
+- abertura de chamado
+- edicao de chamado
+- definicao de prioridade, urgencia e impacto
+- atribuicao de tecnico responsavel
+- mudanca de status
+- anexos no chamado
+- historico e auditoria de eventos
+- vinculacao de artigos da base de conhecimento
+- criacao de artigo a partir da solucao do chamado
+- registro de acompanhamentos tecnicos
+- finalizacao de chamado com solucao obrigatoria
+- mudanca automatica para `Em andamento` quando um tecnico e indicado
+
+### Central de servicos
+
+- departamentos com configuracao individual
+- departamentos ativos ou inativos
+- controle de quais departamentos aceitam chamados
+- definicao de departamentos exibidos no portal de abertura
+- lista de responsaveis por departamento
+- atendimento por departamentos vinculados ao usuario
+
+### Usuarios e permissoes
+
+- cadastro de usuarios
+- edicao e duplicacao de usuarios
+- ativacao e inativacao
+- perfis de permissao
+- permissoes adicionais e restritas por usuario
+- atualizacao do proprio perfil
+
+### Ativos e inventario
+
+- cadastro de ativos
+- edicao e remocao de ativos
+- vinculacao com localizacao
+- catalogo de marcas e modelos
+- suporte a diferentes tipos de ativo
+- visao de inventario operacional
+
+### Localizacoes e departamentos
+
+- cadastro de departamentos
+- configuracao visual por cor
+- cadastro de localizacoes
+- associacao entre localizacao e departamento
+
+### Projetos internos
+
+- cadastro de projetos
+- fases e progresso
+- resumo de patrocinador, gestor, prazo e status
+
+### Base de conhecimento
+
+- cadastro manual de artigos
+- edicao e inativacao
+- pesquisa por problema, solucao, palavras-chave e categoria
+- vinculacao de artigo ao chamado
+- geracao de artigo a partir do ticket resolvido
+
+### Integracoes e notificacoes
+
+- configuracao de integracoes REST
+- layouts de email
+- regras de notificacao
+- configuracao SMTP
+- configuracao de servico de email
+- teste de notificacao
+
+## Modulos da aplicacao
+
+- `Login`: autenticacao inicial e restauracao de sessao
+- `Dashboard`: indicadores operacionais e visao executiva
+- `Tickets`: abertura, tratamento, acompanhamento e resolucao de chamados
 - `Assets`: cadastro e manutencao de ativos
-- `Inventory`: visao de inventario e operacao relacionada
-- `Brands / Models`: catalogo de marcas e modelos por tipo de ativo
+- `Inventory`: visao consolidada de inventario
+- `Brands / Models`: catalogo tecnico de marcas e modelos
 - `Projects`: acompanhamento de projetos internos
+- `Central Services`: configuracao da central de servicos e departamentos
+- `Users`: administracao de usuarios, perfis e permissoes
+- `Knowledge`: base de conhecimento e reaproveitamento de solucoes
 - `API Config`: configuracao de integracoes REST
-- `Users`: administracao de usuarios e permissoes
-- `Profile`: atualizacao basica do perfil do usuario logado
+- `Notifications`: layouts, regras e testes de envio
+- `Profile`: manutencao do perfil do usuario logado
 
-## Arquitetura
+## Stack tecnica
 
 ### Frontend
 
 - `React 18`
 - `React Router`
-- `Context API` para sessao e dados globais
-- `Vite` para desenvolvimento e build
+- `Context API`
+- `Vite`
 
 Arquivos centrais:
 
-- [src/App.jsx](/C:/Users/Rodrigo%20Alves/OneDrive%20-%20WEGA%20MARINE/Documentos/TicketMind/src/App.jsx): define as rotas da aplicacao
-- [src/auth/AuthContext.jsx](/C:/Users/Rodrigo%20Alves/OneDrive%20-%20WEGA%20MARINE/Documentos/TicketMind/src/auth/AuthContext.jsx): login, logout e restauracao de sessao
-- [src/data/AppDataContext.jsx](/C:/Users/Rodrigo%20Alves/OneDrive%20-%20WEGA%20MARINE/Documentos/TicketMind/src/data/AppDataContext.jsx): carga de dados, regras de negocio no cliente e sincronizacao com a API
+- [`src/App.jsx`](src/App.jsx): rotas principais da aplicacao
+- [`src/auth/AuthContext.jsx`](src/auth/AuthContext.jsx): autenticacao, logout e restauracao de sessao
+- [`src/data/AppDataContext.jsx`](src/data/AppDataContext.jsx): regras de negocio, sincronizacao com API e estado global
+- [`src/pages/TicketsPage.jsx`](src/pages/TicketsPage.jsx): fluxo principal de abertura, atendimento e resolucao de chamados
 
 ### Backend
 
@@ -54,8 +153,8 @@ Arquivos centrais:
 
 Arquivos centrais:
 
-- [server/index.js](/C:/Users/Rodrigo%20Alves/OneDrive%20-%20WEGA%20MARINE/Documentos/TicketMind/server/index.js): API HTTP e entrega do frontend compilado
-- [server/db.js](/C:/Users/Rodrigo%20Alves/OneDrive%20-%20WEGA%20MARINE/Documentos/TicketMind/server/db.js): persistencia, bootstrap e fallback SQLite/Postgres
+- [`server/index.js`](server/index.js): API HTTP e entrega do frontend compilado
+- [`server/db.js`](server/db.js): persistencia, bootstrap e fallback SQLite/Postgres
 
 ## Rotas do frontend
 
@@ -81,17 +180,18 @@ O acesso a cada rota depende das permissoes do usuario autenticado.
 
 Endpoints disponiveis hoje:
 
-- `GET /api/health`: verificacao basica de disponibilidade
-- `POST /api/auth/login`: autentica por email e senha
-- `GET /api/auth/session/:userId`: reidrata sessao salva no navegador
-- `GET /api/state`: retorna o estado completo da aplicacao
-- `PUT /api/state`: persiste o estado completo atualizado
+- `GET /api/health`
+- `POST /api/auth/login`
+- `GET /api/auth/session/:userId`
+- `GET /api/state`
+- `PUT /api/state`
+- `POST /api/notifications/test`
 
-Observacao importante:
+Observacoes importantes:
 
-- o modelo atual salva o estado inteiro da plataforma em um unico registro
-- ainda nao existe separacao por tabelas de negocio
-- ainda nao existe token JWT, cookie de sessao HTTP-only ou hash de senha
+- o modelo atual salva o estado inteiro da aplicacao em um unico registro
+- ainda nao existe separacao completa por tabelas de negocio
+- parte relevante das regras operacionais ainda esta no frontend
 
 ## Persistencia
 
@@ -114,8 +214,8 @@ Quando `DATABASE_URL` existe:
 
 - o backend inicializa um pool Postgres
 - cria a tabela `app_state` se ela nao existir
-- le o estado do Postgres
-- se o Postgres estiver vazio, tenta inicializar a partir do SQLite local
+- carrega o estado do Postgres
+- se o banco estiver vazio, tenta inicializar com o SQLite local
 
 Tabela usada hoje:
 
@@ -125,7 +225,7 @@ O campo `data` guarda um `JSONB` com o estado inteiro da aplicacao.
 
 ## Dados iniciais
 
-O seed atual fica em [src/data/seedData.js](/C:/Users/Rodrigo%20Alves/OneDrive%20-%20WEGA%20MARINE/Documentos/TicketMind/src/data/seedData.js).
+O seed atual fica em [`src/data/seedData.js`](src/data/seedData.js).
 
 Usuario administrador padrao:
 
@@ -134,46 +234,33 @@ Usuario administrador padrao:
 
 Esse seed e usado quando ainda nao existe estado persistido.
 
-## Regras de acesso
-
-O projeto possui uma camada de permissoes por recurso, aplicada em dois niveis:
-
-- protecao de rota no frontend
-- validacao de acoes no contexto de dados do frontend
-
-Exemplos de capacidade controlada por permissao:
-
-- visualizar chamados proprios ou todos
-- criar, editar, reabrir e encerrar tickets
-- gerenciar usuarios e resetar senha
-- administrar ativos, marcas, modelos e projetos
-- configurar integracoes REST
-
-Observacao:
-
-- isso ainda nao substitui autorizacao forte no backend
-- hoje boa parte da regra operacional ainda esta no frontend
-
 ## Estrutura de pastas
 
 ```text
 server/
-  index.js              servidor Express
-  db.js                 persistencia SQLite/Postgres
+  index.js
+  db.js
+  notifications.js
+  security.js
+  systemLogs.js
 
 src/
-  assets/               imagens e recursos visuais
-  auth/                 contexto de autenticacao
-  components/           layout, protecao de rotas e componentes compartilhados
-  data/                 seed, permissoes, catalogos e contexto global
-  lib/                  cliente HTTP
-  pages/                telas da aplicacao
-  App.jsx               definicao de rotas
-  main.jsx              bootstrap React
-  styles.css            estilos globais
+  assets/
+  auth/
+  components/
+  data/
+  lib/
+  pages/
+  App.jsx
+  main.jsx
+  styles.css
 
-render.yaml             blueprint de deploy no Render
-package.json            scripts e dependencias
+data/
+  ticketmind.sqlite
+
+render.yaml
+package.json
+README.md
 ```
 
 ## Execucao local
@@ -204,14 +291,14 @@ npm run build
 
 ## Deploy no Render
 
-O projeto foi preparado para deploy via `Blueprint` com o arquivo `render.yaml`.
+O projeto esta preparado para deploy via `Blueprint` com o arquivo `render.yaml`.
 
 O blueprint cria:
 
 - um `Web Service` chamado `ticketmind`
 - um banco `Render Postgres` chamado `ticketmind-db`
 
-Fluxo:
+Fluxo basico:
 
 1. No Render, clique em `New +`
 2. Escolha `Blueprint`
@@ -222,50 +309,67 @@ Fluxo:
 No deploy:
 
 - o Render executa `npm ci && npm run build`
-- depois sobe o backend com `npm run start`
-- o frontend compilado em `dist` e servido pelo proprio Express
-- a variavel `DATABASE_URL` e injetada automaticamente a partir do banco criado
-
-## Privacidade do codigo e do acesso
-
-### Repositorio GitHub
-
-Se o objetivo e impedir que o codigo fique disponivel para qualquer pessoa baixar, o caminho correto e deixar o repositorio como `Private` no GitHub. O GitHub permite mudar a visibilidade do repositorio, e repositorios privados nao ficam abertos ao publico. Fonte: [GitHub Docs - Setting repository visibility](https://docs.github.com/en/github/administering-a-repository/setting-repository-visibility)
-
-O Render pode continuar fazendo deploy de repositorios privados, desde que sua conta GitHub conectada ao Render tenha acesso a esse repositorio privado. Fonte: [Render Docs - Web Services](https://render.com/docs/web-services), [Render Docs - Connect GitHub](https://render.com/docs/github)
-
-Em termos praticos:
-
-1. deixe o repositorio como `Private` no GitHub
-2. mantenha sua conta GitHub conectada ao Render
-3. confirme que o Render ainda tem permissao sobre esse repositorio
-
-### Acesso ao sistema publicado
-
-Se voce quer que o sistema continue acessivel por navegador, ele precisa continuar como `Web Service`, o que significa URL publica. Fonte: [Render Docs - Web Services](https://render.com/docs/web-services)
-
-Se voce quiser que ele nao seja acessivel pela internet publica, o Render orienta usar `Private Service`, mas nesse modo ele nao recebe URL publica e nao serve para acesso direto por navegador dos usuarios. Fonte: [Render Docs - Private Services](https://render.com/docs/private-services)
-
-Resumo objetivo:
-
-- para esconder o codigo-fonte: repositorio `Private` no GitHub
-- para manter o sistema acessivel no navegador: continuar com `Web Service`
-- para restringir uso do sistema: manter login e, idealmente, evoluir para autenticacao real
-- para impedir acesso publico total ao app: migrar para `Private Service`, mas ai o sistema nao abre publicamente
+- sobe o backend com `npm run start`
+- serve o frontend compilado em `dist`
+- injeta `DATABASE_URL` automaticamente a partir do banco criado
 
 ## Limitacoes atuais
 
 - senha ainda armazenada em texto puro
-- sem JWT ou cookie seguro
-- sem controle de sessao no backend
-- sem autorizacao forte no servidor
+- sem JWT ou cookie HTTP-only
+- sem autorizacao forte no backend
+- parte da regra de negocio ainda concentrada no frontend
 - persistencia em documento unico
-- sem suite formal de testes
+- sem suite formal de testes automatizados
+- sem trilha de atendimento em modelo relacional separado
 
-## Proximos passos recomendados
+## Possiveis melhorias para proximos releases
 
-1. Mover autenticacao e autorizacao de forma efetiva para o backend
-2. Aplicar hash de senha com algoritmo apropriado
-3. Trocar o estado unico por tabelas de dominio reais
-4. Adicionar testes para API, autenticacao e persistencia
-5. Definir estrategia de acesso externo: publico com login, VPN, proxy com auth ou private network
+### Release focado em seguranca
+
+- aplicar hash de senha com `bcrypt` ou equivalente
+- mover autenticacao e autorizacao efetiva para o backend
+- usar sessao segura ou JWT com expiracao
+- restringir melhor operacoes criticas por API
+- adicionar trilha de auditoria administrativa no servidor
+
+### Release focado em chamados
+
+- comentarios privados e publicos no ticket
+- transicoes de status parametrizaveis
+- SLA por categoria, departamento e prioridade
+- notificacao automatica por abertura, atribuicao, acompanhamento e encerramento
+- aprovacao de requisicoes
+- fila de triagem com regras de roteamento
+- reabertura com motivo obrigatorio
+- templates de resposta e solucao
+
+### Release focado em experiencia operacional
+
+- filtros salvos por usuario
+- busca avancada por multiplos campos
+- exportacao de chamados
+- dashboard com periodos personalizaveis
+- atalhos de atendimento rapido
+- timeline visual do ticket
+- indicadores por departamento e tecnico
+
+### Release focado em arquitetura
+
+- separar o estado unico em tabelas reais de dominio
+- criar camadas de servico no backend
+- reduzir logica de negocio no frontend
+- preparar API para integracoes externas mais granulares
+- adicionar versionamento de payload e migracoes de dados
+
+### Release focado em qualidade
+
+- testes unitarios para regras de negocio
+- testes de integracao da API
+- smoke tests para fluxos principais
+- lint e validacao automatica em pipeline
+- ambiente de homologacao isolado do ambiente principal
+
+## Resumo executivo
+
+O TicketMind ja cobre um escopo relevante de service desk interno, com abertura de chamados, tratamento operacional, ativos, usuarios, base de conhecimento e configuracoes administrativas. O proximo salto de maturidade esta em fortalecer seguranca, mover regras criticas para o backend, melhorar automacoes de atendimento e estruturar a persistencia por entidades de negocio.
