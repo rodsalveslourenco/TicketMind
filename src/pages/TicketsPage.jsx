@@ -195,6 +195,7 @@ function TicketsPage() {
   });
   const [savedFilters, setSavedFilters] = useState([]);
   const [savedFilterName, setSavedFilterName] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
@@ -489,6 +490,21 @@ function TicketsPage() {
     }, {});
     return Object.values(grouped).sort((left, right) => right.total - left.total).slice(0, 5);
   }, [filteredTickets]);
+
+  const activeFilterCount = useMemo(() => {
+    const advancedValues = Object.values(advancedFilters).filter((value) => {
+      if (!value) return false;
+      return !["Todos", "Todas"].includes(String(value));
+    });
+
+    return [
+      statusFilter !== "Todos",
+      priorityFilter !== "Todas",
+      slaFilter !== "Todos",
+      search.trim().length > 0,
+      advancedValues.length > 0,
+    ].filter(Boolean).length;
+  }, [advancedFilters, priorityFilter, search, slaFilter, statusFilter]);
 
   const linkedArticles = useMemo(
     () =>
@@ -1876,6 +1892,7 @@ function TicketsPage() {
 }
 
 export default TicketsPage;
+
 
 
 
