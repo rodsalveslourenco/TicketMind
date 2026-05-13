@@ -913,10 +913,10 @@ function TicketsPage() {
       </section>
 
       <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
+        <div className="glpi-toolbar ticket-list-toolbar">
           <div>
             <h2>Listagem operacional</h2>
-            <span>Priorize a fila por impacto, acompanhe SLA e abra novos chamados sem perder contexto.</span>
+            <span>Priorize a fila por impacto e acompanhe os chamados sem perder leitura da operacao.</span>
           </div>
           <div className="toolbar">
             <div className="view-toggle">
@@ -924,6 +924,9 @@ function TicketsPage() {
                 Lista
               </button>
             </div>
+            <button className="ghost-button interactive-button" onClick={() => setShowFilters((current) => !current)} type="button">
+              {showFilters ? "Ocultar filtros" : "Mostrar filtros"}
+            </button>
             <button className="ghost-button interactive-button" onClick={handleExportTickets} type="button">
               Exportar
             </button>
@@ -935,124 +938,138 @@ function TicketsPage() {
           </div>
         </div>
 
-        <div className="dashboard-filter-shell compact-filter-shell">
-          <div className="dashboard-filter-grid">
-            <label>
-              <span>Busca global</span>
-              <input className="toolbar-search" onChange={(event) => handleSearchChange(event.target.value)} placeholder="Numero, usuario, email, tecnico, status, prioridade, titulo ou descricao" value={search} />
-            </label>
-            <label>
-              <span>Status</span>
-              <select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
-                <option>Todos</option>
-                {TICKET_STATUSES.map((status) => (
-                  <option key={status}>{status}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Prioridade</span>
-              <select onChange={(event) => setPriorityFilter(event.target.value)} value={priorityFilter}>
-                <option>Todas</option>
-                {PRIORITY_LEVELS.map((priority) => (
-                  <option key={priority}>{priority}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>SLA</span>
-              <select onChange={(event) => setSlaFilter(event.target.value)} value={slaFilter}>
-                <option>Todos</option>
-                <option>Vence em 1h</option>
-                <option>Vencido</option>
-                <option>Critico sem tecnico</option>
-                <option>Sem tecnico</option>
-              </select>
-            </label>
+        <div className="ticket-list-summary-bar">
+          <div className="ticket-list-summary-copy">
+            <strong>{filteredTickets.length} chamado(s)</strong>
+            <span>{activeFilterCount ? `${activeFilterCount} filtro(s) ativo(s)` : "Sem filtros adicionais ativos"}</span>
           </div>
-          <div className="ticket-create-actions compact-actions">
-            <input onChange={(event) => setSavedFilterName(event.target.value)} placeholder="Nome do filtro salvo" value={savedFilterName} />
-            <button className="ghost-button interactive-button" onClick={handleSaveCurrentFilter} type="button">
-              Salvar filtro
-            </button>
-            <button className="ghost-button interactive-button" onClick={handleResetFilters} type="button">
-              Limpar filtros
-            </button>
-          </div>
-          {savedFilters.length ? (
-            <div className="ticket-create-actions compact-actions">
-              {savedFilters.map((preset) => (
-                <div className="watcher-chip" key={preset.id}>
-                  <button className="ghost-link interactive-button" onClick={() => handleApplySavedFilter(preset.id)} type="button">
-                    {preset.name}
-                  </button>
-                  <button onClick={() => handleDeleteSavedFilter(preset.id)} type="button">
-                    x
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div className="detail-grid">
-            <label className="field-block">
-              <span>Busca avancada</span>
-              <input onChange={updateAdvancedFilter("query")} placeholder="Categoria, origem, local, descricao, solucao ou comentario" value={advancedFilters.query} />
-            </label>
-            <label className="field-block">
-              <span>Solicitante</span>
-              <input onChange={updateAdvancedFilter("requester")} placeholder="Nome do solicitante" value={advancedFilters.requester} />
-            </label>
-            <label className="field-block">
-              <span>Tecnico</span>
-              <select onChange={updateAdvancedFilter("assignee")} value={advancedFilters.assignee}>
-                {assigneeOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Departamento</span>
-              <select onChange={updateAdvancedFilter("department")} value={advancedFilters.department}>
-                {departmentOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Categoria</span>
-              <select onChange={updateAdvancedFilter("category")} value={advancedFilters.category}>
-                {categoryOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Fila</span>
-              <select onChange={updateAdvancedFilter("queue")} value={advancedFilters.queue}>
-                {queueOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Origem</span>
-              <select onChange={updateAdvancedFilter("source")} value={advancedFilters.source}>
-                {["Todas", "Portal", "E-mail", "Telefone", "Monitoramento"].map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Abertura de</span>
-              <input onChange={updateAdvancedFilter("dateFrom")} type="date" value={advancedFilters.dateFrom} />
-            </label>
-            <label className="field-block">
-              <span>Abertura ate</span>
-              <input onChange={updateAdvancedFilter("dateTo")} type="date" value={advancedFilters.dateTo} />
-            </label>
+          <div className="ticket-list-summary-tags">
+            {statusFilter !== "Todos" ? <span className="badge badge-neutral">{statusFilter}</span> : null}
+            {priorityFilter !== "Todas" ? <span className="badge badge-neutral">{priorityFilter}</span> : null}
+            {slaFilter !== "Todos" ? <span className="badge badge-neutral">{slaFilter}</span> : null}
+            {search.trim() ? <span className="badge badge-neutral">Busca: {search}</span> : null}
           </div>
         </div>
 
+                {showFilters ? (
+          <div className="dashboard-filter-shell compact-filter-shell ticket-filters-panel">
+            <div className="dashboard-filter-grid">
+              <label>
+                <span>Busca global</span>
+                <input className="toolbar-search" onChange={(event) => handleSearchChange(event.target.value)} placeholder="Numero, usuario, email, tecnico, status, prioridade, titulo ou descricao" value={search} />
+              </label>
+              <label>
+                <span>Status</span>
+                <select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+                  <option>Todos</option>
+                  {TICKET_STATUSES.map((status) => (
+                    <option key={status}>{status}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Prioridade</span>
+                <select onChange={(event) => setPriorityFilter(event.target.value)} value={priorityFilter}>
+                  <option>Todas</option>
+                  {PRIORITY_LEVELS.map((priority) => (
+                    <option key={priority}>{priority}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>SLA</span>
+                <select onChange={(event) => setSlaFilter(event.target.value)} value={slaFilter}>
+                  <option>Todos</option>
+                  <option>Vence em 1h</option>
+                  <option>Vencido</option>
+                  <option>Critico sem tecnico</option>
+                  <option>Sem tecnico</option>
+                </select>
+              </label>
+            </div>
+            <div className="ticket-create-actions compact-actions">
+              <input onChange={(event) => setSavedFilterName(event.target.value)} placeholder="Nome do filtro salvo" value={savedFilterName} />
+              <button className="ghost-button interactive-button" onClick={handleSaveCurrentFilter} type="button">
+                Salvar filtro
+              </button>
+              <button className="ghost-button interactive-button" onClick={handleResetFilters} type="button">
+                Limpar filtros
+              </button>
+            </div>
+            {savedFilters.length ? (
+              <div className="ticket-create-actions compact-actions">
+                {savedFilters.map((preset) => (
+                  <div className="watcher-chip" key={preset.id}>
+                    <button className="ghost-link interactive-button" onClick={() => handleApplySavedFilter(preset.id)} type="button">
+                      {preset.name}
+                    </button>
+                    <button onClick={() => handleDeleteSavedFilter(preset.id)} type="button">
+                      x
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="detail-grid">
+              <label className="field-block">
+                <span>Busca avancada</span>
+                <input onChange={updateAdvancedFilter("query")} placeholder="Categoria, origem, local, descricao, solucao ou comentario" value={advancedFilters.query} />
+              </label>
+              <label className="field-block">
+                <span>Solicitante</span>
+                <input onChange={updateAdvancedFilter("requester")} placeholder="Nome do solicitante" value={advancedFilters.requester} />
+              </label>
+              <label className="field-block">
+                <span>Tecnico</span>
+                <select onChange={updateAdvancedFilter("assignee")} value={advancedFilters.assignee}>
+                  {assigneeOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Departamento</span>
+                <select onChange={updateAdvancedFilter("department")} value={advancedFilters.department}>
+                  {departmentOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Categoria</span>
+                <select onChange={updateAdvancedFilter("category")} value={advancedFilters.category}>
+                  {categoryOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Fila</span>
+                <select onChange={updateAdvancedFilter("queue")} value={advancedFilters.queue}>
+                  {queueOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Origem</span>
+                <select onChange={updateAdvancedFilter("source")} value={advancedFilters.source}>
+                  {["Todas", "Portal", "E-mail", "Telefone", "Monitoramento"].map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>Abertura de</span>
+                <input onChange={updateAdvancedFilter("dateFrom")} type="date" value={advancedFilters.dateFrom} />
+              </label>
+              <label className="field-block">
+                <span>Abertura ate</span>
+                <input onChange={updateAdvancedFilter("dateTo")} type="date" value={advancedFilters.dateTo} />
+              </label>
+            </div>
+          </div>
+        ) : null}
         <div className="split-grid split-grid-wide">
           <section className="board-card compact-record-card">
             <div className="card-heading">
@@ -1104,34 +1121,42 @@ function TicketsPage() {
           </section>
         </div>
 
-        <div className="ticket-rows ticket-rows-wide">
+        <div className="ticket-rows ticket-rows-wide ticket-list-compact">
           {filteredTickets.length ? (
             filteredTickets.map((ticket) => (
               <button
-                className={`ticket-row-card interactive-button ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
+                className={`ticket-row-card ticket-row-compact interactive-button ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
                 key={ticket.id}
                 onClick={() => setDetailTicketId(ticket.id)}
                 style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.06 })}
                 type="button"
               >
-                <div className="ticket-row-main">
-                  <div className="ticket-row-title">
-                    <strong>{ticket.id}</strong>
-                    <h3>{ticket.title}</h3>
-                  </div>
-                  <div className="ticket-row-badges">
+                <div className="ticket-row-headerline">
+                  <div className="ticket-row-ticketid">{ticket.id}</div>
+                  <div className="ticket-row-badges ticket-row-badges-compact">
                     <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
                     <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
                     <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
                   </div>
                 </div>
-                <div className="ticket-row-meta">
-                  <span>{ticket.requester}</span>
-                  <span>{ticket.requesterEmail || "-"}</span>
-                  <span>{ticket.assignee || "Sem tecnico"}</span>
-                  <span className="department-badge" style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.16 })}>
-                    {ticket.department || ticket.queue}
-                  </span>
+                <div className="ticket-row-main ticket-row-main-compact">
+                  <div className="ticket-row-title ticket-row-title-compact">
+                    <h3>{ticket.title}</h3>
+                    <p>{ticket.description}</p>
+                  </div>
+                  <div className="ticket-row-side-meta">
+                    <span className="department-badge" style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.16 })}>
+                      {ticket.department || ticket.queue}
+                    </span>
+                    <strong>{ticket.assignee || "Sem tecnico"}</strong>
+                  </div>
+                </div>
+                <div className="ticket-row-meta ticket-row-meta-compact">
+                  <span>Solicitante: {ticket.requester}</span>
+                  <span>Email: {ticket.requesterEmail || "-"}</span>
+                  <span>Categoria: {ticket.category || "Geral"}</span>
+                  <span>Origem: {ticket.source || "Portal"}</span>
+                  <span>Abertura: {ticket.openedAtLabel || "-"}</span>
                 </div>
               </button>
             ))
@@ -1851,6 +1876,11 @@ function TicketsPage() {
 }
 
 export default TicketsPage;
+
+
+
+
+
 
 
 
