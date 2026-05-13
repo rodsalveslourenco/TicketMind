@@ -11,6 +11,7 @@ const defaultCreateForm = {
   title: "",
   type: "Incidente",
   departmentId: "",
+  category: "Geral",
   location: "",
   priority: "Media",
   urgency: "Media",
@@ -26,6 +27,27 @@ const priorityLegend = [
   { label: "Alto", value: "Alta", className: "priority-line-alta" },
   { label: "Medio", value: "Media", className: "priority-line-media" },
   { label: "Baixo", value: "Baixa", className: "priority-line-baixa" },
+];
+
+const statusTransitions = {
+  Aberto: ["Em andamento", "Aguardando usuario", "Aguardando aprovacao", "Resolvido"],
+  "Em andamento": ["Aguardando usuario", "Resolvido", "Reaberto"],
+  "Aguardando usuario": ["Em andamento", "Resolvido", "Reaberto"],
+  "Aguardando aprovacao": ["Aberto", "Em andamento", "Aguardando usuario", "Resolvido"],
+  Resolvido: ["Reaberto"],
+  Reaberto: ["Em andamento", "Aguardando usuario", "Resolvido"],
+};
+
+const responseTemplates = [
+  { id: "resp-1", name: "Retorno inicial", visibility: "public", content: "Recebemos sua solicitacao e ela esta em triagem. Em breve retornaremos com a proxima atualizacao." },
+  { id: "resp-2", name: "Aguardando validacao", visibility: "public", content: "Aplicamos a acao inicial e precisamos da sua validacao para concluir o atendimento." },
+  { id: "resp-3", name: "Nota interna", visibility: "private", content: "Registrar diagnostico interno, risco, impacto e proximo passo tecnico." },
+];
+
+const solutionTemplates = [
+  { id: "sol-1", name: "Acesso liberado", content: "Acesso concedido apos validacao de perfil, grupo e politica de seguranca." },
+  { id: "sol-2", name: "Servico restabelecido", content: "Servico normalizado apos ajuste corretivo e validacao com a area solicitante." },
+  { id: "sol-3", name: "Orientacao concluida", content: "Chamado concluido com orientacao ao usuario e confirmacao do funcionamento esperado." },
 ];
 
 function readFileAsDataUrl(file) {
@@ -117,6 +139,7 @@ function TicketsPage() {
     searchTickets,
     serviceCenter,
     tickets,
+    getAllowedTicketStatuses,
     updateTicket,
     users,
   } = useAppData();
@@ -133,6 +156,10 @@ function TicketsPage() {
   const [createKnowledgeQuery, setCreateKnowledgeQuery] = useState("");
   const [detailTicketId, setDetailTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
+  const [followUpVisibility, setFollowUpVisibility] = useState("public");
+  const [selectedResponseTemplateId, setSelectedResponseTemplateId] = useState("");
+  const [selectedSolutionTemplateId, setSelectedSolutionTemplateId] = useState("");
+  const [approvalReason, setApprovalReason] = useState("");
   const [followUpDraft, setFollowUpDraft] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const createInputRef = useRef(null);
@@ -142,6 +169,7 @@ function TicketsPage() {
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canCloseTicket = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
   const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);
+  const canViewPrivateFollowUps = hasAnyPermission(user, ["tickets_admin", "tickets_edit", "tickets_assign", "tickets_change_status"]);
   const canAssignTicket = hasAnyPermission(user, ["tickets_assign", "tickets_admin"]);
   const canChangePriority = hasAnyPermission(user, ["tickets_change_priority", "tickets_admin"]);
   const canChangeStatus = hasAnyPermission(user, ["tickets_change_status", "tickets_admin"]);
@@ -211,8 +239,8 @@ function TicketsPage() {
     : null;
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
-  const allowedDetailStatuses = TICKET_STATUSES;
-  const visibleFollowUps = detailTicket?.followUps || [];
+  const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
+  const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => canViewPrivateFollowUps || followUp.visibility === "public");
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
@@ -330,6 +358,7 @@ function TicketsPage() {
       source: detailTicket.source,
       category: detailTicket.category,
       location: detailTicket.location || "",
+      reopenReason: detailTicket.reopenReason || "",
       priority: detailTicket.priority,
       urgency: detailTicket.urgency || detailTicket.priority,
       impact: detailTicket.impact || detailTicket.priority,
@@ -338,6 +367,10 @@ function TicketsPage() {
       knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
     });
     setFollowUpDraft("");
+    setFollowUpVisibility("public");
+    setSelectedResponseTemplateId("");
+    setSelectedSolutionTemplateId("");
+    setApprovalReason(detailTicket.approval?.decisionReason || "");
   }, [detailTicket]);
 
   useEffect(() => {
@@ -427,7 +460,7 @@ function TicketsPage() {
       queue: selectedCreateDepartment?.name || "Service Desk",
       departmentId: createForm.departmentId,
       department: selectedCreateDepartment?.name || "",
-      category: "Geral",
+      category: createForm.category || "Geral",
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
       assignee: "",
@@ -445,6 +478,10 @@ function TicketsPage() {
   const handleSaveTicket = (event) => {
     event.preventDefault();
     if (!detailTicket || !detailForm?.title || !detailForm?.requester) return;
+    if (normalizeText(detailForm.status) === "reaberto" && !String(detailForm.reopenReason || "").trim()) {
+      pushToast("Motivo obrigatorio", "Informe o motivo da reabertura antes de salvar o chamado.", "warning");
+      return;
+    }
 
     updateTicket(detailTicket.id, {
       ...detailForm,
@@ -456,6 +493,7 @@ function TicketsPage() {
   const handleAddFollowUp = () => {
     if (!detailTicket || !followUpDraft.trim()) return;
     const nextFollowUp = createFollowUpEntry({
+      visibility: followUpVisibility,
       message: followUpDraft,
       actorId: user?.id,
       actorName: user?.name || "Sistema",
@@ -481,6 +519,38 @@ function TicketsPage() {
       resolutionNotes: detailForm.resolutionNotes.trim(),
     });
     pushToast("Chamado finalizado", detailForm.title);
+  };
+
+  const handleApplyResponseTemplate = (templateId) => {
+    setSelectedResponseTemplateId(templateId);
+    const template = responseTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    setFollowUpVisibility(template.visibility);
+    setFollowUpDraft(template.content);
+  };
+
+  const handleApplySolutionTemplate = (templateId) => {
+    setSelectedSolutionTemplateId(templateId);
+    const template = solutionTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    setDetailForm((current) => ({ ...current, resolutionNotes: template.content }));
+  };
+
+  const handleApprovalAction = (action) => {
+    if (!detailTicket) return;
+    const nextApproval = {
+      ...(detailTicket.approval || {}),
+      required: true,
+      status: action === "approve" ? "approved" : action === "reject" ? "rejected" : "pending",
+      decisionReason: approvalReason,
+      decidedAt: action === "request" ? detailTicket.approval?.decidedAt || "" : new Date().toISOString(),
+      decidedByName: action === "request" ? detailTicket.approval?.decidedByName || "" : user?.name || "Sistema",
+    };
+    updateTicket(detailTicket.id, {
+      approval: nextApproval,
+      status: action === "approve" ? (detailTicket.assignee ? "Em andamento" : "Aberto") : action === "reject" ? "Aguardando usuario" : "Aguardando aprovacao",
+    });
+    pushToast("Aprovacao atualizada", detailTicket.title);
   };
 
   const handleDeleteTicket = () => {
@@ -721,6 +791,10 @@ function TicketsPage() {
                 <label className="field-block">
                   <span>Localizacao</span>
                   <input onChange={updateCreateField("location")} value={createForm.location} />
+                </label>
+                <label className="field-block">
+                  <span>Categoria</span>
+                  <input onChange={updateCreateField("category")} value={createForm.category} />
                 </label>
                 <label className="field-block">
                   <span>Prioridade</span>
@@ -1047,12 +1121,78 @@ function TicketsPage() {
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
 
+              <div className="detail-grid">
+                <label className="field-block">
+                  <span>Template de solucao</span>
+                  <select disabled={!canEditTicket} onChange={(event) => handleApplySolutionTemplate(event.target.value)} value={selectedSolutionTemplateId}>
+                    <option value="">Selecione</option>
+                    {solutionTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {normalizeText(detailForm.status) === "reaberto" ? (
+                  <label className="field-block field-full">
+                    <span>Motivo da reabertura</span>
+                    <textarea disabled={!canEditTicket} onChange={updateDetailField("reopenReason")} value={detailForm.reopenReason || ""} />
+                  </label>
+                ) : null}
+              </div>
+
+              {normalizeText(detailForm.type) === "requisicao" ? (
+                <section className="ticket-attachment-panel">
+                  <div className="attachment-toolbar glpi-subbar">
+                    <div>
+                      <strong>Aprovacao da requisicao</strong>
+                      <span>Solicite, aprove ou reprove sem remover o restante do fluxo do chamado.</span>
+                    </div>
+                  </div>
+                  <label className="field-block field-full">
+                    <span>Justificativa / parecer</span>
+                    <textarea onChange={(event) => setApprovalReason(event.target.value)} value={approvalReason} />
+                  </label>
+                  <div className="ticket-create-actions compact-actions">
+                    <button className="ghost-button interactive-button" onClick={() => handleApprovalAction("request")} type="button">
+                      Solicitar aprovacao
+                    </button>
+                    <button className="ghost-button interactive-button" onClick={() => handleApprovalAction("approve")} type="button">
+                      Aprovar
+                    </button>
+                    <button className="danger-button interactive-button" onClick={() => handleApprovalAction("reject")} type="button">
+                      Reprovar
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
               <section className="ticket-attachment-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Acompanhamentos</strong>
                     <span>Registre novas interacoes tecnicas sem sobrescrever o historico do chamado.</span>
                   </div>
+                </div>
+                <div className="detail-grid">
+                  <label className="field-block">
+                    <span>Template de resposta</span>
+                    <select disabled={!canEditTicket} onChange={(event) => handleApplyResponseTemplate(event.target.value)} value={selectedResponseTemplateId}>
+                      <option value="">Selecione</option>
+                      {responseTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Visibilidade</span>
+                    <select disabled={!canEditTicket} onChange={(event) => setFollowUpVisibility(event.target.value)} value={followUpVisibility}>
+                      <option value="public">Publico</option>
+                      <option value="private">Privado</option>
+                    </select>
+                  </label>
                 </div>
                 <label className="field-block field-full">
                   <span>Novo acompanhamento</span>
@@ -1263,4 +1403,11 @@ function TicketsPage() {
 }
 
 export default TicketsPage;
+
+
+
+
+
+
+
 

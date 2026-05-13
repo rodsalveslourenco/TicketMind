@@ -52,8 +52,12 @@ function resolveDepartmentName(state, ticket) {
 }
 
 function resolveTicketComments(ticket) {
+  const latestFollowUp = Array.isArray(ticket.followUps) ? ticket.followUps[0] || null : null;
+  if (latestFollowUp?.message) return latestFollowUp.message;
   const latestComment =
-    (ticket.history || []).find((entry) => ["solution", "comment", "note"].includes(String(entry.type || "").trim())) || null;
+    (ticket.history || []).find((entry) =>
+      ["solution", "comment", "note", "follow_up", "public_follow_up", "private_follow_up"].includes(String(entry.type || "").trim()),
+    ) || null;
   if (latestComment?.message) return latestComment.message;
   return String(ticket.resolutionNotes || "").trim();
 }
@@ -244,6 +248,8 @@ function getRecipients(rule, state) {
 
 function resolveEventChanges(previousTicket, nextTicket) {
   const changes = [];
+  const previousFollowUpsSignature = JSON.stringify(previousTicket?.followUps || []);
+  const nextFollowUpsSignature = JSON.stringify(nextTicket?.followUps || []);
   if (!previousTicket && nextTicket) {
     changes.push({ key: "ticket_created", signature: nextTicket.openedAt || nextTicket.updatedAtIso || nextTicket.id });
   }
@@ -260,6 +266,10 @@ function resolveEventChanges(previousTicket, nextTicket) {
   }
   if (normalizeText(previousTicket.status) !== "resolvido" && normalizeText(nextTicket.status) === "resolvido") {
     changes.push({ key: "ticket_closed", signature: nextTicket.resolvedAt || nextTicket.updatedAtIso });
+  }
+  if (previousFollowUpsSignature !== nextFollowUpsSignature && Array.isArray(nextTicket.followUps) && nextTicket.followUps.length) {
+    const latestFollowUp = nextTicket.followUps[0];
+    changes.push({ key: "ticket_commented", signature: `${latestFollowUp.id || nextTicket.updatedAtIso}:followup` });
   }
   if (String(previousTicket.resolutionNotes || "").trim() !== String(nextTicket.resolutionNotes || "").trim() && String(nextTicket.resolutionNotes || "").trim()) {
     changes.push({ key: "ticket_commented", signature: `${nextTicket.updatedAtIso}:resolution` });

@@ -800,6 +800,82 @@ function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter 
   });
 }
 
+const TICKET_STATUS_TRANSITIONS = {
+  Aberto: ["Em andamento", "Aguardando usuario", "Aguardando aprovacao", "Resolvido"],
+  "Em andamento": ["Aguardando usuario", "Resolvido", "Reaberto"],
+  "Aguardando usuario": ["Em andamento", "Resolvido", "Reaberto"],
+  "Aguardando aprovacao": ["Aberto", "Em andamento", "Aguardando usuario", "Resolvido"],
+  Resolvido: ["Reaberto"],
+  Reaberto: ["Em andamento", "Aguardando usuario", "Resolvido"],
+};
+
+const TICKET_SLA_RULES = [
+  { department: "seguranca", priority: "critica", minutes: 30 },
+  { department: "infraestrutura", priority: "critica", minutes: 60 },
+  { category: "acesso", priority: "alta", minutes: 120 },
+  { category: "acesso", priority: "media", minutes: 240 },
+  { category: "incidente de seguranca", minutes: 45 },
+  { type: "requisicao", priority: "baixa", minutes: 1440 },
+];
+
+const TICKET_ROUTING_RULES = [
+  { department: "seguranca", queue: "Seguranca", triageLabel: "Fila de seguranca" },
+  { department: "infraestrutura", queue: "Infraestrutura", triageLabel: "Fila de infraestrutura" },
+  { category: "acesso", queue: "Aplicacoes", triageLabel: "Fila de acessos" },
+  { category: "incidente de seguranca", queue: "Seguranca", triageLabel: "Resposta a incidentes" },
+  { priority: "critica", queue: "Service Desk", triageLabel: "Escalonamento prioritario" },
+];
+
+function matchTicketRule(rule, ticketLike = {}) {
+  const fields = ["type", "priority", "category", "department", "queue"];
+  return fields.every((field) => {
+    if (!rule[field]) return true;
+    return normalizeText(ticketLike[field]) === normalizeText(rule[field]);
+  });
+}
+
+function resolveTicketSlaPolicyMinutes(ticketLike = {}) {
+  const matchedRule = TICKET_SLA_RULES.find((rule) => matchTicketRule(rule, ticketLike));
+  if (matchedRule?.minutes) return matchedRule.minutes;
+  return getSlaPolicyMinutes(ticketLike.priority);
+}
+
+function getAllowedTicketStatusesForTicket(ticket) {
+  const currentStatus = normalizeTicketStatus(ticket?.status || "Aberto");
+  return [currentStatus, ...(TICKET_STATUS_TRANSITIONS[currentStatus] || [])].filter(
+    (status, index, list) => list.findIndex((candidate) => normalizeText(candidate) === normalizeText(status)) === index,
+  );
+}
+
+function isStatusTransitionAllowed(currentStatus, nextStatus) {
+  if (normalizeText(currentStatus) === normalizeText(nextStatus)) return true;
+  return getAllowedTicketStatusesForTicket({ status: currentStatus }).some((status) => normalizeText(status) === normalizeText(nextStatus));
+}
+
+function resolveApprovalState(type, approval = null, action = "") {
+  const approvalRequired = normalizeText(type) === "requisicao";
+  const baseApproval = approval && typeof approval === "object" ? approval : {};
+  if (!approvalRequired) return { ...baseApproval, required: false, status: "not_required", history: Array.isArray(baseApproval.history) ? baseApproval.history : [] };
+  const currentStatus = String(baseApproval.status || "pending").trim() || "pending";
+  const nextStatus = action === "approve" ? "approved" : action === "reject" ? "rejected" : action === "request" ? "pending" : currentStatus;
+  return { ...baseApproval, required: true, status: nextStatus, history: Array.isArray(baseApproval.history) ? baseApproval.history : [] };
+}
+
+function applyRoutingRules(ticketLike = {}) {
+  const matchedRule = TICKET_ROUTING_RULES.find((rule) => matchTicketRule(rule, ticketLike));
+  return {
+    ...ticketLike,
+    queue: String(matchedRule?.queue || ticketLike.queue || "Service Desk").trim() || "Service Desk",
+    triage: {
+      ...(ticketLike.triage && typeof ticketLike.triage === "object" ? ticketLike.triage : {}),
+      routedByRule: Boolean(matchedRule),
+      routeLabel: String(matchedRule?.triageLabel || ticketLike.triage?.routeLabel || "Triagem manual").trim(),
+      queue: String(matchedRule?.queue || ticketLike.queue || ticketLike.triage?.queue || "Service Desk").trim() || "Service Desk",
+      lastRoutedAt: new Date().toISOString(),
+    },
+  };
+}
+
 export function AppDataProvider({ children }) {
   const { setSessionUser, user } = useAuth();
   const [data, setData] = useState(EMPTY_DATA);
@@ -979,7 +1055,6 @@ export function AppDataProvider({ children }) {
       const nowIso = new Date().toISOString();
       const openedAt = nowIso;
       const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
-      const slaTargetMinutes = getSlaPolicyMinutes(priority);
       const serviceCenterEnabled = Boolean(current.serviceCenter?.enabled);
       const targetDepartment =
         serviceCenterEnabled
@@ -1004,6 +1079,23 @@ export function AppDataProvider({ children }) {
       ) {
         return current;
       }
+
+      const routedPayload = applyRoutingRules({
+        ...payload,
+        type: payload.type,
+        priority,
+        category: String(payload.category || "Geral").trim(),
+        department: String(targetDepartment?.name || payload.department || "").trim(),
+        queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
+      });
+      const approval = resolveApprovalState(routedPayload.type, payload.approval);
+      const initialStatus = approval.required && approval.status !== "approved" ? "Aguardando aprovacao" : "Aberto";
+      const slaTargetMinutes = resolveTicketSlaPolicyMinutes({
+        type: routedPayload.type,
+        priority,
+        category: routedPayload.category,
+        department: routedPayload.department,
+      });
       const history = [
         createHistoryEntry({
           type: "created",
@@ -1011,9 +1103,10 @@ export function AppDataProvider({ children }) {
           actorName: user?.name || "Sistema",
           message: "Chamado aberto",
           metadata: {
-            status: "Aberto",
+            status: initialStatus,
             departmentId: targetDepartment?.id || "",
             department: targetDepartment?.name || "",
+            queue: routedPayload.queue || "Service Desk",
           },
           createdAt: nowIso,
         }),
@@ -1026,15 +1119,15 @@ export function AppDataProvider({ children }) {
         priority,
         urgency: payload.urgency || priority,
         impact: payload.impact || priority,
-        status: "Aberto",
+        status: initialStatus,
         requester,
         requesterId,
         requesterEmail,
         assignee: String(payload.assignee || "").trim(),
-        queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
+        queue: routedPayload.queue,
         departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
-        department: String(targetDepartment?.name || payload.department || "").trim(),
-        category: String(payload.category || "Geral").trim(),
+        department: routedPayload.department,
+        category: routedPayload.category,
         source: String(payload.source || "Portal").trim(),
         location: String(payload.location || "").trim(),
         sla: `${computeSlaFromMinutes(slaTargetMinutes)}`,
@@ -1048,10 +1141,19 @@ export function AppDataProvider({ children }) {
         dueDateLabel: payload.dueDate ? formatDateLabel(payload.dueDate) : "",
         description: String(payload.description || "").trim(),
         resolutionNotes: "",
+        reopenReason: "",
         resolvedAt: "",
         resolvedAtLabel: "",
         watchers: payload.watchers || "",
         attachments: payload.attachments || [],
+        followUps: normalizeFollowUps(payload.followUps),
+        approval: {
+          ...approval,
+          requestedAt: approval.required ? nowIso : approval.requestedAt || "",
+          requestedById: approval.required ? user?.id || "" : approval.requestedById || "",
+          requestedByName: approval.required ? user?.name || "Sistema" : approval.requestedByName || "",
+        },
+        triage: routedPayload.triage || {},
         history,
         knowledgeArticleIds: Array.isArray(payload.knowledgeArticleIds) ? payload.knowledgeArticleIds : [],
       };
@@ -1077,13 +1179,18 @@ export function AppDataProvider({ children }) {
             : normalizePriorityLabel(computePriorityFromMatrix(updates.urgency ?? ticket.urgency, updates.impact ?? ticket.impact));
         const priorityChanged = normalizeText(requestedPriority) !== normalizeText(ticket.priority);
         const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
+        const approvalAction = normalizeText(updates.approvalAction);
         const requestedStatus = normalizeTicketStatus(
           updates.status ??
-            (assigneeChanged &&
-            nextAssignee &&
-            ["aberto", "reaberto"].includes(normalizeText(ticket.status))
-              ? "Em andamento"
-              : ticket.status),
+            (approvalAction === "approve"
+              ? nextAssignee
+                ? "Em andamento"
+                : "Aberto"
+              : approvalAction === "reject"
+                ? "Aguardando usuario"
+                : assigneeChanged && nextAssignee && ["aberto", "reaberto"].includes(normalizeText(ticket.status))
+                  ? "Em andamento"
+                  : ticket.status),
         );
         const statusChanged = normalizeTicketStatus(requestedStatus) !== normalizeTicketStatus(ticket.status);
 
@@ -1132,6 +1239,17 @@ export function AppDataProvider({ children }) {
         const nextKnowledgeArticleIds = Array.isArray(updates.knowledgeArticleIds)
           ? [...new Set(updates.knowledgeArticleIds.filter(Boolean))]
           : ticket.knowledgeArticleIds || [];
+        const nextReopenReason = String((updates.reopenReason ?? ticket.reopenReason) || "").trim();
+        const nextCategory = String((updates.category ?? ticket.category) || "").trim();
+        const nextApproval = resolveApprovalState(updates.type ?? ticket.type, updates.approval ?? ticket.approval, approvalAction);
+
+        if (statusChanged && normalizeText(nextStatus) === "reaberto" && !nextReopenReason) {
+          return ticket;
+        }
+        if (statusChanged && !isStatusTransitionAllowed(ticket.status, nextStatus)) {
+          return ticket;
+        }
+
         let resolvedAt = ticket.resolvedAt || "";
         if (normalizeText(nextStatus) === "resolvido") {
           resolvedAt = resolvedAt || nowIso;
@@ -1169,7 +1287,7 @@ export function AppDataProvider({ children }) {
                 type: "reopened",
                 actorId: user?.id,
                 actorName: user?.name || "Sistema",
-                message: "Chamado reaberto",
+                message: nextReopenReason ? `Chamado reaberto: ${nextReopenReason}` : "Chamado reaberto",
                 createdAt: nowIso,
               }),
             );
@@ -1214,26 +1332,51 @@ export function AppDataProvider({ children }) {
           const latestFollowUp = nextFollowUps[0];
           historyEntries.push(
             createHistoryEntry({
-              type: "follow_up",
+              type: latestFollowUp.visibility === "public" ? "public_follow_up" : "private_follow_up",
               actorId: latestFollowUp.actorId || user?.id,
               actorName: latestFollowUp.actorName || user?.name || "Sistema",
-              message: "Acompanhamento registrado",
-              metadata: { followUpId: latestFollowUp.id },
+              message: latestFollowUp.visibility === "public" ? "Comentario publico registrado" : "Comentario privado registrado",
+              metadata: { followUpId: latestFollowUp.id, visibility: latestFollowUp.visibility || "private" },
               createdAt: latestFollowUp.createdAt || nowIso,
             }),
           );
         }
+        if (approvalAction === "request") {
+          historyEntries.push(createHistoryEntry({ type: "approval_requested", actorId: user?.id, actorName: user?.name || "Sistema", message: "Aprovacao solicitada", createdAt: nowIso }));
+        }
+        if (approvalAction === "approve") {
+          historyEntries.push(createHistoryEntry({ type: "approval_approved", actorId: user?.id, actorName: user?.name || "Sistema", message: "Requisicao aprovada", createdAt: nowIso }));
+        }
+        if (approvalAction === "reject") {
+          historyEntries.push(createHistoryEntry({ type: "approval_rejected", actorId: user?.id, actorName: user?.name || "Sistema", message: "Requisicao reprovada", createdAt: nowIso }));
+        }
 
-        const nextTicket = {
+        const nextSlaTargetMinutes = resolveTicketSlaPolicyMinutes({
+          type: updates.type ?? ticket.type,
+          priority: nextPriority,
+          category: nextCategory,
+          department: nextDepartment,
+        });
+        const routedState = applyRoutingRules({
+          type: updates.type ?? ticket.type,
+          category: nextCategory,
+          priority: nextPriority,
+          department: nextDepartment,
+          queue: updates.queue ?? ticket.queue,
+          triage: ticket.triage,
+        });
+
+        return {
           ...ticket,
           ...updates,
           status: nextStatus,
           priority: nextPriority,
           urgency: nextUrgency,
           impact: nextImpact,
-          sla: computeSlaFromMinutes(getSlaPolicyMinutes(nextPriority)),
-          slaTargetMinutes: getSlaPolicyMinutes(nextPriority),
-          slaDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + getSlaPolicyMinutes(nextPriority) * 60 * 1000).toISOString(),
+          category: nextCategory,
+          sla: computeSlaFromMinutes(nextSlaTargetMinutes),
+          slaTargetMinutes: nextSlaTargetMinutes,
+          slaDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + nextSlaTargetMinutes * 60 * 1000).toISOString(),
           openedAt: ticket.openedAt,
           openedAtLabel: formatTimestampLabel(ticket.openedAt),
           dueDate: nextDueDate,
@@ -1245,9 +1388,12 @@ export function AppDataProvider({ children }) {
           assignee: nextAssignee,
           departmentId: nextDepartmentId,
           department: nextDepartment,
-          queue: String(updates.queue ?? ticket.queue ?? nextDepartment).trim() || nextDepartment || "Service Desk",
+          queue: String(routedState.queue ?? updates.queue ?? ticket.queue ?? nextDepartment).trim() || nextDepartment || "Service Desk",
           resolutionNotes: nextResolutionNotes,
           followUps: nextFollowUps,
+          reopenReason: nextReopenReason,
+          approval: nextApproval,
+          triage: routedState.triage || ticket.triage || {},
           resolvedAt,
           resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
           updatedAtIso: nowIso,
@@ -1255,8 +1401,6 @@ export function AppDataProvider({ children }) {
           knowledgeArticleIds: nextKnowledgeArticleIds,
           history: appendHistory(ticket, historyEntries),
         };
-
-        return nextTicket;
       }),
     }));
   };
@@ -2388,6 +2532,7 @@ export function AppDataProvider({ children }) {
       tickets: visibleTickets,
       allTickets,
       operationalTickets,
+      getAllowedTicketStatuses: getAllowedTicketStatusesForTicket,
       canViewAllTickets: canViewGlobalTickets,
       canViewDepartmentTickets,
       assets: data.assets || [],
