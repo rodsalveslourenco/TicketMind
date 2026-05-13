@@ -289,8 +289,16 @@ function buildNotificationLogEntry({ eventKey, ticketId, recipients, status, err
 export function prepareStateForClient(state) {
   const smtpSettings = state?.smtpSettings || {};
   const emailServiceSettings = state?.emailServiceSettings || {};
+  const users = Array.isArray(state?.users)
+    ? state.users.map((user) => ({
+        ...user,
+        password: "",
+        hasPassword: Boolean(String(user?.password || "").trim()),
+      }))
+    : [];
   return {
     ...state,
+    users,
     smtpSettings: {
       ...smtpSettings,
       password: "",

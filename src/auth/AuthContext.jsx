@@ -4,6 +4,7 @@ import { requestJson } from "../lib/api";
 const AuthContext = createContext(null);
 const SESSION_STORAGE_KEY = "ticketmind-session";
 const PERSISTENT_STORAGE_KEY = "ticketmind-session-persistent";
+const AUTH_EXPIRED_EVENT = "ticketmind:auth-expired";
 
 function parseStoredSession(rawSession) {
   if (!rawSession) return null;
@@ -52,9 +53,14 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const user = await requestJson(`/api/auth/session/${storedSession.userId}`);
+        const payload = await requestJson("/api/auth/session");
         if (cancelled) return;
-        const nextSession = { ...storedSession, user };
+        const nextSession = {
+          userId: payload?.user?.id,
+          user: payload?.user ?? null,
+          expiresAt: payload?.expiresAt || storedSession.expiresAt || "",
+          issuedAt: storedSession.issuedAt || new Date().toISOString(),
+        };
         persistSession(nextSession);
         setSession(nextSession);
       } catch {
@@ -72,20 +78,30 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleExpiredSession = () => {
+      clearStoredSession();
+      setSession(null);
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+  }, []);
+
   const login = async ({ email, password }) => {
     if (!email || !password) {
       throw new Error("Preencha email e senha para continuar.");
     }
 
-    const user = await requestJson("/api/auth/login", {
+    const payload = await requestJson("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
 
     const nextSession = {
-      token: "ticketmind-session",
-      userId: user.id,
-      user,
+      userId: payload?.user?.id,
+      user: payload?.user ?? null,
+      expiresAt: payload?.expiresAt || "",
       issuedAt: new Date().toISOString(),
     };
 
@@ -93,7 +109,12 @@ export function AuthProvider({ children }) {
     setSession(nextSession);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await requestJson("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Keep local cleanup even when server-side logout cannot be completed.
+    }
     clearStoredSession();
     setSession(null);
   };

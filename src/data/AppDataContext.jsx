@@ -823,6 +823,12 @@ export function AppDataProvider({ children }) {
   };
 
   useEffect(() => {
+    if (!user?.id) {
+      setData(EMPTY_DATA);
+      setServerReady(false);
+      return undefined;
+    }
+
     let cancelled = false;
 
     async function loadData() {
@@ -842,10 +848,10 @@ export function AppDataProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (!serverReady) return undefined;
+    if (!serverReady || !user?.id) return undefined;
 
     let active = true;
     const timeoutId = window.setTimeout(async () => {
