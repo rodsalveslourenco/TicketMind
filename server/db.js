@@ -517,6 +517,7 @@ function protectProductionCollections(nextCollections = {}, existingCollections 
 
 let sqlitePromise = null;
 let pgPool = null;
+let pgSchemaPromise = null;
 
 function isPostgresEnabled() {
   return Boolean(databaseUrl);
@@ -595,68 +596,59 @@ async function getSqliteDb() {
           metadata TEXT NOT NULL
         );
       `);
-      [
-        "ALTER TABLE departments ADD COLUMN color TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'Ativo'",
-        "ALTER TABLE users ADD COLUMN permission_profile_id TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE users ADD COLUMN additional_permissions TEXT NOT NULL DEFAULT '{}'",
-        "ALTER TABLE users ADD COLUMN restricted_permissions TEXT NOT NULL DEFAULT '{}'",
-      ].forEach((statement) => {
-        try {
-          db.run(statement);
-        } catch {
-          // Column already exists in migrated databases.
-        }
-      });
-      return db;
-    })();
+      db.run("ALTER TABLE departments ADD COLUMN color TEXT NOT NULL DEFAULT ''");
+    })().catch((error) => {
+      sqlitePromise = null;
+      throw error;
+    });
   }
 
   return sqlitePromise;
 }
 
-async function persistSqliteDb(db) {
-  const bytes = db.export();
+function persistSqliteDb(db) {
+  const data = Buffer.from(db.export());
   fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(dbPath, Buffer.from(bytes));
+  fs.writeFileSync(dbPath, data);
 }
 
 function parseJson(value, fallback) {
+  if (value == null || value === "") return fallback;
   try {
-    return value ? JSON.parse(String(value)) : fallback;
+    return JSON.parse(value);
   } catch {
     return fallback;
   }
 }
 
-function toIsoString(value) {
-  if (!value) return "";
-  if (value instanceof Date) return value.toISOString();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
-}
-
 function mapSystemLogRow(row = {}) {
   return {
-    id: String(row.id || "").trim(),
-    occurredAt: toIsoString(row.occurred_at || row.occurredAt),
-    userId: String(row.user_id || row.userId || "").trim(),
-    userName: String(row.user_name || row.userName || "").trim(),
-    userDepartment: String(row.user_department || row.userDepartment || "").trim(),
-    module: String(row.module || "").trim(),
-    eventType: String(row.event_type || row.eventType || "").trim(),
-    description: String(row.description || "").trim(),
-    origin: String(row.origin || "").trim(),
-    status: String(row.status || "").trim(),
-    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : parseJson(row.metadata, {}),
+    id: row.id,
+    occurredAt: row.occurred_at || row.occurredAt,
+    userId: row.user_id || row.userId || null,
+    userName: row.user_name || row.userName || "",
+    userDepartment: row.user_department || row.userDepartment || "",
+    module: row.module || "",
+    eventType: row.event_type || row.eventType || "",
+    description: row.description || "",
+    origin: row.origin || "",
+    status: row.status || "",
+    metadata: typeof row.metadata === "string" ? parseJson(row.metadata, {}) : row.metadata || {},
   };
+}
+
+function countSqliteRows(tableName) {
+  return getSqliteDb().then((db) => {
+    const result = db.exec(`SELECT COUNT(*) AS total FROM ${tableName}`);
+    return Number(result?.[0]?.values?.[0]?.[0] || 0);
+  });
 }
 
 async function readSqliteStateRaw() {
   const db = await getSqliteDb();
   const result = db.exec("SELECT data FROM app_state WHERE id = 1");
-  if (!result.length || !result[0].values.length) return null;
-  return parseJson(result[0].values[0][0], null);
+  const rawData = result?.[0]?.values?.[0]?.[0];
+  return parseJson(rawData, null);
 }
 
 async function readSqliteCollections() {
@@ -677,16 +669,14 @@ async function readSqliteCollections() {
     ORDER BY users.name
   `);
 
-  const mapRows = (result) => {
-    if (!result.length) return [];
-    const [table] = result;
-    return table.values.map((valueRow) =>
-      table.columns.reduce((accumulator, column, index) => ({ ...accumulator, [column]: valueRow[index] }), {}),
-    );
-  };
+  const mapRows = (table, mapper) =>
+    table?.values?.map((valueRow) => {
+      const row = table.columns.reduce((accumulator, column, index) => ({ ...accumulator, [column]: valueRow[index] }), {});
+      return mapper(row);
+    }) || [];
 
   return {
-    departments: mapRows(departmentsResult).map((row) => ({
+    departments: mapRows(departmentsResult[0], (row) => ({
       id: row.id,
       code: row.code,
       name: row.name,
@@ -695,7 +685,7 @@ async function readSqliteCollections() {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
-    locations: mapRows(locationsResult).map((row) => ({
+    locations: mapRows(locationsResult[0], (row) => ({
       id: row.id,
       code: row.code,
       name: row.name,
@@ -705,7 +695,7 @@ async function readSqliteCollections() {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
-    users: mapRows(usersResult).map((row) => ({
+    users: mapRows(usersResult[0], (row) => ({
       id: row.id,
       name: row.name,
       email: row.email,
@@ -726,16 +716,10 @@ async function readSqliteCollections() {
   };
 }
 
-async function countSqliteRows(tableName) {
-  const db = await getSqliteDb();
-  const result = db.exec(`SELECT COUNT(*) AS total FROM ${tableName}`);
-  return Number(result?.[0]?.values?.[0]?.[0] || 0);
-}
-
 async function writeSqliteCollections(collections) {
   const db = await getSqliteDb();
-  db.run("BEGIN");
   try {
+    db.run("BEGIN");
     db.run("DELETE FROM users");
     db.run("DELETE FROM locations");
     db.run("DELETE FROM departments");
@@ -857,74 +841,83 @@ function getPgPool() {
 }
 
 async function ensurePgSchema() {
-  const pool = getPgPool();
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS app_state (
-      id INTEGER PRIMARY KEY,
-      data JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS app_state_history (
-      id BIGSERIAL PRIMARY KEY,
-      data JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS departments (
-      id TEXT PRIMARY KEY,
-      code TEXT NOT NULL,
-      name TEXT NOT NULL,
-      color TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS locations (
-      id TEXT PRIMARY KEY,
-      code TEXT NOT NULL,
-      name TEXT NOT NULL,
-      department_id TEXT REFERENCES departments(id),
-      status TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      password TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'Ativo',
-      role TEXT NOT NULL,
-      permission_profile_id TEXT NOT NULL DEFAULT '',
-      team TEXT NOT NULL,
-      department_id TEXT REFERENCES departments(id),
-      avatar TEXT NOT NULL DEFAULT '',
-      additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
-      restricted_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
-      permissions JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS system_logs (
-      id TEXT PRIMARY KEY,
-      occurred_at TIMESTAMPTZ NOT NULL,
-      user_id TEXT,
-      user_name TEXT NOT NULL,
-      user_department TEXT NOT NULL,
-      module TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      description TEXT NOT NULL,
-      origin TEXT NOT NULL,
-      status TEXT NOT NULL,
-      metadata JSONB NOT NULL
-    )
-  `);
-  await pool.query(`
-    ALTER TABLE departments ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Ativo';
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS permission_profile_id TEXT NOT NULL DEFAULT '';
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS restricted_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
-  `);
+  if (!pgSchemaPromise) {
+    pgSchemaPromise = (async () => {
+      const pool = getPgPool();
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS app_state (
+          id INTEGER PRIMARY KEY,
+          data JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS app_state_history (
+          id BIGSERIAL PRIMARY KEY,
+          data JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS departments (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL,
+          name TEXT NOT NULL,
+          color TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS locations (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL,
+          name TEXT NOT NULL,
+          department_id TEXT REFERENCES departments(id),
+          status TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Ativo',
+          role TEXT NOT NULL,
+          permission_profile_id TEXT NOT NULL DEFAULT '',
+          team TEXT NOT NULL,
+          department_id TEXT REFERENCES departments(id),
+          avatar TEXT NOT NULL DEFAULT '',
+          additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+          restricted_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+          permissions JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS system_logs (
+          id TEXT PRIMARY KEY,
+          occurred_at TIMESTAMPTZ NOT NULL,
+          user_id TEXT,
+          user_name TEXT NOT NULL,
+          user_department TEXT NOT NULL,
+          module TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          description TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          status TEXT NOT NULL,
+          metadata JSONB NOT NULL
+        )
+      `);
+      await pool.query(`
+        ALTER TABLE departments ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Ativo';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS permission_profile_id TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS restricted_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
+      `);
+    })().catch((error) => {
+      pgSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  await pgSchemaPromise;
 }
 
 async function readPostgresStateRaw() {
@@ -951,23 +944,21 @@ async function readPostgresStateBackupRaw() {
 async function readPostgresCollections() {
   await ensurePgSchema();
   const pool = getPgPool();
-  const [departmentsResult, locationsResult, usersResult] = await Promise.all([
-    pool.query("SELECT id, code, name, color, status, created_at, updated_at FROM departments ORDER BY name"),
-    pool.query(`
-      SELECT locations.id, locations.code, locations.name, locations.department_id, departments.name AS department_name,
-             locations.status, locations.created_at, locations.updated_at
-      FROM locations
-      LEFT JOIN departments ON departments.id = locations.department_id
-      ORDER BY locations.name
-    `),
-    pool.query(`
-      SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
-             departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
-      FROM users
-      LEFT JOIN departments ON departments.id = users.department_id
-      ORDER BY users.name
-    `),
-  ]);
+  const departmentsResult = await pool.query("SELECT id, code, name, color, status, created_at, updated_at FROM departments ORDER BY name");
+  const locationsResult = await pool.query(`
+    SELECT locations.id, locations.code, locations.name, locations.department_id, departments.name AS department_name,
+           locations.status, locations.created_at, locations.updated_at
+    FROM locations
+    LEFT JOIN departments ON departments.id = locations.department_id
+    ORDER BY locations.name
+  `);
+  const usersResult = await pool.query(`
+    SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+           departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
+    FROM users
+    LEFT JOIN departments ON departments.id = users.department_id
+    ORDER BY users.name
+  `);
 
   return {
     departments: departmentsResult.rows.map((row) => ({
@@ -1140,11 +1131,10 @@ async function migrateSqliteCollectionsIfNeeded() {
 }
 
 async function migratePostgresCollectionsIfNeeded() {
-  const [usersCount, departmentsCount, locationsCount] = await Promise.all([
-    countPostgresRows("users"),
-    countPostgresRows("departments"),
-    countPostgresRows("locations"),
-  ]);
+  await ensurePgSchema();
+  const usersCount = await countPostgresRows("users");
+  const departmentsCount = await countPostgresRows("departments");
+  const locationsCount = await countPostgresRows("locations");
   if (usersCount || departmentsCount || locationsCount) return;
 
   const legacyState = await readPostgresStateRaw();
@@ -1383,7 +1373,9 @@ export async function readState() {
   }
 
   await migratePostgresCollectionsIfNeeded();
-  const [postgresState, collections] = await Promise.all([readPostgresStateRaw(), readPostgresCollections()]);
+  await ensurePgSchema();
+  const postgresState = await readPostgresStateRaw();
+  const collections = await readPostgresCollections();
   let hydratedCollections = collections;
   if (isLegacyBootstrapUserCollection(collections)) {
     hydratedCollections = buildSeedBootstrapCollections();
