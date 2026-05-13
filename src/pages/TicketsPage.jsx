@@ -122,6 +122,38 @@ function toDepartmentOptionStyle(color) {
   };
 }
 
+function getTicketFiltersStorageKey(userId = "") {
+  return `ticketmind.tickets.filters.${userId || "anon"}`;
+}
+
+function parseDateValue(value, edge = "start") {
+  if (!value) return null;
+  const parsed = new Date(edge === "end" ? `${value}T23:59:59.999` : `${value}T00:00:00.000`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function triggerCsvDownload(fileName, rows) {
+  if (!rows.length) return;
+  const csvContent = rows
+    .map((row) =>
+      row
+        .map((value) => {
+          const normalized = String(value ?? "").replace(/"/g, '""');
+          return `"${normalized}"`;
+        })
+        .join(","),
+    )
+    .join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
 function TicketsPage() {
   const {
     addTicketAttachments,
@@ -150,6 +182,19 @@ function TicketsPage() {
   const [priorityFilter, setPriorityFilter] = useState("Todas");
   const [slaFilter, setSlaFilter] = useState("Todos");
   const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [advancedFilters, setAdvancedFilters] = useState({
+    query: "",
+    requester: "",
+    assignee: "Todos",
+    department: "Todos",
+    category: "Todas",
+    queue: "Todas",
+    source: "Todas",
+    dateFrom: "",
+    dateTo: "",
+  });
+  const [savedFilters, setSavedFilters] = useState([]);
+  const [savedFilterName, setSavedFilterName] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
@@ -241,6 +286,39 @@ function TicketsPage() {
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
   const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
   const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => canViewPrivateFollowUps || followUp.visibility === "public");
+  const detailTimeline = useMemo(() => {
+    if (!detailTicket) return [];
+
+    const historyEntries = (detailTicket.history || []).map((entry) => ({
+      id: `history-${entry.id}`,
+      source: "history",
+      tone: entry.type === "status" ? "status-badge-andamento" : entry.type === "sla" ? "status-badge-reaberto" : "badge-neutral",
+      title: entry.message,
+      actorName: entry.actorName || "Sistema",
+      visibility: "audit",
+      type: entry.type || "evento",
+      createdAt: entry.createdAt || "",
+      createdAtLabel: entry.createdAtLabel || "",
+    }));
+
+    const followUpEntries = visibleFollowUps.map((entry) => ({
+      id: `followup-${entry.id}`,
+      source: "followUp",
+      tone: entry.visibility === "private" ? "badge-neutral" : "status-badge-resolvido",
+      title: entry.message,
+      actorName: entry.actorName || "Sistema",
+      visibility: entry.visibility || "public",
+      type: entry.kind || "acompanhamento",
+      createdAt: entry.createdAt || "",
+      createdAtLabel: entry.createdAtLabel || "",
+    }));
+
+    return [...followUpEntries, ...historyEntries].sort((left, right) => {
+      const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+      const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+      return rightTime - leftTime;
+    });
+  }, [detailTicket, visibleFollowUps]);
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
@@ -264,6 +342,20 @@ function TicketsPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(getTicketFiltersStorageKey(user?.id));
+      const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+      setSavedFilters(Array.isArray(parsedValue) ? parsedValue : []);
+    } catch {
+      setSavedFilters([]);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    window.localStorage.setItem(getTicketFiltersStorageKey(user?.id), JSON.stringify(savedFilters));
+  }, [savedFilters, user?.id]);
+
+  useEffect(() => {
     if (searchParams.get("new") === "1" && canCreateTicket) {
       setShowCreateForm(true);
       setCreateForm({
@@ -276,6 +368,23 @@ function TicketsPage() {
       setSearchParams(nextParams, { replace: true });
     }
   }, [canCreateTicket, requestableDepartments, searchParams, serviceCenterEnabled, setSearchParams]);
+
+  const queueOptions = useMemo(
+    () => ["Todas", ...new Set(tickets.map((ticket) => String(ticket.queue || "Sem fila").trim() || "Sem fila"))],
+    [tickets],
+  );
+  const assigneeOptions = useMemo(
+    () => ["Todos", ...new Set(tickets.map((ticket) => String(ticket.assignee || "Sem tecnico").trim() || "Sem tecnico"))],
+    [tickets],
+  );
+  const categoryOptions = useMemo(
+    () => ["Todas", ...new Set(tickets.map((ticket) => String(ticket.category || "Geral").trim() || "Geral"))],
+    [tickets],
+  );
+  const departmentOptions = useMemo(() => {
+    const values = tickets.map((ticket) => String(ticket.department || ticket.queue || "Sem departamento").trim() || "Sem departamento");
+    return ["Todos", ...new Set(values)];
+  }, [tickets]);
 
   const filteredTickets = useMemo(() => {
     let currentTickets = searchTickets(search, tickets);
@@ -299,8 +408,87 @@ function TicketsPage() {
       currentTickets = currentTickets.filter((ticket) => ticket.unassigned);
     }
 
+    const advancedQuery = normalizeText(advancedFilters.query);
+    const requesterQuery = normalizeText(advancedFilters.requester);
+    const dateFrom = parseDateValue(advancedFilters.dateFrom, "start");
+    const dateTo = parseDateValue(advancedFilters.dateTo, "end");
+
+    if (requesterQuery) {
+      currentTickets = currentTickets.filter((ticket) => normalizeText(ticket.requester).includes(requesterQuery));
+    }
+    if (advancedFilters.assignee !== "Todos") {
+      currentTickets = currentTickets.filter((ticket) => String(ticket.assignee || "Sem tecnico").trim() === advancedFilters.assignee);
+    }
+    if (advancedFilters.department !== "Todos") {
+      currentTickets = currentTickets.filter((ticket) => String(ticket.department || ticket.queue || "Sem departamento").trim() === advancedFilters.department);
+    }
+    if (advancedFilters.category !== "Todas") {
+      currentTickets = currentTickets.filter((ticket) => String(ticket.category || "Geral").trim() === advancedFilters.category);
+    }
+    if (advancedFilters.queue !== "Todas") {
+      currentTickets = currentTickets.filter((ticket) => String(ticket.queue || "Sem fila").trim() === advancedFilters.queue);
+    }
+    if (advancedFilters.source !== "Todas") {
+      currentTickets = currentTickets.filter((ticket) => String(ticket.source || "Portal").trim() === advancedFilters.source);
+    }
+    if (dateFrom || dateTo) {
+      currentTickets = currentTickets.filter((ticket) => {
+        const openedAt = new Date(ticket.openedAt || Date.now());
+        if (Number.isNaN(openedAt.getTime())) return false;
+        if (dateFrom && openedAt < dateFrom) return false;
+        if (dateTo && openedAt > dateTo) return false;
+        return true;
+      });
+    }
+    if (advancedQuery) {
+      currentTickets = currentTickets.filter((ticket) => {
+        const followUpMessages = (ticket.followUps || []).map((entry) => entry.message).join(" ");
+        return [
+          ticket.id,
+          ticket.title,
+          ticket.requester,
+          ticket.requesterEmail,
+          ticket.assignee,
+          ticket.queue,
+          ticket.department,
+          ticket.status,
+          ticket.priority,
+          ticket.description,
+          ticket.category,
+          ticket.source,
+          ticket.location,
+          ticket.resolutionNotes,
+          followUpMessages,
+        ].some((field) => normalizeText(field).includes(advancedQuery));
+      });
+    }
+
     return currentTickets;
-  }, [priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
+  }, [advancedFilters, priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
+
+  const departmentIndicators = useMemo(() => {
+    const grouped = filteredTickets.reduce((accumulator, ticket) => {
+      const label = String(ticket.department || ticket.queue || "Sem departamento").trim() || "Sem departamento";
+      if (!accumulator[label]) accumulator[label] = { label, total: 0, resolved: 0, critical: 0 };
+      accumulator[label].total += 1;
+      if (normalizeText(ticket.status) === "resolvido") accumulator[label].resolved += 1;
+      if (normalizeText(ticket.priority) === "critica") accumulator[label].critical += 1;
+      return accumulator;
+    }, {});
+    return Object.values(grouped).sort((left, right) => right.total - left.total).slice(0, 5);
+  }, [filteredTickets]);
+
+  const technicianIndicators = useMemo(() => {
+    const grouped = filteredTickets.reduce((accumulator, ticket) => {
+      const label = String(ticket.assignee || "Sem tecnico").trim() || "Sem tecnico";
+      if (!accumulator[label]) accumulator[label] = { label, total: 0, inProgress: 0, overdue: 0 };
+      accumulator[label].total += 1;
+      if (["em andamento", "aguardando usuario", "reaberto"].includes(normalizeText(ticket.status))) accumulator[label].inProgress += 1;
+      if (ticket.isOverdue || ticket.dueSoon) accumulator[label].overdue += 1;
+      return accumulator;
+    }, {});
+    return Object.values(grouped).sort((left, right) => right.total - left.total).slice(0, 5);
+  }, [filteredTickets]);
 
   const linkedArticles = useMemo(
     () =>
@@ -569,6 +757,102 @@ function TicketsPage() {
     event.target.value = "";
   };
 
+  const updateAdvancedFilter = (field) => (event) => {
+    setAdvancedFilters((current) => ({ ...current, [field]: event.target.value }));
+  };
+
+  const handleResetFilters = () => {
+    setStatusFilter("Todos");
+    setPriorityFilter("Todas");
+    setSlaFilter("Todos");
+    handleSearchChange("");
+    setAdvancedFilters({
+      query: "",
+      requester: "",
+      assignee: "Todos",
+      department: "Todos",
+      category: "Todas",
+      queue: "Todas",
+      source: "Todas",
+      dateFrom: "",
+      dateTo: "",
+    });
+  };
+
+  const handleSaveCurrentFilter = () => {
+    const trimmedName = savedFilterName.trim();
+    if (!trimmedName) {
+      pushToast("Nome obrigatorio", "Informe um nome para salvar o filtro atual.", "warning");
+      return;
+    }
+    const preset = {
+      id: `preset-${Date.now().toString(36)}`,
+      name: trimmedName,
+      search,
+      statusFilter,
+      priorityFilter,
+      slaFilter,
+      advancedFilters,
+    };
+    setSavedFilters((current) => [preset, ...current.filter((item) => item.name !== trimmedName)].slice(0, 10));
+    setSavedFilterName("");
+    pushToast("Filtro salvo", trimmedName);
+  };
+
+  const handleApplySavedFilter = (presetId) => {
+    const preset = savedFilters.find((item) => item.id === presetId);
+    if (!preset) return;
+    handleSearchChange(preset.search || "");
+    setStatusFilter(preset.statusFilter || "Todos");
+    setPriorityFilter(preset.priorityFilter || "Todas");
+    setSlaFilter(preset.slaFilter || "Todos");
+    setAdvancedFilters({ query: "", requester: "", assignee: "Todos", department: "Todos", category: "Todas", queue: "Todas", source: "Todas", dateFrom: "", dateTo: "", ...(preset.advancedFilters || {}) });
+  };
+
+  const handleDeleteSavedFilter = (presetId) => {
+    setSavedFilters((current) => current.filter((item) => item.id !== presetId));
+  };
+
+  const handleExportTickets = () => {
+    if (!filteredTickets.length) {
+      pushToast("Sem chamados", "Nao ha chamados no filtro atual para exportar.", "warning");
+      return;
+    }
+    triggerCsvDownload(`ticketmind-chamados-${new Date().toISOString().slice(0, 10)}.csv`, [
+      ["ID", "Titulo", "Solicitante", "Email", "Tecnico", "Departamento", "Fila", "Status", "Prioridade", "Categoria", "Origem", "Abertura", "SLA"],
+      ...filteredTickets.map((ticket) => [ticket.id, ticket.title, ticket.requester, ticket.requesterEmail || "", ticket.assignee || "", ticket.department || "", ticket.queue || "", ticket.status, ticket.priority, ticket.category || "", ticket.source || "", ticket.openedAtLabel || "", ticket.slaLabel || ticket.sla || ""]),
+    ]);
+    pushToast("Exportacao concluida", `${filteredTickets.length} chamado(s) exportado(s).`);
+  };
+
+  const handleQuickAction = (action) => {
+    if (!detailTicket || !detailForm) return;
+
+    if (action === "assignSelf") {
+      updateTicket(detailTicket.id, { ...detailForm, assignee: user?.name || detailForm.assignee, status: ["aberto", "reaberto"].includes(normalizeText(detailForm.status)) ? "Em andamento" : detailForm.status });
+      pushToast("Atalho aplicado", "Chamado assumido por voce.");
+      return;
+    }
+    if (action === "start") {
+      updateTicket(detailTicket.id, { ...detailForm, status: "Em andamento" });
+      pushToast("Atalho aplicado", "Chamado movido para em andamento.");
+      return;
+    }
+    if (action === "wait") {
+      updateTicket(detailTicket.id, { ...detailForm, status: "Aguardando usuario" });
+      pushToast("Atalho aplicado", "Chamado movido para aguardando usuario.");
+      return;
+    }
+    if (action === "resolve") {
+      if (!String(detailForm.resolutionNotes || "").trim()) {
+        pushToast("Solucao obrigatoria", "Preencha a solucao tecnica antes do atalho de encerramento.", "warning");
+        return;
+      }
+      updateTicket(detailTicket.id, { ...detailForm, status: "Resolvido", resolutionNotes: detailForm.resolutionNotes.trim() });
+      pushToast("Atalho aplicado", "Chamado resolvido.");
+    }
+  };
+
   return (
     <div className="ticket-page">
       <section className="tickets-header board-card">
@@ -622,6 +906,10 @@ function TicketsPage() {
           <strong>{serviceCenterEnabled ? requestableDepartments.length : users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
           <span>{serviceCenterEnabled ? "departamentos de abertura" : "tecnicos TI"}</span>
         </div>
+        <div className="insight-chip">
+          <strong>{filteredTickets.length}</strong>
+          <span>no filtro atual</span>
+        </div>
       </section>
 
       <section className="board-card glpi-panel">
@@ -636,6 +924,9 @@ function TicketsPage() {
                 Lista
               </button>
             </div>
+            <button className="ghost-button interactive-button" onClick={handleExportTickets} type="button">
+              Exportar
+            </button>
             {canCreateTicket ? (
               <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
                 Abrir chamado
@@ -679,6 +970,138 @@ function TicketsPage() {
               </select>
             </label>
           </div>
+          <div className="ticket-create-actions compact-actions">
+            <input onChange={(event) => setSavedFilterName(event.target.value)} placeholder="Nome do filtro salvo" value={savedFilterName} />
+            <button className="ghost-button interactive-button" onClick={handleSaveCurrentFilter} type="button">
+              Salvar filtro
+            </button>
+            <button className="ghost-button interactive-button" onClick={handleResetFilters} type="button">
+              Limpar filtros
+            </button>
+          </div>
+          {savedFilters.length ? (
+            <div className="ticket-create-actions compact-actions">
+              {savedFilters.map((preset) => (
+                <div className="watcher-chip" key={preset.id}>
+                  <button className="ghost-link interactive-button" onClick={() => handleApplySavedFilter(preset.id)} type="button">
+                    {preset.name}
+                  </button>
+                  <button onClick={() => handleDeleteSavedFilter(preset.id)} type="button">
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="detail-grid">
+            <label className="field-block">
+              <span>Busca avancada</span>
+              <input onChange={updateAdvancedFilter("query")} placeholder="Categoria, origem, local, descricao, solucao ou comentario" value={advancedFilters.query} />
+            </label>
+            <label className="field-block">
+              <span>Solicitante</span>
+              <input onChange={updateAdvancedFilter("requester")} placeholder="Nome do solicitante" value={advancedFilters.requester} />
+            </label>
+            <label className="field-block">
+              <span>Tecnico</span>
+              <select onChange={updateAdvancedFilter("assignee")} value={advancedFilters.assignee}>
+                {assigneeOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-block">
+              <span>Departamento</span>
+              <select onChange={updateAdvancedFilter("department")} value={advancedFilters.department}>
+                {departmentOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-block">
+              <span>Categoria</span>
+              <select onChange={updateAdvancedFilter("category")} value={advancedFilters.category}>
+                {categoryOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-block">
+              <span>Fila</span>
+              <select onChange={updateAdvancedFilter("queue")} value={advancedFilters.queue}>
+                {queueOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-block">
+              <span>Origem</span>
+              <select onChange={updateAdvancedFilter("source")} value={advancedFilters.source}>
+                {["Todas", "Portal", "E-mail", "Telefone", "Monitoramento"].map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-block">
+              <span>Abertura de</span>
+              <input onChange={updateAdvancedFilter("dateFrom")} type="date" value={advancedFilters.dateFrom} />
+            </label>
+            <label className="field-block">
+              <span>Abertura ate</span>
+              <input onChange={updateAdvancedFilter("dateTo")} type="date" value={advancedFilters.dateTo} />
+            </label>
+          </div>
+        </div>
+
+        <div className="split-grid split-grid-wide">
+          <section className="board-card compact-record-card">
+            <div className="card-heading">
+              <div>
+                <h3>Indicadores por departamento</h3>
+                <span>Volume, resolucao e criticidade no filtro atual.</span>
+              </div>
+            </div>
+            <div className="dashboard-performance-table">
+              <div className="dashboard-performance-head">
+                <span>Departamento</span>
+                <span>Total</span>
+                <span>Resolvidos</span>
+                <span>Criticos</span>
+              </div>
+              {departmentIndicators.map((item) => (
+                <div className="dashboard-performance-row" key={item.label}>
+                  <strong>{item.label}</strong>
+                  <span>{item.total}</span>
+                  <span>{item.resolved}</span>
+                  <span>{item.critical}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="board-card compact-record-card">
+            <div className="card-heading">
+              <div>
+                <h3>Indicadores por tecnico</h3>
+                <span>Carga, andamento e risco de SLA por responsavel.</span>
+              </div>
+            </div>
+            <div className="dashboard-performance-table">
+              <div className="dashboard-performance-head">
+                <span>Tecnico</span>
+                <span>Total</span>
+                <span>Andamento</span>
+                <span>Risco SLA</span>
+              </div>
+              {technicianIndicators.map((item) => (
+                <div className="dashboard-performance-row" key={item.label}>
+                  <strong>{item.label}</strong>
+                  <span>{item.total}</span>
+                  <span>{item.inProgress}</span>
+                  <span>{item.overdue}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
 
         <div className="ticket-rows ticket-rows-wide">
@@ -947,6 +1370,29 @@ function TicketsPage() {
                     </button>
                   ) : null}
                 </div>
+              </div>
+
+              <div className="ticket-create-actions compact-actions">
+                {canAssignTicket ? (
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("assignSelf")} type="button">
+                    Assumir chamado
+                  </button>
+                ) : null}
+                {canChangeStatus ? (
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("start")} type="button">
+                    Iniciar atendimento
+                  </button>
+                ) : null}
+                {canChangeStatus ? (
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("wait")} type="button">
+                    Aguardar usuario
+                  </button>
+                ) : null}
+                {canCloseTicket ? (
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("resolve")} type="button">
+                    Resolver agora
+                  </button>
+                ) : null}
               </div>
 
               <div className="glpi-info-strip">
@@ -1351,25 +1797,27 @@ function TicketsPage() {
               <section className="ticket-attachment-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
-                    <strong>Historico e auditoria</strong>
-                    <span>Registro de alteracoes de status, prioridade, tecnico, solucao, reabertura e eventos de SLA.</span>
+                    <strong>Timeline visual do ticket</strong>
+                    <span>Auditoria, acompanhamentos publicos e privados em ordem cronologica unica.</span>
                   </div>
                 </div>
-                {detailTicket.history?.length ? (
+                {detailTimeline.length ? (
                   <div className="ticket-rows">
-                    {detailTicket.history.map((entry) => (
+                    {detailTimeline.map((entry) => (
                       <article className="ticket-row-card" key={entry.id}>
                         <div className="ticket-row-main">
                           <div className="ticket-row-title">
-                            <strong>{entry.message}</strong>
-                            <h3>{entry.actorName || "Sistema"}</h3>
+                            <strong>{entry.title}</strong>
+                            <h3>{entry.actorName}</h3>
                           </div>
                           <div className="ticket-row-badges">
-                            <span className="badge badge-neutral">{entry.type}</span>
+                            <span className={`badge ${entry.tone}`}>{entry.type}</span>
+                            <span className="badge badge-neutral">{entry.visibility}</span>
                           </div>
                         </div>
                         <div className="ticket-row-meta">
                           <span>{entry.createdAtLabel}</span>
+                          <span>{entry.source === "followUp" ? "acompanhamento" : "auditoria"}</span>
                         </div>
                       </article>
                     ))}
@@ -1403,6 +1851,17 @@ function TicketsPage() {
 }
 
 export default TicketsPage;
+
+
+
+
+
+
+
+
+
+
+
 
 
 

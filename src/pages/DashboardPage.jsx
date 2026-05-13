@@ -51,6 +51,8 @@ function DashboardPage() {
   const { user } = useAuth();
   const { departments, knowledgeArticles, summary, tickets } = useAppData();
   const [periodFilter, setPeriodFilter] = useState("90");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [queueFilter, setQueueFilter] = useState("Todas");
   const [assigneeFilter, setAssigneeFilter] = useState("Todos");
   const [search, setSearch] = useState("");
@@ -114,7 +116,14 @@ function DashboardPage() {
       if (queueFilter !== "Todas" && queueName !== queueFilter) return false;
       if (assigneeFilter !== "Todos" && assigneeName !== assigneeFilter) return false;
 
-      if (periodFilter !== "all") {
+      if (periodFilter === "custom") {
+        const openedAt = parseTicketDate(ticket);
+        if (!openedAt) return false;
+        const startDate = customStartDate ? new Date(`${customStartDate}T00:00:00`) : null;
+        const endDate = customEndDate ? new Date(`${customEndDate}T23:59:59.999`) : null;
+        if (startDate && openedAt < startDate) return false;
+        if (endDate && openedAt > endDate) return false;
+      } else if (periodFilter !== "all") {
         const openedAt = parseTicketDate(ticket);
         if (!openedAt) return false;
         const periodDays = Number(periodFilter);
@@ -138,7 +147,7 @@ function DashboardPage() {
         ticket.description,
       ].some((field) => normalizeText(field).includes(normalizedSearch));
     });
-  }, [assigneeFilter, periodFilter, queueFilter, search, tickets]);
+  }, [assigneeFilter, customEndDate, customStartDate, periodFilter, queueFilter, search, tickets]);
 
   const totalTickets = filteredTickets.length;
   const openTickets = filteredTickets.filter((ticket) => openStatuses.has(normalizeText(ticket.status))).length;
@@ -416,6 +425,8 @@ function DashboardPage() {
     { id: "priority", title: "Distribuicao por prioridade", category: "SLA e criticidade" },
     { id: "volume", title: "Volume por periodo", category: "Volume por periodo" },
     { id: "performance", title: "Performance dos tecnicos", category: "Performance dos tecnicos" },
+    { id: "departmentIndicators", title: "Indicadores por departamento", category: "Performance dos tecnicos" },
+    { id: "technicianIndicators", title: "Indicadores por tecnico", category: "Performance dos tecnicos" },
     { id: "actions", title: "Chamados que exigem acao", category: "Visao geral dos chamados" },
     { id: "knowledge", title: "Base de conhecimento", category: "Base de conhecimento" },
   ];
@@ -437,6 +448,8 @@ function DashboardPage() {
     setQueueFilter("Todas");
     setAssigneeFilter("Todos");
     setSearch("");
+    setCustomStartDate("");
+    setCustomEndDate("");
   };
 
   const renderWidget = (widgetId) => {
@@ -706,6 +719,74 @@ function DashboardPage() {
       );
     }
 
+    if (widgetId === "departmentIndicators") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Indicadores por departamento</h2>
+              <span>Leitura executiva de volume, abertos e criticidade por area.</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-performance-table">
+            <div className="dashboard-performance-head">
+              <span>Departamento</span>
+              <span>Total</span>
+              <span>Abertos</span>
+              <span>Criticos</span>
+              <span>Share</span>
+            </div>
+            {departmentBreakdown.map((item) => (
+              <div className="dashboard-performance-row" key={item.key}>
+                <strong>{item.label}</strong>
+                <span>{item.total}</span>
+                <span>{item.open}</span>
+                <span>{item.critical}</span>
+                <span>{item.share}%</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "technicianIndicators") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Indicadores por tecnico</h2>
+              <span>Volume, SLA, criticidade e idade media por responsavel.</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-performance-table">
+            <div className="dashboard-performance-head">
+              <span>Tecnico</span>
+              <span>Total</span>
+              <span>SLA</span>
+              <span>Criticos</span>
+              <span>Media</span>
+            </div>
+            {assigneePerformance.map((item) => (
+              <div className="dashboard-performance-row" key={item.label}>
+                <strong>{item.label}</strong>
+                <span>{item.total}</span>
+                <span>{item.slaRate}%</span>
+                <span>{item.critical}</span>
+                <span>{item.averageResolution}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
     if (widgetId === "actions") {
       return (
         <section className="board-card" key={widgetId}>
@@ -800,6 +881,7 @@ function DashboardPage() {
               <option value="30">Ultimos 30 dias</option>
               <option value="90">Ultimos 90 dias</option>
               <option value="180">Ultimos 180 dias</option>
+              <option value="custom">Periodo personalizado</option>
               <option value="all">Todo o historico</option>
             </select>
           </label>
@@ -823,6 +905,18 @@ function DashboardPage() {
               ))}
             </select>
           </label>
+          {periodFilter === "custom" ? (
+            <>
+              <label>
+                <span>Data inicial</span>
+                <input onChange={(event) => setCustomStartDate(event.target.value)} type="date" value={customStartDate} />
+              </label>
+              <label>
+                <span>Data final</span>
+                <input onChange={(event) => setCustomEndDate(event.target.value)} type="date" value={customEndDate} />
+              </label>
+            </>
+          ) : null}
           <button className="filter-pill interactive-button dashboard-reset-button" onClick={resetFilters} type="button">
             Limpar filtros
           </button>
@@ -860,3 +954,16 @@ function DashboardPage() {
 }
 
 export default DashboardPage;
+
+
+
+
+
+
+
+
+
+
+
+
+
