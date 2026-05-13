@@ -211,6 +211,8 @@ function TicketsPage() {
     : null;
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
+  const allowedDetailStatuses = TICKET_STATUSES;
+  const visibleFollowUps = detailTicket?.followUps || [];
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
@@ -521,7 +523,7 @@ function TicketsPage() {
           <input
             className="toolbar-search"
             onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder="Buscar por nº, usuario ou assunto"
+            placeholder="Buscar por numero, usuario ou assunto"
             value={search}
           />
         </form>
@@ -911,7 +913,7 @@ function TicketsPage() {
                 <label className="field-block">
                   <span>Status</span>
                   <select disabled={!canChangeStatus} onChange={updateDetailField("status")} value={detailForm.status}>
-                    {TICKET_STATUSES.map((status) => (
+                    {allowedDetailStatuses.map((status) => (
                       <option key={status}>{status}</option>
                     ))}
                   </select>
@@ -1068,9 +1070,9 @@ function TicketsPage() {
                     </button>
                   </div>
                 ) : null}
-                {detailTicket.followUps?.length ? (
+                {visibleFollowUps.length ? (
                   <div className="ticket-rows">
-                    {detailTicket.followUps.map((followUp) => (
+                    {visibleFollowUps.map((followUp) => (
                       <article className="ticket-row-card" key={followUp.id}>
                         <div className="ticket-row-main">
                           <div className="ticket-row-title">
@@ -1078,7 +1080,7 @@ function TicketsPage() {
                             <h3>{followUp.message}</h3>
                           </div>
                           <div className="ticket-row-badges">
-                            <span className="badge badge-neutral">acompanhamento</span>
+                            <span className="badge badge-neutral">{followUp.visibility === "public" ? "publico" : "privado"}</span>
                           </div>
                         </div>
                         <div className="ticket-row-meta">
@@ -1261,3 +1263,4 @@ function TicketsPage() {
 }
 
 export default TicketsPage;
+

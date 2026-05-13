@@ -1,4 +1,4 @@
-export const TICKET_STATUSES = ["Aberto", "Em andamento", "Aguardando usuario", "Resolvido", "Reaberto"];
+export const TICKET_STATUSES = ["Aberto", "Em andamento", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
 
 export const PRIORITY_LEVELS = ["Baixa", "Media", "Alta", "Critica"];
 
@@ -13,7 +13,7 @@ const SLA_POLICY_MINUTES = {
   baixa: 480,
 };
 
-const OPEN_STATUS_SET = new Set(["aberto", "em andamento", "aguardando usuario", "reaberto"]);
+const OPEN_STATUS_SET = new Set(["aberto", "em andamento", "aguardando usuario", "aguardando aprovacao", "reaberto"]);
 
 export function normalizeText(value) {
   return String(value || "")
@@ -28,7 +28,10 @@ export function normalizeTicketStatus(status) {
   if (normalized === "em atendimento" || normalized === "em andamento" || normalized === "analise") {
     return "Em andamento";
   }
-  if (normalized === "aguardando aprovacao" || normalized === "aguardando usuario") {
+  if (normalized === "aguardando aprovacao") {
+    return "Aguardando aprovacao";
+  }
+  if (normalized === "aguardando usuario") {
     return "Aguardando usuario";
   }
   if (normalized === "resolvido") return "Resolvido";
@@ -42,6 +45,10 @@ export function normalizePriorityLabel(priority) {
   if (normalized === "alta") return "Alta";
   if (normalized === "baixa") return "Baixa";
   return "Media";
+}
+
+export function normalizeCommentVisibility(value) {
+  return normalizeText(value) === "publico" || normalizeText(value) === "public" ? "public" : "private";
 }
 
 export function computePriorityFromMatrix(urgency, impact) {
@@ -126,13 +133,15 @@ export function normalizeHistory(history) {
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
-export function createFollowUpEntry({ message, actorId = "", actorName = "Sistema", createdAt }) {
+export function createFollowUpEntry({ message, actorId = "", actorName = "Sistema", createdAt, visibility = "private", kind = "follow_up" }) {
   const timestamp = createdAt || new Date().toISOString();
   return {
     id: `follow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     message: String(message || "").trim(),
     actorId: String(actorId || "").trim(),
     actorName: String(actorName || "Sistema").trim(),
+    visibility: normalizeCommentVisibility(visibility),
+    kind: String(kind || "follow_up").trim() || "follow_up",
     createdAt: timestamp,
     createdAtLabel: formatTimestampLabel(timestamp),
   };
@@ -147,6 +156,8 @@ export function normalizeFollowUps(followUps) {
         message: String(item?.message || "").trim(),
         actorId: String(item?.actorId || "").trim(),
         actorName: String(item?.actorName || "Sistema").trim(),
+        visibility: normalizeCommentVisibility(item?.visibility),
+        kind: String(item?.kind || "follow_up").trim() || "follow_up",
         createdAt: timestamp,
         createdAtLabel: formatTimestampLabel(timestamp),
       };
@@ -227,6 +238,22 @@ export function normalizeKnowledgeArticle(article) {
   };
 }
 
+function normalizeApproval(ticket) {
+  const approval = ticket?.approval && typeof ticket.approval === "object" ? ticket.approval : {};
+  return {
+    required: Boolean(approval.required),
+    status: String(approval.status || "not_required").trim() || "not_required",
+    requestedAt: String(approval.requestedAt || "").trim(),
+    decidedAt: String(approval.decidedAt || "").trim(),
+    requestedById: String(approval.requestedById || "").trim(),
+    requestedByName: String(approval.requestedByName || "").trim(),
+    decidedById: String(approval.decidedById || "").trim(),
+    decidedByName: String(approval.decidedByName || "").trim(),
+    decisionReason: String(approval.decisionReason || "").trim(),
+    history: Array.isArray(approval.history) ? approval.history : [],
+  };
+}
+
 export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString()) {
   const openedAt = ticket.openedAt || nowIso;
   const status = normalizeTicketStatus(ticket.status);
@@ -239,6 +266,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     ticket.slaDeadlineAt || new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString();
   const history = normalizeHistory(ticket.history);
   const followUps = normalizeFollowUps(ticket.followUps);
+  const approval = normalizeApproval(ticket);
   const isResolved = normalizeText(status) === "resolvido";
   let resolvedAt = ticket.resolvedAt || "";
   if (isResolved && !resolvedAt) {
@@ -264,7 +292,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     ];
   }
 
-  return {
+  const normalizedTicket = {
     ...ticket,
     status,
     priority,
@@ -277,16 +305,23 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     updatedAtIso: ticket.updatedAtIso || openedAt,
     updatedAt: ticket.updatedAt && ticket.updatedAt !== "Agora" ? ticket.updatedAt : formatTimestampLabel(ticket.updatedAtIso || openedAt),
     resolutionNotes: String(ticket.resolutionNotes || "").trim(),
+    reopenReason: String(ticket.reopenReason || "").trim(),
     followUps,
     attachments: Array.isArray(ticket.attachments) ? ticket.attachments : [],
     history: nextHistory,
+    approval,
+    triage: ticket?.triage && typeof ticket.triage === "object" ? ticket.triage : {},
     slaTargetMinutes,
     slaDeadlineAt,
     slaBreachedAt,
     resolvedAt,
     resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
     knowledgeArticleIds: Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : [],
-    searchText: buildTicketSearchText(ticket),
+  };
+
+  return {
+    ...normalizedTicket,
+    searchText: buildTicketSearchText(normalizedTicket),
   };
 }
 
