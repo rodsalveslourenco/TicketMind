@@ -867,7 +867,7 @@ function resolveApprovalState(type, approval = null, action = "") {
       history: Array.isArray(baseApproval.history) ? baseApproval.history : [],
     };
   }
-  const currentStatus = String(baseApproval.status || "pending").trim() || "pending";
+  const currentStatus = String(baseApproval.status || "draft").trim() || "draft";
   const nextStatus = action === "approve" ? "approved" : action === "reject" ? "rejected" : action === "request" ? "pending" : currentStatus;
   return {
     ...baseApproval,
@@ -1108,7 +1108,7 @@ export function AppDataProvider({ children }) {
         queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
       });
       const approval = resolveApprovalState(routedPayload.type, payload.approval);
-      const initialStatus = approval.required && approval.status !== "approved" ? "Aguardando aprovacao" : "Aberto";
+      const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
       const slaTargetMinutes = resolveTicketSlaPolicyMinutes({
         type: routedPayload.type,
         priority,

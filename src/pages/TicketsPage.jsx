@@ -1032,9 +1032,9 @@ function TicketsPage() {
       requestedAt: action === "request" ? new Date().toISOString() : detailTicket.approval?.requestedAt || "",
       requestedById: action === "request" ? user?.id || "" : detailTicket.approval?.requestedById || "",
       requestedByName: action === "request" ? user?.name || "Sistema" : detailTicket.approval?.requestedByName || "",
-      decidedAt: action === "request" ? detailTicket.approval?.decidedAt || "" : new Date().toISOString(),
-      decidedById: action === "request" ? detailTicket.approval?.decidedById || "" : user?.id || "",
-      decidedByName: action === "request" ? detailTicket.approval?.decidedByName || "" : user?.name || "Sistema",
+      decidedAt: action === "request" ? "" : new Date().toISOString(),
+      decidedById: action === "request" ? "" : user?.id || "",
+      decidedByName: action === "request" ? "" : user?.name || "Sistema",
     };
     updateTicket(detailTicket.id, {
       ...detailForm,
