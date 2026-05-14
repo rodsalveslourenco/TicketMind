@@ -225,11 +225,6 @@ function AppLayout() {
                 Buscar
               </button>
             </form>
-            {canCreateTicket ? (
-              <button className="primary-button interactive-button topbar-create-button" onClick={() => navigate("/app/tickets?new=1")} type="button">
-                Abrir chamado
-              </button>
-            ) : null}
             <div className="toolbar density-toggle" role="group" aria-label="Densidade visual">
               {[
                 ["compacta", "Compacta"],
@@ -272,12 +267,6 @@ function AppLayout() {
           </span>
           <span>{summary.openTickets} chamados abertos</span>
         </footer>
-
-        {canCreateTicket ? (
-          <button className="floating-create-button interactive-button" onClick={() => navigate("/app/tickets?new=1")} type="button">
-            + Abrir chamado
-          </button>
-        ) : null}
       </div>
 
       <div className="toast-stack" aria-live="polite">

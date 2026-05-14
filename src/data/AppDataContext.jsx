@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
 import {
@@ -881,6 +881,7 @@ export function AppDataProvider({ children }) {
   const [data, setData] = useState(EMPTY_DATA);
   const [notifications, setNotifications] = useState([]);
   const [serverReady, setServerReady] = useState(false);
+  const skipNextPersistenceRef = useRef(true);
 
   const applyState = (updater) => {
     setData((current) => {
@@ -899,6 +900,7 @@ export function AppDataProvider({ children }) {
     if (!user?.id) {
       setData(EMPTY_DATA);
       setServerReady(false);
+      skipNextPersistenceRef.current = true;
       return undefined;
     }
 
@@ -908,6 +910,7 @@ export function AppDataProvider({ children }) {
       try {
         const serverData = await loadAppState();
         if (cancelled) return;
+        skipNextPersistenceRef.current = true;
         setData(mergeCollections(serverData));
       } catch (error) {
         console.error(error);
@@ -925,6 +928,10 @@ export function AppDataProvider({ children }) {
 
   useEffect(() => {
     if (!serverReady || !user?.id) return undefined;
+    if (skipNextPersistenceRef.current) {
+      skipNextPersistenceRef.current = false;
+      return undefined;
+    }
 
     let active = true;
     const timeoutId = window.setTimeout(async () => {

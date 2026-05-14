@@ -1025,30 +1025,11 @@ function TicketsPage() {
         </div>
       </section>
 
-      <section className="ticket-overview-strip">
-        <div className="insight-chip">
-          <strong>{tickets.length}</strong>
-          <span>tickets visiveis</span>
-        </div>
-        <div className="insight-chip">
-          <strong>{tickets.filter((ticket) => ticket.dueSoon || ticket.isOverdue).length}</strong>
-          <span>alertas de SLA</span>
-        </div>
-        <div className="insight-chip">
-          <strong>{serviceCenterEnabled ? requestableDepartments.length : users.filter((candidate) => normalizeText(candidate.department) === "ti").length}</strong>
-          <span>{serviceCenterEnabled ? "departamentos de abertura" : "tecnicos TI"}</span>
-        </div>
-        <div className="insight-chip">
-          <strong>{filteredTickets.length}</strong>
-          <span>no filtro atual</span>
-        </div>
-      </section>
-
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar ticket-list-toolbar">
           <div>
-            <h2>Listagem operacional</h2>
-            <span>Priorize a fila por impacto e acompanhe os chamados sem perder leitura da operacao.</span>
+            <h2>Chamados</h2>
+            <span>Lista simples, leitura rapida e foco em prioridade, responsavel e estado atual.</span>
           </div>
           <div className="toolbar">
             <div className="view-toggle">
@@ -1225,57 +1206,6 @@ function TicketsPage() {
             </div>
           </div>
         ) : null}
-        <div className="split-grid split-grid-wide">
-          <section className="board-card compact-record-card">
-            <div className="card-heading">
-              <div>
-                <h3>Indicadores por departamento</h3>
-                <span>Volume, resolucao e criticidade no filtro atual.</span>
-              </div>
-            </div>
-            <div className="dashboard-performance-table">
-              <div className="dashboard-performance-head">
-                <span>Departamento</span>
-                <span>Total</span>
-                <span>Resolvidos</span>
-                <span>Criticos</span>
-              </div>
-              {departmentIndicators.map((item) => (
-                <div className="dashboard-performance-row" key={item.label}>
-                  <strong>{item.label}</strong>
-                  <span>{item.total}</span>
-                  <span>{item.resolved}</span>
-                  <span>{item.critical}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-          <section className="board-card compact-record-card">
-            <div className="card-heading">
-              <div>
-                <h3>Indicadores por tecnico</h3>
-                <span>Carga, andamento e risco de SLA por responsavel.</span>
-              </div>
-            </div>
-            <div className="dashboard-performance-table">
-              <div className="dashboard-performance-head">
-                <span>Tecnico</span>
-                <span>Total</span>
-                <span>Andamento</span>
-                <span>Risco SLA</span>
-              </div>
-              {technicianIndicators.map((item) => (
-                <div className="dashboard-performance-row" key={item.label}>
-                  <strong>{item.label}</strong>
-                  <span>{item.total}</span>
-                  <span>{item.inProgress}</span>
-                  <span>{item.overdue}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
         <div className="ticket-rows ticket-rows-wide ticket-list-compact">
           {filteredTickets.length ? (
             filteredTickets.map((ticket) => (
@@ -1295,32 +1225,31 @@ function TicketsPage() {
                   </div>
                   <div className="ticket-row-main ticket-row-main-compact">
                     <div className="ticket-row-title ticket-row-title-compact">
-                      <h3>{ticket.title}</h3>
-                      <p>{ticket.description}</p>
+                      <h3>
+                        <span className="ticket-row-key-inline">{ticket.id}</span>
+                        <span>{ticket.title}</span>
+                      </h3>
                       <div className="ticket-row-context-chips">
-                        <span className="context-chip">{ticket.department || "Sem departamento"}</span>
-                        <span className="context-chip">{ticket.queue || "Sem fila"}</span>
-                        <span className="context-chip">Urgencia {ticket.urgency || ticket.priority}</span>
+                        <span className="context-chip">{ticket.requester}</span>
+                        <span className="context-chip">{ticket.department || ticket.queue || "Sem departamento"}</span>
                         <span className={`context-chip context-chip-status ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                        {(ticket.dueSoon || ticket.isOverdue) ? <span className="context-chip">SLA {ticket.slaLabel}</span> : null}
                       </div>
                     </div>
                     <div className="ticket-row-side-meta">
-                      <span className="department-badge" style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.16 })}>
-                        {ticket.department || ticket.queue}
-                      </span>
-                      <strong>{ticket.assignee || "Sem tecnico"}</strong>
+                      <strong>{ticket.assignee || "Sem responsavel"}</strong>
+                      <span>{ticket.openedAtLabel || "-"}</span>
                     </div>
                   </div>
                   <div className="ticket-row-meta ticket-row-meta-compact">
-                    {visibleColumns.includes("requester") ? <span>Solicitante: {ticket.requester}</span> : null}
-                    {visibleColumns.includes("email") ? <span>Email: {ticket.requesterEmail || "-"}</span> : null}
-                    {visibleColumns.includes("category") ? <span>Categoria: {ticket.category || "Geral"}</span> : null}
-                    {visibleColumns.includes("department") ? <span>Departamento: {ticket.department || "-"}</span> : null}
-                    {visibleColumns.includes("queue") ? <span>Fila: {ticket.queue || "-"}</span> : null}
-                    {visibleColumns.includes("urgency") ? <span>Urgencia: {ticket.urgency || ticket.priority}</span> : null}
-                    {visibleColumns.includes("openedAt") ? <span>Abertura: {ticket.openedAtLabel || "-"}</span> : null}
-                    {visibleColumns.includes("source") ? <span>Origem: {ticket.source || "Portal"}</span> : null}
-                    {visibleColumns.includes("assignee") ? <span>Tecnico: {ticket.assignee || "Sem tecnico"}</span> : null}
+                    {visibleColumns.includes("email") && ticket.requesterEmail ? <span>{ticket.requesterEmail}</span> : null}
+                    {visibleColumns.includes("category") ? <span>{ticket.category || "Geral"}</span> : null}
+                    {visibleColumns.includes("department") ? <span>{ticket.department || "-"}</span> : null}
+                    {visibleColumns.includes("queue") ? <span>{ticket.queue || "-"}</span> : null}
+                    {visibleColumns.includes("urgency") ? <span>Urgencia {ticket.urgency || ticket.priority}</span> : null}
+                    {visibleColumns.includes("openedAt") ? <span>{ticket.openedAtLabel || "-"}</span> : null}
+                    {visibleColumns.includes("source") ? <span>{ticket.source || "Portal"}</span> : null}
+                    {visibleColumns.includes("assignee") ? <span>{ticket.assignee || "Sem tecnico"}</span> : null}
                   </div>
                 </button>
                 <div className="compact-row-actions ticket-inline-actions">
@@ -1360,15 +1289,6 @@ function TicketsPage() {
           )}
         </div>
 
-        <div className="priority-legend" aria-label="Legenda de prioridades">
-          {priorityLegend.map((item) => (
-            <div className="priority-legend-item" key={item.value}>
-              <span className={`priority-legend-swatch ${item.className}`} />
-              <strong>{item.label}</strong>
-              <span>{item.value}</span>
-            </div>
-          ))}
-        </div>
       </section>
 
       {showCreateForm ? (
