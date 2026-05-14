@@ -882,6 +882,55 @@ async function readSqliteStateRaw() {
   return parseJson(rawData, null);
 }
 
+function mapSqliteUserRow(row = {}) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    password: row.password,
+    status: row.status || "Ativo",
+    role: row.role,
+    permissionProfileId: row.permission_profile_id || "",
+    team: row.team,
+    departmentId: row.department_id || "",
+    department: row.department_name || "",
+    avatar: row.avatar || "",
+    additionalPermissions: parseJson(row.additional_permissions, {}),
+    restrictedPermissions: parseJson(row.restricted_permissions, {}),
+    permissions: parseJson(row.permissions, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapPostgresUserRow(row = {}) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    password: row.password,
+    status: row.status || "Ativo",
+    role: row.role,
+    permissionProfileId: row.permission_profile_id || "",
+    team: row.team,
+    departmentId: row.department_id || "",
+    department: row.department_name || "",
+    avatar: row.avatar || "",
+    additionalPermissions: row.additional_permissions || {},
+    restrictedPermissions: row.restricted_permissions || {},
+    permissions: row.permissions || {},
+    createdAt: row.created_at?.toISOString?.() || row.created_at,
+    updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
+  };
+}
+
+function readFirstSqliteRow(result = []) {
+  const table = result?.[0];
+  const valueRow = table?.values?.[0];
+  if (!table || !valueRow) return null;
+  return table.columns.reduce((accumulator, column, index) => ({ ...accumulator, [column]: valueRow[index] }), {});
+}
+
 async function readSqliteCollections() {
   const db = await getSqliteDb();
   const departmentsResult = db.exec("SELECT id, code, name, color, status, created_at, updated_at FROM departments ORDER BY name");
@@ -926,25 +975,50 @@ async function readSqliteCollections() {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
-    users: mapRows(usersResult[0], (row) => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      password: row.password,
-      status: row.status || "Ativo",
-      role: row.role,
-      permissionProfileId: row.permission_profile_id || "",
-      team: row.team,
-      departmentId: row.department_id || "",
-      department: row.department_name || "",
-      avatar: row.avatar || "",
-      additionalPermissions: parseJson(row.additional_permissions, {}),
-      restrictedPermissions: parseJson(row.restricted_permissions, {}),
-      permissions: parseJson(row.permissions, {}),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    })),
+    users: mapRows(usersResult[0], (row) => mapSqliteUserRow(row)),
   };
+}
+
+async function readSqliteUserByEmail(email) {
+  await migrateSqliteCollectionsIfNeeded();
+  const db = await getSqliteDb();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  const row = readFirstSqliteRow(
+    db.exec(
+      `
+        SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+               departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
+        FROM users
+        LEFT JOIN departments ON departments.id = users.department_id
+        WHERE LOWER(users.email) = LOWER(?)
+        LIMIT 1
+      `,
+      [normalizedEmail],
+    ),
+  );
+  return row ? mapSqliteUserRow(row) : null;
+}
+
+async function readSqliteUserById(userId) {
+  await migrateSqliteCollectionsIfNeeded();
+  const db = await getSqliteDb();
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return null;
+  const row = readFirstSqliteRow(
+    db.exec(
+      `
+        SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+               departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
+        FROM users
+        LEFT JOIN departments ON departments.id = users.department_id
+        WHERE users.id = ?
+        LIMIT 1
+      `,
+      [normalizedUserId],
+    ),
+  );
+  return row ? mapSqliteUserRow(row) : null;
 }
 
 async function writeSqliteCollections(collections) {
@@ -1309,25 +1383,48 @@ async function readPostgresCollections() {
       createdAt: row.created_at?.toISOString?.() || row.created_at,
       updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
     })),
-    users: usersResult.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      password: row.password,
-      status: row.status || "Ativo",
-      role: row.role,
-      permissionProfileId: row.permission_profile_id || "",
-      team: row.team,
-      departmentId: row.department_id || "",
-      department: row.department_name || "",
-      avatar: row.avatar || "",
-      additionalPermissions: row.additional_permissions || {},
-      restrictedPermissions: row.restricted_permissions || {},
-      permissions: row.permissions || {},
-      createdAt: row.created_at?.toISOString?.() || row.created_at,
-      updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
-    })),
+    users: usersResult.rows.map((row) => mapPostgresUserRow(row)),
   };
+}
+
+async function readPostgresUserByEmail(email) {
+  await migratePostgresCollectionsIfNeeded();
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  const { rows } = await pool.query(
+    `
+      SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+             departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
+      FROM users
+      LEFT JOIN departments ON departments.id = users.department_id
+      WHERE LOWER(users.email) = LOWER($1)
+      LIMIT 1
+    `,
+    [normalizedEmail],
+  );
+  return rows[0] ? mapPostgresUserRow(rows[0]) : null;
+}
+
+async function readPostgresUserById(userId) {
+  await migratePostgresCollectionsIfNeeded();
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return null;
+  const { rows } = await pool.query(
+    `
+      SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+             departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
+      FROM users
+      LEFT JOIN departments ON departments.id = users.department_id
+      WHERE users.id = $1
+      LIMIT 1
+    `,
+    [normalizedUserId],
+  );
+  return rows[0] ? mapPostgresUserRow(rows[0]) : null;
 }
 
 async function countPostgresRows(tableName) {
@@ -1810,6 +1907,42 @@ export async function readState() {
     await writePostgresState(initialState);
   }
   return initialState;
+}
+
+export async function readUserByEmail(email) {
+  if (!isPostgresEnabled()) {
+    return readSqliteUserByEmail(email);
+  }
+  return readPostgresUserByEmail(email);
+}
+
+export async function readUserById(userId) {
+  if (!isPostgresEnabled()) {
+    return readSqliteUserById(userId);
+  }
+  return readPostgresUserById(userId);
+}
+
+export async function updateUserPassword(userId, passwordHash) {
+  const normalizedUserId = String(userId || "").trim();
+  const normalizedPasswordHash = String(passwordHash || "").trim();
+  if (!normalizedUserId || !normalizedPasswordHash) return null;
+
+  const state = await readState();
+  const nextState = {
+    ...state,
+    users: (state.users || []).map((candidate) =>
+      candidate.id === normalizedUserId
+        ? {
+            ...candidate,
+            password: normalizedPasswordHash,
+            updatedAt: new Date().toISOString(),
+          }
+        : candidate,
+    ),
+  };
+
+  return writeState(nextState);
 }
 
 export async function writeState(nextState) {

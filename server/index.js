@@ -2,7 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { hasAnyPermission } from "../src/data/permissions.js";
-import { insertSystemLog, querySystemLogs, readState, sanitizeSessionUser, writeState } from "./db.js";
+import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -373,16 +373,13 @@ app.post("/api/auth/login", handleAsync(async (request, response) => {
   const { email, password } = request.body || {};
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const normalizedPassword = String(password || "");
-  const state = await readState();
 
   if (!normalizedEmail || !normalizedPassword) {
     response.status(400).json({ error: "Preencha email e senha para continuar." });
     return;
   }
 
-  const user = (state.users || []).find(
-    (candidate) => String(candidate.email || "").trim().toLowerCase() === normalizedEmail,
-  );
+  const user = await readUserByEmail(normalizedEmail);
   const passwordMatches = user ? verifyPassword(normalizedPassword, user.password || "") : false;
 
   if (!user || !passwordMatches || !isActiveUser(user)) {
@@ -408,11 +405,7 @@ app.post("/api/auth/login", handleAsync(async (request, response) => {
   let authenticatedUser = user;
   if (needsPasswordUpgrade(user.password || "")) {
     const upgradedPassword = hashPassword(normalizedPassword);
-    const upgradedState = {
-      ...state,
-      users: (state.users || []).map((candidate) => (candidate.id === user.id ? { ...candidate, password: upgradedPassword } : candidate)),
-    };
-    await writeState(upgradedState);
+    await updateUserPassword(user.id, upgradedPassword);
     authenticatedUser = { ...user, password: upgradedPassword };
     await insertSystemLog(
       createSystemLog({
@@ -456,8 +449,7 @@ app.post("/api/auth/logout", handleAsync(async (request, response) => {
   }
 
   try {
-    const state = await readState();
-    const requestUser = (state.users || []).find((candidate) => candidate.id === session.userId) || null;
+    const requestUser = await readUserById(session.userId);
 
     if (requestUser) {
       await insertSystemLog(
@@ -480,9 +472,34 @@ app.post("/api/auth/logout", handleAsync(async (request, response) => {
 }));
 
 async function handleSessionRequest(request, response) {
-  const auth = await requireAuthenticatedUser(request, response);
-  if (!auth) return;
-  response.json({ user: sanitizeSessionUser(auth.requestUser), expiresAt: auth.session.expiresAt });
+  const token = getSessionTokenFromRequest(request);
+  if (!token) {
+    response.setHeader("Set-Cookie", clearSessionCookie());
+    response.status(401).json({ error: "Sessao expirada ou inexistente." });
+    return;
+  }
+
+  const session = verifySessionToken(token);
+  if (!session?.userId) {
+    response.setHeader("Set-Cookie", clearSessionCookie());
+    response.status(401).json({ error: "Sessao invalida. Faca login novamente." });
+    return;
+  }
+
+  const requestUser = await readUserById(session.userId);
+  if (!requestUser || !isActiveUser(requestUser)) {
+    response.setHeader("Set-Cookie", clearSessionCookie());
+    response.status(401).json({ error: "Usuario da sessao nao foi encontrado." });
+    return;
+  }
+
+  if (session.passwordFingerprint !== getPasswordFingerprint(requestUser.password || "")) {
+    response.setHeader("Set-Cookie", clearSessionCookie());
+    response.status(401).json({ error: "Sessao invalidada por alteracao de credenciais." });
+    return;
+  }
+
+  response.json({ user: sanitizeSessionUser(requestUser), expiresAt: session.expiresAt });
 }
 
 app.get("/api/auth/session", handleAsync(handleSessionRequest));
