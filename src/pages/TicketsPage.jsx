@@ -6,6 +6,7 @@ import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/depar
 import { hasAnyPermission } from "../data/permissions";
 import { PRIORITY_LEVELS, TICKET_STATUSES, createFollowUpEntry, normalizeText } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
+import { downloadCsv } from "../lib/export";
 
 const defaultCreateForm = {
   title: "",
@@ -132,28 +133,6 @@ function parseDateValue(value, edge = "start") {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function triggerCsvDownload(fileName, rows) {
-  if (!rows.length) return;
-  const csvContent = rows
-    .map((row) =>
-      row
-        .map((value) => {
-          const normalized = String(value ?? "").replace(/"/g, '""');
-          return `"${normalized}"`;
-        })
-        .join(","),
-    )
-    .join("\n");
-
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  window.URL.revokeObjectURL(url);
-}
-
 function TicketsPage() {
   const {
     addTicketAttachments,
@@ -221,6 +200,8 @@ function TicketsPage() {
   const canChangeStatus = hasAnyPermission(user, ["tickets_change_status", "tickets_admin"]);
   const canManageAttachments = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canCreateKnowledge = hasAnyPermission(user, ["knowledge_create", "knowledge_admin"]);
+  const canRequestApproval = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
+  const canDecideApproval = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
   const canSeeAllTickets = Boolean(canViewAllTickets);
   const serviceCenterEnabled = Boolean(serviceCenter?.enabled);
 
@@ -741,17 +722,23 @@ function TicketsPage() {
   };
 
   const handleApprovalAction = (action) => {
-    if (!detailTicket) return;
+    if (!detailTicket || !detailForm) return;
     const nextApproval = {
       ...(detailTicket.approval || {}),
       required: true,
       status: action === "approve" ? "approved" : action === "reject" ? "rejected" : "pending",
       decisionReason: approvalReason,
+      requestedAt: action === "request" ? new Date().toISOString() : detailTicket.approval?.requestedAt || "",
+      requestedById: action === "request" ? user?.id || "" : detailTicket.approval?.requestedById || "",
+      requestedByName: action === "request" ? user?.name || "Sistema" : detailTicket.approval?.requestedByName || "",
       decidedAt: action === "request" ? detailTicket.approval?.decidedAt || "" : new Date().toISOString(),
+      decidedById: action === "request" ? detailTicket.approval?.decidedById || "" : user?.id || "",
       decidedByName: action === "request" ? detailTicket.approval?.decidedByName || "" : user?.name || "Sistema",
     };
     updateTicket(detailTicket.id, {
+      ...detailForm,
       approval: nextApproval,
+      approvalAction: action,
       status: action === "approve" ? (detailTicket.assignee ? "Em andamento" : "Aberto") : action === "reject" ? "Aguardando usuario" : "Aguardando aprovacao",
     });
     pushToast("Aprovacao atualizada", detailTicket.title);
@@ -834,7 +821,7 @@ function TicketsPage() {
       pushToast("Sem chamados", "Nao ha chamados no filtro atual para exportar.", "warning");
       return;
     }
-    triggerCsvDownload(`ticketmind-chamados-${new Date().toISOString().slice(0, 10)}.csv`, [
+    downloadCsv(`ticketmind-chamados-${new Date().toISOString().slice(0, 10)}.csv`, [
       ["ID", "Titulo", "Solicitante", "Email", "Tecnico", "Departamento", "Fila", "Status", "Prioridade", "Categoria", "Origem", "Abertura", "SLA"],
       ...filteredTickets.map((ticket) => [ticket.id, ticket.title, ticket.requester, ticket.requesterEmail || "", ticket.assignee || "", ticket.department || "", ticket.queue || "", ticket.status, ticket.priority, ticket.category || "", ticket.source || "", ticket.openedAtLabel || "", ticket.slaLabel || ticket.sla || ""]),
     ]);
@@ -1641,15 +1628,21 @@ function TicketsPage() {
                     <textarea onChange={(event) => setApprovalReason(event.target.value)} value={approvalReason} />
                   </label>
                   <div className="ticket-create-actions compact-actions">
-                    <button className="ghost-button interactive-button" onClick={() => handleApprovalAction("request")} type="button">
-                      Solicitar aprovacao
-                    </button>
-                    <button className="ghost-button interactive-button" onClick={() => handleApprovalAction("approve")} type="button">
-                      Aprovar
-                    </button>
-                    <button className="danger-button interactive-button" onClick={() => handleApprovalAction("reject")} type="button">
-                      Reprovar
-                    </button>
+                    {canRequestApproval ? (
+                      <button className="ghost-button interactive-button" onClick={() => handleApprovalAction("request")} type="button">
+                        Solicitar aprovacao
+                      </button>
+                    ) : null}
+                    {canDecideApproval ? (
+                      <button className="ghost-button interactive-button" onClick={() => handleApprovalAction("approve")} type="button">
+                        Aprovar
+                      </button>
+                    ) : null}
+                    {canDecideApproval ? (
+                      <button className="danger-button interactive-button" onClick={() => handleApprovalAction("reject")} type="button">
+                        Reprovar
+                      </button>
+                    ) : null}
                   </div>
                 </section>
               ) : null}

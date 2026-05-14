@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission, normalizeText } from "../data/permissions";
+import { exportRowsAsCsv } from "../lib/export";
 
 function getInitials(name) {
   return String(name || "")
@@ -235,6 +236,26 @@ function UsersPage() {
     });
   };
 
+  const handleExport = () => {
+    if (!orderedUsers.length) {
+      pushToast("Sem dados", "Nao ha usuarios para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-usuarios-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "name", label: "Usuario" },
+        { key: "email", label: "Email" },
+        { key: "status", label: "Status" },
+        { key: "role", label: "Perfil" },
+        { key: "team", label: "Equipe" },
+        { key: "department", label: "Departamento" },
+      ],
+      items: orderedUsers,
+    });
+    pushToast("Exportacao concluida", `${orderedUsers.length} usuario(s) exportado(s).`);
+  };
+
   const openCreateModal = () => {
     if (!canCreateUsers) return;
     resetForm();
@@ -444,6 +465,9 @@ function UsersPage() {
             </label>
             <button className="ghost-button interactive-button" onClick={() => setShowGridConfig((current) => !current)} type="button">
               Configurar grade
+            </button>
+            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+              Exportar
             </button>
             {canCreateUsers ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">

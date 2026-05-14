@@ -4,24 +4,27 @@ Sistema web de service desk e operacao interna inspirado em fluxos GLPI/ITSM, co
 
 ## Visao geral
 
-O TicketMind foi pensado para centralizar operacao de atendimento, cadastro administrativo e acompanhamento interno em uma unica aplicacao.
+O TicketMind centraliza atendimento, operacao interna, cadastros administrativos, base de conhecimento e configuracoes de notificacao em uma unica aplicacao.
 
-Hoje o sistema entrega:
+O sistema ja entrega:
 
-- autenticacao por email e senha
-- controle de acesso por perfil e permissao
-- central de chamados com fluxo operacional
-- dashboard com indicadores e fila de atendimento
-- cadastro de usuarios, departamentos, ativos, marcas, modelos e projetos
-- base de conhecimento vinculada a chamados
+- autenticacao com sessao persistida
+- controle de acesso por perfil, permissao, override adicional e restricao por usuario
+- central de chamados com abertura, atribuicao, acompanhamento, timeline, anexos e aprovacao de requisicoes
+- dashboard operacional com indicadores, SLA, recortes por fila e tecnicos
+- cadastros de usuarios, departamentos, localizacoes, ativos, marcas, modelos, projetos, artigos e integracoes
+- exportacao CSV nas areas principais de cadastro e operacao
+- notificacoes por email com layouts, regras e teste de envio
+- log geral do sistema para TI
 - persistencia local em SQLite ou remota em Postgres
-- deploy simples no Render com `render.yaml`
+- API versionada em `/api/v1`
+- hot reload do backend no desenvolvimento com `node --watch`
 
-Arquiteturalmente, o projeto funciona como um monolito simples:
+Arquiteturalmente, o projeto segue como um monolito web simples:
 
-- o backend expoe endpoints `/api/*`
+- o backend expoe endpoints `/api/*` e `/api/v1/*`
 - o frontend consome a API com `fetch`
-- o estado completo da plataforma e persistido em `app_state`
+- a persistencia mistura estado legado consolidado com estruturas de dominio ja separadas
 
 ## Principais funcoes do sistema
 
@@ -31,7 +34,8 @@ Arquiteturalmente, o projeto funciona como um monolito simples:
 - restauracao de sessao no navegador
 - controle de acesso por permissao
 - protecao de rotas no frontend
-- validacao de acoes por permissao no contexto de dados
+- validacao de acoes criticas no backend
+- invalidacao de sessao por alteracao de credenciais
 
 ### Dashboard operacional
 
@@ -55,79 +59,17 @@ Arquiteturalmente, o projeto funciona como um monolito simples:
 - registro de acompanhamentos tecnicos
 - finalizacao de chamado com solucao obrigatoria
 - mudanca automatica para `Em andamento` quando um tecnico e indicado
+- aprovacao de requisicoes com solicitacao, aprovacao e reprovacao
 
-### Central de servicos
+### Cadastros e operacao
 
-- departamentos com configuracao individual
-- departamentos ativos ou inativos
-- controle de quais departamentos aceitam chamados
-- definicao de departamentos exibidos no portal de abertura
-- lista de responsaveis por departamento
-- atendimento por departamentos vinculados ao usuario
-
-### Usuarios e permissoes
-
-- cadastro de usuarios
-- edicao e duplicacao de usuarios
-- ativacao e inativacao
-- perfis de permissao
-- permissoes adicionais e restritas por usuario
-- atualizacao do proprio perfil
-
-### Ativos e inventario
-
-- cadastro de ativos
-- edicao e remocao de ativos
-- vinculacao com localizacao
-- catalogo de marcas e modelos
-- suporte a diferentes tipos de ativo
-- visao de inventario operacional
-
-### Localizacoes e departamentos
-
-- cadastro de departamentos
-- configuracao visual por cor
-- cadastro de localizacoes
-- associacao entre localizacao e departamento
-
-### Projetos internos
-
-- cadastro de projetos
-- fases e progresso
-- resumo de patrocinador, gestor, prazo e status
-
-### Base de conhecimento
-
-- cadastro manual de artigos
-- edicao e inativacao
-- pesquisa por problema, solucao, palavras-chave e categoria
-- vinculacao de artigo ao chamado
-- geracao de artigo a partir do ticket resolvido
-
-### Integracoes e notificacoes
-
-- configuracao de integracoes REST
-- layouts de email
-- regras de notificacao
-- configuracao SMTP
-- configuracao de servico de email
-- teste de notificacao
-
-## Modulos da aplicacao
-
-- `Login`: autenticacao inicial e restauracao de sessao
-- `Dashboard`: indicadores operacionais e visao executiva
-- `Tickets`: abertura, tratamento, acompanhamento e resolucao de chamados
-- `Assets`: cadastro e manutencao de ativos
-- `Inventory`: visao consolidada de inventario
-- `Brands / Models`: catalogo tecnico de marcas e modelos
-- `Projects`: acompanhamento de projetos internos
-- `Central Services`: configuracao da central de servicos e departamentos
-- `Users`: administracao de usuarios, perfis e permissoes
-- `Knowledge`: base de conhecimento e reaproveitamento de solucoes
-- `API Config`: configuracao de integracoes REST
-- `Notifications`: layouts, regras e testes de envio
-- `Profile`: manutencao do perfil do usuario logado
+- usuarios e perfis de permissao
+- departamentos e localizacoes
+- ativos, marcas e modelos
+- projetos internos
+- base de conhecimento
+- integracoes REST
+- layouts e regras de notificacao
 
 ## Stack tecnica
 
@@ -143,7 +85,7 @@ Arquivos centrais:
 - [`src/App.jsx`](src/App.jsx): rotas principais da aplicacao
 - [`src/auth/AuthContext.jsx`](src/auth/AuthContext.jsx): autenticacao, logout e restauracao de sessao
 - [`src/data/AppDataContext.jsx`](src/data/AppDataContext.jsx): regras de negocio, sincronizacao com API e estado global
-- [`src/pages/TicketsPage.jsx`](src/pages/TicketsPage.jsx): fluxo principal de abertura, atendimento e resolucao de chamados
+- [`src/pages/TicketsPage.jsx`](src/pages/TicketsPage.jsx): fluxo principal de abertura, atendimento, aprovacao e resolucao de chamados
 
 ### Backend
 
@@ -155,43 +97,47 @@ Arquivos centrais:
 
 - [`server/index.js`](server/index.js): API HTTP e entrega do frontend compilado
 - [`server/db.js`](server/db.js): persistencia, bootstrap e fallback SQLite/Postgres
-
-## Rotas do frontend
-
-Rotas publicas:
-
-- `/login`
-
-Rotas protegidas sob `/app`:
-
-- `/app/profile`
-- `/app/dashboard`
-- `/app/tickets`
-- `/app/assets`
-- `/app/inventory`
-- `/app/brands-models`
-- `/app/projects`
-- `/app/api-rest`
-- `/app/users`
-
-O acesso a cada rota depende das permissoes do usuario autenticado.
+- [`server/api/routes/v1.js`](server/api/routes/v1.js): API versionada por dominio
+- [`server/state/schema.js`](server/state/schema.js): schema, payload version e domain versions
 
 ## API atual
 
-Endpoints disponiveis hoje:
+Endpoints legados principais:
 
 - `GET /api/health`
 - `POST /api/auth/login`
-- `GET /api/auth/session/:userId`
+- `POST /api/auth/logout`
+- `GET /api/auth/session`
 - `GET /api/state`
 - `PUT /api/state`
 - `POST /api/notifications/test`
+- `GET /api/system-logs`
 
-Observacoes importantes:
+Endpoints versionados principais:
 
-- o modelo atual salva o estado inteiro da aplicacao em um unico registro
-- ainda nao existe separacao completa por tabelas de negocio
-- parte relevante das regras operacionais ainda esta no frontend
+- `GET /api/v1/meta`
+- `GET /api/v1/state`
+- `GET /api/v1/tickets`
+- `GET /api/v1/tickets/:ticketId`
+- `GET /api/v1/users`
+- `GET /api/v1/departments`
+- `GET /api/v1/locations`
+- `GET /api/v1/assets`
+- `GET /api/v1/brands`
+- `GET /api/v1/models`
+- `GET /api/v1/projects`
+- `GET /api/v1/knowledgeArticles`
+- `GET /api/v1/apiConfigs`
+- `GET /api/v1/emailLayouts`
+- `GET /api/v1/notificationRules`
+- `GET /api/v1/notificationLogs`
+- `GET /api/v1/reports`
+
+Observacoes:
+
+- o frontend atual ainda usa fortemente o fluxo legado `/api/state`
+- as escritas protegidas reutilizam a mesma trilha de validacao, auditoria e notificacao
+- a separacao por dominio ja comecou, mas ainda convive com o estado agregado legado
 
 ## Persistencia
 
@@ -213,15 +159,17 @@ Variaveis aceitas:
 Quando `DATABASE_URL` existe:
 
 - o backend inicializa um pool Postgres
-- cria a tabela `app_state` se ela nao existir
+- cria estruturas legadas e estruturas por dominio
 - carrega o estado do Postgres
 - se o banco estiver vazio, tenta inicializar com o SQLite local
 
-Tabela usada hoje:
+Estruturas relevantes em uso:
 
-- `app_state(id, data, updated_at)`
-
-O campo `data` guarda um `JSONB` com o estado inteiro da aplicacao.
+- `app_state`
+- `app_state_history`
+- `app_singletons`
+- `users`, `departments`, `locations`
+- tabelas de dominio como `tickets_domain`, `assets_domain`, `projects_domain`, `knowledge_articles_domain` e correlatas
 
 ## Dados iniciais
 
@@ -229,6 +177,8 @@ O seed atual fica em [`src/data/seedData.js`](src/data/seedData.js).
 
 Usuario administrador padrao:
 
+- email: `admin@ticketmind.local`
+- senha: `admin0123`
 
 Esse seed e usado quando ainda nao existe estado persistido.
 
@@ -241,6 +191,10 @@ server/
   notifications.js
   security.js
   systemLogs.js
+  api/
+  repositories/
+  services/
+  state/
 
 src/
   assets/
@@ -249,6 +203,7 @@ src/
   data/
   lib/
   pages/
+  services/
   App.jsx
   main.jsx
   styles.css
@@ -269,7 +224,7 @@ Instalacao:
 npm install
 ```
 
-Desenvolvimento:
+Desenvolvimento com hot reload:
 
 ```bash
 npm run dev
@@ -296,14 +251,6 @@ O blueprint cria:
 - um `Web Service` chamado `ticketmind`
 - um banco `Render Postgres` chamado `ticketmind-db`
 
-Fluxo basico:
-
-1. No Render, clique em `New +`
-2. Escolha `Blueprint`
-3. Selecione o repositorio
-4. Confirme o `render.yaml`
-5. Aprove a criacao dos recursos
-
 No deploy:
 
 - o Render executa `npm ci && npm run build`
@@ -311,63 +258,48 @@ No deploy:
 - serve o frontend compilado em `dist`
 - injeta `DATABASE_URL` automaticamente a partir do banco criado
 
-## Limitacoes atuais
+## Melhorias ja entregues
 
-- senha ainda armazenada em texto puro
-- sem JWT ou cookie HTTP-only
-- sem autorizacao forte no backend
-- parte da regra de negocio ainda concentrada no frontend
-- persistencia em documento unico
-- sem suite formal de testes automatizados
-- sem trilha de atendimento em modelo relacional separado
+- hash de senha e invalidacao de sessao por mudanca de credencial
+- autorizacao mais forte no backend para alteracoes criticas
+- auditoria administrativa e log geral do sistema
+- API versionada com metadados de schema e payload
+- inicio da persistencia por dominio no backend
+- exportacao operacional de chamados e cadastros principais
+- aprovacao de requisicoes no fluxo de tickets
+- notificacoes automatizadas por eventos do chamado
 
-## Possiveis melhorias para proximos releases
+## Mapeamento de novas funcoes
 
-### Release focado em seguranca
+### Melhorias funcionais
 
-- aplicar hash de senha com `bcrypt` ou equivalente
-- mover autenticacao e autorizacao efetiva para o backend
-- usar sessao segura ou JWT com expiracao
-- restringir melhor operacoes criticas por API
-- adicionar trilha de auditoria administrativa no servidor
+- aprovacao multi-etapa com aprovadores por departamento, alcada e valor
+- comentarios publicos e privados com filtros dedicados
+- SLA por combinacao de tipo, categoria, prioridade e departamento
+- roteamento automatico de triagem por categoria, prioridade e localizacao
+- modelos de formulario por tipo de solicitacao
+- campos obrigatorios dinamicos por categoria
+- observadores com notificacao seletiva por evento
+- relatorios consolidados exportaveis em todos os modulos administrativos
 
-### Release focado em chamados
+### Melhorias de experiencia
 
-- comentarios privados e publicos no ticket
-- transicoes de status parametrizaveis
-- SLA por categoria, departamento e prioridade
-- notificacao automatica por abertura, atribuicao, acompanhamento e encerramento
-- aprovacao de requisicoes
-- fila de triagem com regras de roteamento
-- reabertura com motivo obrigatorio
-- templates de resposta e solucao
+- linhas mais densas e refinadas no estilo GLPI, com menos blocos e mais leitura tabular
+- filtros salvos por usuario em mais modulos
+- colunas configuraveis alem da tela de usuarios
+- painel lateral persistente para detalhes em vez de modal em algumas areas
+- atalhos de teclado para triagem, atribuicao e conclusao rapida
+- estados vazios mais informativos e com acao direta
+- indicadores contextuais no topo de cada cadastro
 
-### Release focado em experiencia operacional
+### Melhorias tecnicas
 
-- filtros salvos por usuario
-- busca avancada por multiplos campos
-- exportacao de chamados
-- dashboard com periodos personalizaveis
-- atalhos de atendimento rapido
-- timeline visual do ticket
-- indicadores por departamento e tecnico
-
-### Release focado em arquitetura
-
-- separar o estado unico em tabelas reais de dominio
-- criar camadas de servico no backend
-- reduzir logica de negocio no frontend
-- preparar API para integracoes externas mais granulares
-- adicionar versionamento de payload e migracoes de dados
-
-### Release focado em qualidade
-
-- testes unitarios para regras de negocio
-- testes de integracao da API
-- smoke tests para fluxos principais
-- lint e validacao automatica em pipeline
-- ambiente de homologacao isolado do ambiente principal
+- ampliar o uso da API versionada no frontend
+- mover mais regra critica de negocio para o backend
+- completar a separacao por entidades reais em banco
+- criar testes de integracao para autenticacao, chamados, aprovacao e notificacao
+- adicionar smoke tests de deploy
 
 ## Resumo executivo
 
-O TicketMind ja cobre um escopo relevante de service desk interno, com abertura de chamados, tratamento operacional, ativos, usuarios, base de conhecimento e configuracoes administrativas. O proximo salto de maturidade esta em fortalecer seguranca, mover regras criticas para o backend, melhorar automacoes de atendimento e estruturar a persistencia por entidades de negocio.
+O TicketMind ja saiu do estado inicial descrito no README anterior. Hoje ele cobre autenticacao, autorizacao, chamados, aprovacao, notificacao, base de conhecimento, logs e cadastros administrativos com mais rigor de persistencia e API versionada. O proximo salto de maturidade esta em consolidar experiencia operacional estilo GLPI, exportacao ampla, automacoes de atendimento e backend ainda mais orientado por dominio.

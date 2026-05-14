@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 import { assetTypeOptions } from "../data/assetCatalog";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   assetType: "Notebook",
@@ -262,6 +263,25 @@ function BrandsModelsPage() {
     pushToast("Modelo removido", row.modelName);
   };
 
+  const handleExport = () => {
+    if (!unifiedRows.length) {
+      pushToast("Sem dados", "Nao ha marcas ou modelos para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-marcas-modelos-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "assetType", label: "Tipo" },
+        { key: "brandName", label: "Marca" },
+        { key: "modelName", label: "Modelo" },
+        { key: "status", label: "Status" },
+        { key: "rowType", label: "Registro" },
+      ],
+      items: unifiedRows,
+    });
+    pushToast("Exportacao concluida", `${unifiedRows.length} registro(s) exportado(s).`);
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -291,6 +311,9 @@ function BrandsModelsPage() {
             <h2>Lista de Marcas e Modelos</h2>
           </div>
           <div className="toolbar">
+            <button className="ghost-button compact-button interactive-button" onClick={handleExport} type="button">
+              Exportar
+            </button>
             {canCreate ? (
               <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
                 + Novo

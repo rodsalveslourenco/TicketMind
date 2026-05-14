@@ -3,6 +3,7 @@ import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   name: "",
@@ -231,6 +232,27 @@ function ProjectsPage() {
     resetForm();
   };
 
+  const handleExport = () => {
+    if (!orderedProjects.length) {
+      pushToast("Sem dados", "Nao ha projetos para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-projetos-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "name", label: "Projeto" },
+        { key: "status", label: "Status" },
+        { key: "progress", label: "Progresso" },
+        { key: "manager", label: "Responsavel" },
+        { key: "sponsor", label: "Patrocinador" },
+        { key: "dueDate", label: "Entrega" },
+        { key: "summary", label: "Resumo" },
+      ],
+      items: orderedProjects,
+    });
+    pushToast("Exportacao concluida", `${orderedProjects.length} projeto(s) exportado(s).`);
+  };
+
   return (
     <div className="users-page projects-page">
       <section className="module-hero board-card">
@@ -287,6 +309,9 @@ function ProjectsPage() {
                 placeholder="Buscar por projeto, patrocinador, responsável ou resumo"
                 value={search}
               />
+              <button className="ghost-button compact-button interactive-button" onClick={handleExport} type="button">
+                Exportar
+              </button>
               {canCreateProject ? (
                 <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
                   + Novo projeto

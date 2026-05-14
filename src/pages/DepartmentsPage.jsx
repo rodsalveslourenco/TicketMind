@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   code: "",
@@ -136,6 +137,26 @@ function DepartmentsPage() {
     pushToast("Departamento removido", department.name);
   };
 
+  const handleExport = () => {
+    if (!orderedDepartments.length) {
+      pushToast("Sem dados", "Nao ha departamentos para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-departamentos-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "code", label: "Codigo" },
+        { key: "name", label: "Departamento" },
+        { key: "color", label: "Cor" },
+        { key: "status", label: "Status" },
+        { key: "createdAt", label: "Criado em" },
+        { key: "updatedAt", label: "Atualizado em" },
+      ],
+      items: orderedDepartments,
+    });
+    pushToast("Exportacao concluida", `${orderedDepartments.length} departamento(s) exportado(s).`);
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -172,6 +193,9 @@ function DepartmentsPage() {
               placeholder="Buscar por codigo, nome ou status"
               value={search}
             />
+            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+              Exportar
+            </button>
             {canCreateDepartments ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
                 + Novo departamento

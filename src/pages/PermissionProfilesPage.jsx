@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission, normalizeText } from "../data/permissions";
+import { exportRowsAsCsv } from "../lib/export";
 
 function createEmptyPermissions(permissionCatalog = []) {
   return Array.from(
@@ -136,6 +137,25 @@ function PermissionProfilesPage() {
     pushToast("Perfil duplicado", duplicatedProfile?.name || profile.name);
   };
 
+  const handleExport = () => {
+    if (!orderedProfiles.length) {
+      pushToast("Sem dados", "Nao ha perfis para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-perfis-permissao-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "name", label: "Perfil" },
+        { key: "description", label: "Descricao" },
+        { key: "status", label: "Status" },
+        { label: "Permissoes", render: (profile) => (profile.permissions === "ALL" ? "Acesso total" : (profile.permissions || []).length) },
+        { label: "Usuarios vinculados", render: (profile) => profileUsageMap[profile.id] || 0 },
+      ],
+      items: orderedProfiles,
+    });
+    pushToast("Exportacao concluida", `${orderedProfiles.length} perfil(is) exportado(s).`);
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -173,6 +193,9 @@ function PermissionProfilesPage() {
               placeholder="Buscar por nome, descricao ou status"
               value={search}
             />
+            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+              Exportar
+            </button>
             <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
               + Novo perfil
             </button>

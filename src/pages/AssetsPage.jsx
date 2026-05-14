@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 import { assetTypeOptions } from "../data/assetCatalog";
+import { exportRowsAsCsv } from "../lib/export";
 
 const assetStatuses = ["Ativo", "Monitorado", "Manutencao", "Baixado"];
 
@@ -477,6 +478,30 @@ function AssetsPage() {
     setShowQuickCatalogModal(false);
   };
 
+  const handleExport = () => {
+    if (!currentAssets.length) {
+      pushToast("Sem dados", "Nao ha ativos no recorte atual para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-ativos-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "serial", label: "Serie" },
+        { key: "name", label: "Nome" },
+        { key: "type", label: "Tipo" },
+        { key: "manufacturer", label: "Marca" },
+        { key: "model", label: "Modelo" },
+        { label: "Configuracao", render: (asset) => getAssetConfiguration(asset) },
+        { key: "owner", label: "Usuario" },
+        { key: "status", label: "Status" },
+        { key: "location", label: "Localizacao" },
+        { key: "assetTag", label: "Patrimonio" },
+      ],
+      items: currentAssets,
+    });
+    pushToast("Exportacao concluida", `${currentAssets.length} ativo(s) exportado(s).`);
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -513,6 +538,9 @@ function AssetsPage() {
                 placeholder="Buscar por tipo, marca, modelo, patrimônio ou serie"
                 value={search}
               />
+              <button className="ghost-button compact-button interactive-button" onClick={handleExport} type="button">
+                Exportar
+              </button>
               {canCreateAsset ? (
                 <button
                   className="primary-button compact-button interactive-button"

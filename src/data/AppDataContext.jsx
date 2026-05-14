@@ -1174,6 +1174,7 @@ export function AppDataProvider({ children }) {
         const priorityChanged = normalizeText(requestedPriority) !== normalizeText(ticket.priority);
         const nextAssignee = String((updates.assignee ?? ticket.assignee) || "").trim();
         const approvalAction = normalizeText(updates.approvalAction);
+        const isApprovalWorkflowAction = ["request", "approve", "reject"].includes(approvalAction);
         const requestedStatus = normalizeTicketStatus(
           updates.status ??
             (approvalAction === "approve"
@@ -1202,9 +1203,17 @@ export function AppDataProvider({ children }) {
           ["aberto", "reaberto"].includes(normalizeText(ticket.status));
 
         if (statusChanged) {
-          if (!autoProgressFromAssignment && !hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
+          const canExecuteApprovalAction =
+            approvalAction === "request"
+              ? hasAnyPermission(user, ["tickets_edit", "tickets_admin"])
+              : approvalAction === "approve" || approvalAction === "reject"
+                ? hasAnyPermission(user, ["tickets_close", "tickets_admin"])
+                : false;
+
+          if (!autoProgressFromAssignment && !isApprovalWorkflowAction && !hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
             return ticket;
           }
+          if (isApprovalWorkflowAction && !canExecuteApprovalAction) return ticket;
           if (normalizeText(updates.status) === "resolvido" && !hasAnyPermission(user, ["tickets_close", "tickets_admin"])) {
             return ticket;
           }
@@ -1235,7 +1244,36 @@ export function AppDataProvider({ children }) {
           : ticket.knowledgeArticleIds || [];
         const nextReopenReason = String((updates.reopenReason ?? ticket.reopenReason) || "").trim();
         const nextCategory = String((updates.category ?? ticket.category) || "").trim();
-        const nextApproval = resolveApprovalState(updates.type ?? ticket.type, updates.approval ?? ticket.approval, approvalAction);
+        const approvalPayload = updates.approval && typeof updates.approval === "object" ? updates.approval : ticket.approval;
+        const resolvedApprovalState = resolveApprovalState(updates.type ?? ticket.type, approvalPayload, approvalAction);
+        const nextApproval = {
+          ...resolvedApprovalState,
+          decisionReason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? ticket.approval?.decisionReason ?? "").trim(),
+          requestedAt:
+            approvalAction === "request"
+              ? nowIso
+              : String(updates.approval?.requestedAt ?? approvalPayload?.requestedAt ?? ticket.approval?.requestedAt ?? "").trim(),
+          requestedById:
+            approvalAction === "request"
+              ? user?.id || ""
+              : String(updates.approval?.requestedById ?? approvalPayload?.requestedById ?? ticket.approval?.requestedById ?? "").trim(),
+          requestedByName:
+            approvalAction === "request"
+              ? user?.name || "Sistema"
+              : String(updates.approval?.requestedByName ?? approvalPayload?.requestedByName ?? ticket.approval?.requestedByName ?? "").trim(),
+          decidedAt:
+            approvalAction === "approve" || approvalAction === "reject"
+              ? nowIso
+              : String(updates.approval?.decidedAt ?? approvalPayload?.decidedAt ?? ticket.approval?.decidedAt ?? "").trim(),
+          decidedById:
+            approvalAction === "approve" || approvalAction === "reject"
+              ? user?.id || ""
+              : String(updates.approval?.decidedById ?? approvalPayload?.decidedById ?? ticket.approval?.decidedById ?? "").trim(),
+          decidedByName:
+            approvalAction === "approve" || approvalAction === "reject"
+              ? user?.name || "Sistema"
+              : String(updates.approval?.decidedByName ?? approvalPayload?.decidedByName ?? ticket.approval?.decidedByName ?? "").trim(),
+        };
 
         if (statusChanged && normalizeText(nextStatus) === "reaberto" && !nextReopenReason) {
           return ticket;

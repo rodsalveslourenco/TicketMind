@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { KNOWLEDGE_CATEGORIES } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   title: "",
@@ -14,7 +15,7 @@ const defaultForm = {
 };
 
 function KnowledgePage() {
-  const { addKnowledgeArticle, deleteKnowledgeArticle, knowledgeArticles, searchKnowledgeArticles, toggleKnowledgeArticleStatus, updateKnowledgeArticle } = useAppData();
+  const { addKnowledgeArticle, deleteKnowledgeArticle, knowledgeArticles, pushToast, searchKnowledgeArticles, toggleKnowledgeArticleStatus, updateKnowledgeArticle } = useAppData();
   const { user } = useAuth();
   const [form, setForm] = useState(defaultForm);
   const [search, setSearch] = useState("");
@@ -66,6 +67,27 @@ function KnowledgePage() {
     deleteKnowledgeArticle(article.id);
   };
 
+  const handleExport = () => {
+    if (!filteredArticles.length) {
+      pushToast("Sem dados", "Nao ha artigos para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-base-conhecimento-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "title", label: "Titulo" },
+        { key: "category", label: "Categoria" },
+        { key: "status", label: "Status" },
+        { key: "owner", label: "Responsavel" },
+        { key: "keywords", label: "Palavras-chave" },
+        { key: "problemDescription", label: "Problema" },
+        { key: "solutionApplied", label: "Solucao" },
+      ],
+      items: filteredArticles,
+    });
+    pushToast("Exportacao concluida", `${filteredArticles.length} artigo(s) exportado(s).`);
+  };
+
   return (
     <div className="page-grid">
       <section className="board-card">
@@ -83,6 +105,9 @@ function KnowledgePage() {
             placeholder="Pesquisar por titulo, categoria, problema, solucao ou palavra-chave"
             value={search}
           />
+          <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+            Exportar
+          </button>
         </div>
       </section>
 

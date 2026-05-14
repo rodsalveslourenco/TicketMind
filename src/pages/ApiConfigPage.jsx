@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   name: "",
@@ -38,6 +39,27 @@ function ApiConfigPage() {
   const resetForm = () => {
     setForm(defaultForm);
     setEditingId(null);
+  };
+
+  const handleExport = () => {
+    if (!orderedConfigs.length) {
+      pushToast("Sem dados", "Nao ha integracoes para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-integracoes-api-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "name", label: "Nome" },
+        { key: "baseUrl", label: "Base URL" },
+        { key: "resource", label: "Recurso" },
+        { key: "method", label: "Metodo" },
+        { key: "authType", label: "Autenticacao" },
+        { key: "status", label: "Status" },
+        { key: "timeout", label: "Timeout" },
+      ],
+      items: orderedConfigs,
+    });
+    pushToast("Exportacao concluida", `${orderedConfigs.length} integracao(oes) exportada(s).`);
   };
 
   const handleSubmit = (event) => {
@@ -156,6 +178,11 @@ function ApiConfigPage() {
           <div className="glpi-toolbar">
             <div>
               <h2>Integrações registradas</h2>
+            </div>
+            <div className="toolbar">
+              <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+                Exportar
+              </button>
             </div>
           </div>
           <div className="record-grid">

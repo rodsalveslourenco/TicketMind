@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   code: "",
@@ -146,6 +147,26 @@ function LocationsPage() {
     pushToast("Localizacao removida", location.name);
   };
 
+  const handleExport = () => {
+    if (!orderedLocations.length) {
+      pushToast("Sem dados", "Nao ha localizacoes para exportar.", "warning");
+      return;
+    }
+    exportRowsAsCsv({
+      fileName: `ticketmind-localizacoes-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "code", label: "Codigo" },
+        { key: "name", label: "Localizacao" },
+        { key: "department", label: "Departamento" },
+        { key: "status", label: "Status" },
+        { key: "createdAt", label: "Criado em" },
+        { key: "updatedAt", label: "Atualizado em" },
+      ],
+      items: orderedLocations,
+    });
+    pushToast("Exportacao concluida", `${orderedLocations.length} localizacao(oes) exportada(s).`);
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -187,6 +208,9 @@ function LocationsPage() {
               placeholder="Buscar por codigo, nome, departamento ou status"
               value={search}
             />
+            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+              Exportar
+            </button>
             {canCreateLocations ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
                 + Nova localizacao
