@@ -987,44 +987,6 @@ function TicketsPage() {
 
   return (
     <div className="ticket-page">
-      <section className="tickets-header board-card">
-        <div className="tickets-header-copy">
-          <span className="eyebrow">Central de Operacoes</span>
-          <h2>Chamados</h2>
-          {!canSeeAllTickets ? (
-            <p className="module-caption">
-              {serviceCenterEnabled
-                ? "Visualizacao restrita aos seus chamados e aos departamentos em que voce atua, conforme permissao."
-                : "Visualizacao restrita aos seus proprios chamados."}
-            </p>
-          ) : null}
-        </div>
-        <form
-          className="tickets-header-search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            handleSearchChange(search);
-          }}
-        >
-          <input
-            className="toolbar-search"
-            onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder="Buscar por numero, usuario ou assunto"
-            value={search}
-          />
-        </form>
-        <div className="tickets-header-actions">
-          <button className="ghost-button interactive-button" onClick={() => handleSearchChange(search)} type="button">
-            Buscar
-          </button>
-          {canCreateTicket ? (
-            <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
-              Abrir chamado
-            </button>
-          ) : null}
-        </div>
-      </section>
-
       <section className="board-card glpi-panel">
         <div className="glpi-toolbar ticket-list-toolbar">
           <div>
@@ -1032,6 +994,20 @@ function TicketsPage() {
             <span>Lista simples, leitura rapida e foco em prioridade, responsavel e estado atual.</span>
           </div>
           <div className="toolbar">
+            <form
+              className="tickets-inline-search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSearchChange(search);
+              }}
+            >
+              <input
+                className="toolbar-search"
+                onChange={(event) => handleSearchChange(event.target.value)}
+                placeholder="Buscar por numero, usuario ou assunto"
+                value={search}
+              />
+            </form>
             <div className="view-toggle">
               <button className={`filter-pill interactive-button${viewMode === "list" ? " is-active" : ""}`} onClick={() => setViewMode("list")} type="button">
                 Lista
