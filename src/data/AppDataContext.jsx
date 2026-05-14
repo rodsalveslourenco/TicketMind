@@ -37,6 +37,7 @@ import {
   isOpenTicketStatus,
   normalizeKnowledgeArticle,
   normalizeFollowUps,
+  normalizeTicketSubtasks,
   normalizePriorityLabel,
   normalizeText,
   normalizeTicketStatus,
@@ -1148,6 +1149,7 @@ export function AppDataProvider({ children }) {
         watchers: payload.watchers || "",
         attachments: payload.attachments || [],
         followUps: normalizeFollowUps(payload.followUps),
+        subtasks: normalizeTicketSubtasks(payload.subtasks),
         approval: {
           ...approval,
           requestedAt: approval.required ? nowIso : approval.requestedAt || "",
@@ -1157,6 +1159,10 @@ export function AppDataProvider({ children }) {
         triage: routedPayload.triage || {},
         history,
         knowledgeArticleIds: Array.isArray(payload.knowledgeArticleIds) ? payload.knowledgeArticleIds : [],
+        projectId: String(payload.projectId || "").trim(),
+        projectName: String(payload.projectName || "").trim(),
+        assetId: String(payload.assetId || "").trim(),
+        assetName: String(payload.assetName || "").trim(),
       };
 
       return { ...current, tickets: [createdTicket, ...current.tickets] };
@@ -1242,6 +1248,8 @@ export function AppDataProvider({ children }) {
         const nextResolutionNotes = String((updates.resolutionNotes ?? ticket.resolutionNotes) || "").trim();
         const nextFollowUps = updates.followUps !== undefined ? normalizeFollowUps(updates.followUps) : normalizeFollowUps(ticket.followUps);
         const followUpsChanged = JSON.stringify(nextFollowUps) !== JSON.stringify(normalizeFollowUps(ticket.followUps));
+        const nextSubtasks = updates.subtasks !== undefined ? normalizeTicketSubtasks(updates.subtasks) : normalizeTicketSubtasks(ticket.subtasks);
+        const subtasksChanged = JSON.stringify(nextSubtasks) !== JSON.stringify(normalizeTicketSubtasks(ticket.subtasks));
         const nextDepartmentId = String(updates.departmentId ?? ticket.departmentId ?? "").trim();
         const nextDepartment =
           (current.departments || []).find((department) => department.id === nextDepartmentId)?.name ||
@@ -1251,6 +1259,15 @@ export function AppDataProvider({ children }) {
           : ticket.knowledgeArticleIds || [];
         const nextReopenReason = String((updates.reopenReason ?? ticket.reopenReason) || "").trim();
         const nextCategory = String((updates.category ?? ticket.category) || "").trim();
+        const nextProjectId = String(updates.projectId ?? ticket.projectId ?? "").trim();
+        const nextProjectName =
+          (current.projects || []).find((project) => project.id === nextProjectId)?.name ||
+          String((updates.projectName ?? ticket.projectName) || "").trim();
+        const nextAssetId = String(updates.assetId ?? ticket.assetId ?? "").trim();
+        const nextAssetName =
+          (current.assets || []).find((asset) => asset.id === nextAssetId)?.tag ||
+          (current.assets || []).find((asset) => asset.id === nextAssetId)?.name ||
+          String((updates.assetName ?? ticket.assetName) || "").trim();
         const approvalPayload = updates.approval && typeof updates.approval === "object" ? updates.approval : ticket.approval;
         const resolvedApprovalState = resolveApprovalState(updates.type ?? ticket.type, approvalPayload, approvalAction);
         const nextApproval = {
@@ -1380,6 +1397,25 @@ export function AppDataProvider({ children }) {
             }),
           );
         }
+        if (subtasksChanged) {
+          const previousPending = normalizeTicketSubtasks(ticket.subtasks).filter((item) => normalizeText(item.status) !== "concluida").length;
+          const nextPending = nextSubtasks.filter((item) => normalizeText(item.status) !== "concluida").length;
+          historyEntries.push(
+            createHistoryEntry({
+              type: "subtasks_updated",
+              actorId: user?.id,
+              actorName: user?.name || "Sistema",
+              message:
+                nextSubtasks.length > normalizeTicketSubtasks(ticket.subtasks).length
+                  ? "Subtarefa vinculada ao chamado"
+                  : previousPending !== nextPending
+                    ? "Status de subtarefa atualizado"
+                    : "Subtarefas ajustadas",
+              metadata: { previousPending, nextPending, count: nextSubtasks.length },
+              createdAt: nowIso,
+            }),
+          );
+        }
         if (approvalAction === "request") {
           historyEntries.push(createHistoryEntry({ type: "approval_requested", actorId: user?.id, actorName: user?.name || "Sistema", message: "Aprovacao solicitada", createdAt: nowIso }));
         }
@@ -1430,6 +1466,7 @@ export function AppDataProvider({ children }) {
           queue: String(routedState.queue ?? updates.queue ?? ticket.queue ?? nextDepartment).trim() || nextDepartment || "Service Desk",
           resolutionNotes: nextResolutionNotes,
           followUps: nextFollowUps,
+          subtasks: nextSubtasks,
           reopenReason: nextReopenReason,
           approval: nextApproval,
           triage: routedState.triage || ticket.triage || {},
@@ -1438,6 +1475,10 @@ export function AppDataProvider({ children }) {
           updatedAtIso: nowIso,
           updatedAt: formatTimestampLabel(nowIso),
           knowledgeArticleIds: nextKnowledgeArticleIds,
+          projectId: nextProjectId,
+          projectName: nextProjectName,
+          assetId: nextAssetId,
+          assetName: nextAssetName,
           history: appendHistory(ticket, historyEntries),
         };
       }),

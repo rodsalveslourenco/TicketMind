@@ -13,6 +13,8 @@ const defaultCreateForm = {
   title: "",
   type: "Incidente",
   departmentId: "",
+  projectId: "",
+  assetId: "",
   category: "Geral",
   location: "",
   priority: "Media",
@@ -150,6 +152,7 @@ function TicketsPage() {
   const {
     addTicketAttachments,
     allTickets,
+    assets,
     canViewAllTickets,
     createKnowledgeArticleFromTicket,
     createTicket,
@@ -157,6 +160,7 @@ function TicketsPage() {
     departments,
     knowledgeArticles,
     linkKnowledgeArticleToTicket,
+    projects,
     pushToast,
     removeTicketAttachment,
     searchKnowledgeArticles,
@@ -201,7 +205,10 @@ function TicketsPage() {
   const [selectedSolutionTemplateId, setSelectedSolutionTemplateId] = useState("");
   const [approvalReason, setApprovalReason] = useState("");
   const [followUpDraft, setFollowUpDraft] = useState("");
+  const [followUpFilter, setFollowUpFilter] = useState("all");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
+  const [timelineFilter, setTimelineFilter] = useState("all");
+  const [subtaskDraft, setSubtaskDraft] = useState("");
   const [visibleColumns, setVisibleColumns] = useState(
     () => getModulePreference("tickets", "visibleColumns", TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key)),
   );
@@ -282,10 +289,23 @@ function TicketsPage() {
   const selectedCreateDepartment = serviceCenterEnabled
     ? requestableDepartments.find((department) => department.id === createForm.departmentId) || null
     : null;
+  const activeProjectOptions = useMemo(
+    () => (projects || []).filter((project) => normalizeText(project.status || "Ativo") !== "encerrado" && normalizeText(project.status || "") !== "excluido"),
+    [projects],
+  );
+  const activeAssetOptions = useMemo(
+    () => (assets || []).filter((asset) => !["baixado", "excluido"].includes(normalizeText(asset.status || ""))),
+    [assets],
+  );
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
   const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
   const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => canViewPrivateFollowUps || followUp.visibility === "public");
+  const filteredFollowUps = useMemo(() => {
+    if (followUpFilter === "public") return visibleFollowUps.filter((followUp) => followUp.visibility === "public");
+    if (followUpFilter === "private") return visibleFollowUps.filter((followUp) => followUp.visibility === "private");
+    return visibleFollowUps;
+  }, [followUpFilter, visibleFollowUps]);
   const detailTimeline = useMemo(() => {
     if (!detailTicket) return [];
 
@@ -319,6 +339,14 @@ function TicketsPage() {
       return rightTime - leftTime;
     });
   }, [detailTicket, visibleFollowUps]);
+  const filteredDetailTimeline = useMemo(() => {
+    if (timelineFilter === "comments") return detailTimeline.filter((entry) => entry.source === "followUp");
+    if (timelineFilter === "audit") return detailTimeline.filter((entry) => entry.source === "history");
+    if (timelineFilter === "approval") {
+      return detailTimeline.filter((entry) => String(entry.type || "").startsWith("approval_") || normalizeText(entry.title).includes("aprov"));
+    }
+    return detailTimeline;
+  }, [detailTimeline, timelineFilter]);
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
@@ -530,18 +558,30 @@ function TicketsPage() {
     [detailTicket, knowledgeArticles],
   );
   const articleSuggestions = useMemo(
-    () =>
-      normalizeText(knowledgeQuery)
-        ? searchKnowledgeArticles(knowledgeQuery, knowledgeArticles).filter((article) => article.status === "Ativo").slice(0, 6)
-        : [],
-    [knowledgeArticles, knowledgeQuery, searchKnowledgeArticles],
+    () => {
+      const automaticQuery = [detailForm?.title, detailForm?.category, detailForm?.description, detailForm?.resolutionNotes].join(" ");
+      const query = normalizeText(knowledgeQuery) ? knowledgeQuery : automaticQuery;
+      return normalizeText(query)
+        ? searchKnowledgeArticles(query, knowledgeArticles)
+            .filter((article) => article.status === "Ativo")
+            .filter((article) => !(detailTicket?.knowledgeArticleIds || []).includes(article.id))
+            .slice(0, 6)
+        : [];
+    },
+    [detailForm?.category, detailForm?.description, detailForm?.resolutionNotes, detailForm?.title, detailTicket?.knowledgeArticleIds, knowledgeArticles, knowledgeQuery, searchKnowledgeArticles],
   );
   const createArticleSuggestions = useMemo(
-    () =>
-      normalizeText(createKnowledgeQuery)
-        ? searchKnowledgeArticles(createKnowledgeQuery, knowledgeArticles).filter((article) => article.status === "Ativo").slice(0, 6)
-        : [],
-    [createKnowledgeQuery, knowledgeArticles, searchKnowledgeArticles],
+    () => {
+      const automaticQuery = [createForm.title, createForm.category, createForm.description].join(" ");
+      const query = normalizeText(createKnowledgeQuery) ? createKnowledgeQuery : automaticQuery;
+      return normalizeText(query)
+        ? searchKnowledgeArticles(query, knowledgeArticles)
+            .filter((article) => article.status === "Ativo")
+            .filter((article) => !(createForm.knowledgeArticleIds || []).includes(article.id))
+            .slice(0, 6)
+        : [];
+    },
+    [createForm.category, createForm.description, createForm.knowledgeArticleIds, createForm.title, createKnowledgeQuery, knowledgeArticles, searchKnowledgeArticles],
   );
 
   const watcherSuggestions = useMemo(() => {
@@ -560,6 +600,7 @@ function TicketsPage() {
     if (!detailTicket) {
       setDetailForm(null);
       setFollowUpDraft("");
+      setSubtaskDraft("");
       return;
     }
 
@@ -585,12 +626,20 @@ function TicketsPage() {
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
       knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
+      projectId: detailTicket.projectId || "",
+      projectName: detailTicket.projectName || "",
+      assetId: detailTicket.assetId || "",
+      assetName: detailTicket.assetName || "",
+      subtasks: detailTicket.subtasks || [],
     });
     setFollowUpDraft("");
     setFollowUpVisibility("public");
+    setFollowUpFilter("all");
     setSelectedResponseTemplateId("");
     setSelectedSolutionTemplateId("");
     setApprovalReason(detailTicket.approval?.decisionReason || "");
+    setTimelineFilter("all");
+    setSubtaskDraft("");
   }, [detailTicket]);
 
   useEffect(() => {
@@ -716,6 +765,11 @@ function TicketsPage() {
       category: createForm.category || "Geral",
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
+      projectName: activeProjectOptions.find((project) => project.id === createForm.projectId)?.name || "",
+      assetName:
+        activeAssetOptions.find((asset) => asset.id === createForm.assetId)?.tag ||
+        activeAssetOptions.find((asset) => asset.id === createForm.assetId)?.name ||
+        "",
       assignee: "",
     });
 
@@ -739,6 +793,12 @@ function TicketsPage() {
     updateTicket(detailTicket.id, {
       ...detailForm,
       dueDate: detailForm.dueDate || "",
+      projectName: activeProjectOptions.find((project) => project.id === detailForm.projectId)?.name || detailForm.projectName || "",
+      assetName:
+        activeAssetOptions.find((asset) => asset.id === detailForm.assetId)?.tag ||
+        activeAssetOptions.find((asset) => asset.id === detailForm.assetId)?.name ||
+        detailForm.assetName ||
+        "",
     });
     pushToast("Chamado atualizado", detailForm.title);
   };
@@ -756,6 +816,37 @@ function TicketsPage() {
     });
     setFollowUpDraft("");
     pushToast("Acompanhamento incluido", detailTicket.title);
+  };
+
+  const handleAddSubtask = () => {
+    if (!detailTicket || !subtaskDraft.trim()) return;
+    const nextSubtask = {
+      id: `subtask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      title: subtaskDraft.trim(),
+      status: "Pendente",
+      ownerName: detailForm?.assignee || user?.name || "",
+      createdAt: new Date().toISOString(),
+    };
+    updateTicket(detailTicket.id, {
+      subtasks: [nextSubtask, ...(detailTicket.subtasks || [])],
+    });
+    setSubtaskDraft("");
+    pushToast("Subtarefa vinculada", nextSubtask.title);
+  };
+
+  const handleToggleSubtask = (subtaskId) => {
+    if (!detailTicket) return;
+    const nextSubtasks = (detailTicket.subtasks || []).map((subtask) =>
+      subtask.id === subtaskId
+        ? {
+            ...subtask,
+            status: normalizeText(subtask.status) === "concluida" ? "Pendente" : "Concluida",
+            completedAt: normalizeText(subtask.status) === "concluida" ? "" : new Date().toISOString(),
+          }
+        : subtask,
+    );
+    updateTicket(detailTicket.id, { subtasks: nextSubtasks });
+    pushToast("Subtarefa atualizada", detailTicket.title);
   };
 
   const handleFinishTicket = () => {
@@ -979,6 +1070,8 @@ function TicketsPage() {
       dueDate: String(detailForm.dueDate || "") !== String(detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : ""),
       watchers: String(detailForm.watchers || "") !== String(detailTicket.watchers || ""),
       assignee: String(detailForm.assignee || "") !== String(detailTicket.assignee || ""),
+      projectId: String(detailForm.projectId || "") !== String(detailTicket.projectId || ""),
+      assetId: String(detailForm.assetId || "") !== String(detailTicket.assetId || ""),
       description: String(detailForm.description || "") !== String(detailTicket.description || ""),
       resolutionNotes: String(detailForm.resolutionNotes || "") !== String(detailTicket.resolutionNotes || ""),
       reopenReason: String(detailForm.reopenReason || "") !== String(detailTicket.reopenReason || ""),
@@ -1326,6 +1419,28 @@ function TicketsPage() {
                   <input onChange={updateCreateField("category")} value={createForm.category} />
                 </label>
                 <label className="field-block">
+                  <span>Projeto vinculado</span>
+                  <select onChange={updateCreateField("projectId")} value={createForm.projectId || ""}>
+                    <option value="">Nao vincular</option>
+                    {activeProjectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>Ativo vinculado</span>
+                  <select onChange={updateCreateField("assetId")} value={createForm.assetId || ""}>
+                    <option value="">Nao vincular</option>
+                    {activeAssetOptions.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.tag || asset.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
                   <span>Prioridade</span>
                   <select onChange={updateCreateField("priority")} value={createForm.priority}>
                     {PRIORITY_LEVELS.map((priority) => (
@@ -1386,7 +1501,12 @@ function TicketsPage() {
               </div>
 
               {createArticleSuggestions.length ? (
-                <div className="ticket-rows">
+                <div className="ticket-suggestion-panel">
+                  <div className="ticket-inline-panel-head">
+                    <strong>Sugestoes automaticas da base</strong>
+                    <span>Artigos relacionados a titulo, categoria e descricao do novo chamado.</span>
+                  </div>
+                  <div className="ticket-rows">
                   {createArticleSuggestions.map((article) => (
                     <button
                       className="ticket-row-card interactive-button"
@@ -1413,6 +1533,7 @@ function TicketsPage() {
                       </div>
                     </button>
                   ))}
+                  </div>
                 </div>
               ) : null}
 
@@ -1522,6 +1643,19 @@ function TicketsPage() {
                   <strong className={`badge ${getSlaTone(detailTicket)}`}>{detailTicket.slaLabel}</strong>
                 </div>
               </div>
+
+              <section className="ticket-inline-panel">
+                <div className="ticket-inline-panel-head">
+                  <strong>Vinculos operacionais</strong>
+                  <span>Relacionamento direto com solicitante, departamento, projeto e ativo.</span>
+                </div>
+                <div className="ticket-row-meta ticket-link-strip">
+                  <span>Usuario: {detailTicket.requester || "-"}</span>
+                  <span>Departamento: {detailDepartment?.name || detailForm.department || detailForm.queue || "-"}</span>
+                  <span>Projeto: {detailForm.projectName || "Nao vinculado"}</span>
+                  <span>Ativo: {detailForm.assetName || "Nao vinculado"}</span>
+                </div>
+              </section>
 
               <label className={`field-block field-full${detailDirtyFields.title ? " is-dirty" : ""}`}>
                 <span>Titulo</span>
@@ -1662,6 +1796,52 @@ function TicketsPage() {
                     value={detailForm.assignee || ""}
                   />
                 </label>
+                <label className={`field-block${detailDirtyFields.projectId ? " is-dirty" : ""}`}>
+                  <span>Projeto vinculado</span>
+                  <select
+                    disabled={!canEditTicket}
+                    onChange={(event) => {
+                      const nextProjectId = event.target.value;
+                      const nextProject = activeProjectOptions.find((project) => project.id === nextProjectId) || null;
+                      setDetailForm((current) => ({
+                        ...current,
+                        projectId: nextProjectId,
+                        projectName: nextProject?.name || "",
+                      }));
+                    }}
+                    value={detailForm.projectId || ""}
+                  >
+                    <option value="">Nao vincular</option>
+                    {activeProjectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={`field-block${detailDirtyFields.assetId ? " is-dirty" : ""}`}>
+                  <span>Ativo vinculado</span>
+                  <select
+                    disabled={!canEditTicket}
+                    onChange={(event) => {
+                      const nextAssetId = event.target.value;
+                      const nextAsset = activeAssetOptions.find((asset) => asset.id === nextAssetId) || null;
+                      setDetailForm((current) => ({
+                        ...current,
+                        assetId: nextAssetId,
+                        assetName: nextAsset ? nextAsset.tag || nextAsset.name : "",
+                      }));
+                    }}
+                    value={detailForm.assetId || ""}
+                  >
+                    <option value="">Nao vincular</option>
+                    {activeAssetOptions.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.tag || asset.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
               <label className={`field-block field-full${detailDirtyFields.description ? " is-dirty" : ""}`}>
@@ -1753,6 +1933,19 @@ function TicketsPage() {
                     </select>
                   </label>
                 </div>
+                <div className="ticket-inline-filter-bar">
+                  <button className={`filter-pill interactive-button${followUpFilter === "all" ? " is-active" : ""}`} onClick={() => setFollowUpFilter("all")} type="button">
+                    Todos
+                  </button>
+                  <button className={`filter-pill interactive-button${followUpFilter === "public" ? " is-active" : ""}`} onClick={() => setFollowUpFilter("public")} type="button">
+                    Publicos
+                  </button>
+                  {canViewPrivateFollowUps ? (
+                    <button className={`filter-pill interactive-button${followUpFilter === "private" ? " is-active" : ""}`} onClick={() => setFollowUpFilter("private")} type="button">
+                      Privados
+                    </button>
+                  ) : null}
+                </div>
                 <label className="field-block field-full">
                   <span>Novo acompanhamento</span>
                   <textarea
@@ -1769,9 +1962,9 @@ function TicketsPage() {
                     </button>
                   </div>
                 ) : null}
-                {visibleFollowUps.length ? (
+                {filteredFollowUps.length ? (
                   <div className="ticket-rows">
-                    {visibleFollowUps.map((followUp) => (
+                    {filteredFollowUps.map((followUp) => (
                       <article className="ticket-row-card" key={followUp.id}>
                         <div className="ticket-row-main">
                           <div className="ticket-row-title">
@@ -1790,7 +1983,7 @@ function TicketsPage() {
                   </div>
                 ) : (
                   <div className="empty-state">
-                    <strong>Nenhum acompanhamento registrado.</strong>
+                    <strong>Nenhum acompanhamento neste filtro.</strong>
                     <span>Use o campo acima para documentar cada interacao tecnica deste chamado.</span>
                   </div>
                 )}
@@ -1800,12 +1993,17 @@ function TicketsPage() {
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Base de conhecimento vinculada</strong>
-                    <span>Pesquise artigos existentes ou transforme a solucao do chamado em artigo reutilizavel.</span>
+                    <span>Pesquise artigos existentes ou use as sugestoes automaticas a partir do conteudo do chamado.</span>
                   </div>
                 </div>
                 <input className="toolbar-search" onChange={(event) => setKnowledgeQuery(event.target.value)} placeholder="Pesquisar artigos por problema, solucao ou palavra-chave" value={knowledgeQuery} />
                 {articleSuggestions.length ? (
-                  <div className="ticket-rows">
+                  <div className="ticket-suggestion-panel">
+                    <div className="ticket-inline-panel-head">
+                      <strong>{normalizeText(knowledgeQuery) ? "Resultados da pesquisa" : "Sugestoes automaticas da base"}</strong>
+                      <span>{normalizeText(knowledgeQuery) ? "Artigos encontrados pela busca informada." : "Relacionados ao titulo, categoria, descricao e solucao do chamado."}</span>
+                    </div>
+                    <div className="ticket-rows">
                     {articleSuggestions.map((article) => (
                       <button className="ticket-row-card interactive-button" key={article.id} onClick={() => linkKnowledgeArticleToTicket(detailTicket.id, article.id)} type="button">
                         <div className="ticket-row-main">
@@ -1822,6 +2020,7 @@ function TicketsPage() {
                         </div>
                       </button>
                     ))}
+                    </div>
                   </div>
                 ) : null}
                 {linkedArticles.length ? (
@@ -1856,6 +2055,53 @@ function TicketsPage() {
                     </button>
                   </div>
                 ) : null}
+              </section>
+
+              <section className="ticket-attachment-panel">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Subtarefas tecnicas</strong>
+                    <span>Desdobre o atendimento em passos menores sem criar outro cadastro.</span>
+                  </div>
+                </div>
+                <div className="ticket-inline-compose">
+                  <input
+                    className="toolbar-search"
+                    disabled={!canEditTicket}
+                    onChange={(event) => setSubtaskDraft(event.target.value)}
+                    placeholder="Nova subtarefa tecnica"
+                    value={subtaskDraft}
+                  />
+                  {canEditTicket ? (
+                    <button className="ghost-button interactive-button" onClick={handleAddSubtask} type="button">
+                      Vincular
+                    </button>
+                  ) : null}
+                </div>
+                {detailTicket.subtasks?.length ? (
+                  <div className="ticket-subtask-list">
+                    {detailTicket.subtasks.map((subtask) => (
+                      <label className="ticket-subtask-item" key={subtask.id}>
+                        <input
+                          checked={normalizeText(subtask.status) === "concluida"}
+                          onChange={() => handleToggleSubtask(subtask.id)}
+                          type="checkbox"
+                        />
+                        <div>
+                          <strong>{subtask.title}</strong>
+                          <span>
+                            {subtask.ownerName || "Sem responsavel"} | {normalizeText(subtask.status) === "concluida" ? subtask.completedAtLabel || "Concluida" : subtask.createdAtLabel}
+                          </span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Nenhuma subtarefa vinculada.</strong>
+                    <span>Use este bloco para quebrar o atendimento em etapas menores.</span>
+                  </div>
+                )}
               </section>
 
               <section className="ticket-attachment-panel">
@@ -1914,9 +2160,23 @@ function TicketsPage() {
                     <span>Auditoria, acompanhamentos publicos e privados em ordem cronologica unica.</span>
                   </div>
                 </div>
-                {detailTimeline.length ? (
+                <div className="ticket-inline-filter-bar">
+                  <button className={`filter-pill interactive-button${timelineFilter === "all" ? " is-active" : ""}`} onClick={() => setTimelineFilter("all")} type="button">
+                    Tudo
+                  </button>
+                  <button className={`filter-pill interactive-button${timelineFilter === "comments" ? " is-active" : ""}`} onClick={() => setTimelineFilter("comments")} type="button">
+                    Comentarios
+                  </button>
+                  <button className={`filter-pill interactive-button${timelineFilter === "audit" ? " is-active" : ""}`} onClick={() => setTimelineFilter("audit")} type="button">
+                    Auditoria
+                  </button>
+                  <button className={`filter-pill interactive-button${timelineFilter === "approval" ? " is-active" : ""}`} onClick={() => setTimelineFilter("approval")} type="button">
+                    Aprovacao
+                  </button>
+                </div>
+                {filteredDetailTimeline.length ? (
                   <div className="ticket-rows">
-                    {detailTimeline.map((entry) => (
+                    {filteredDetailTimeline.map((entry) => (
                       <article className="ticket-row-card" key={entry.id}>
                         <div className="ticket-row-main">
                           <div className="ticket-row-title">
@@ -1937,8 +2197,8 @@ function TicketsPage() {
                   </div>
                 ) : (
                   <div className="empty-state">
-                    <strong>Nenhum evento registrado.</strong>
-                    <span>As alteracoes deste chamado passarao a aparecer aqui.</span>
+                    <strong>Nenhum evento neste filtro.</strong>
+                    <span>Altere o filtro para visualizar comentarios, auditoria ou aprovacoes.</span>
                   </div>
                 )}
               </section>

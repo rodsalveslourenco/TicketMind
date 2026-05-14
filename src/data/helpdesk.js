@@ -166,6 +166,26 @@ export function normalizeFollowUps(followUps) {
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
+export function normalizeTicketSubtasks(subtasks) {
+  return (Array.isArray(subtasks) ? subtasks : [])
+    .map((item) => {
+      const createdAt = item?.createdAt || new Date().toISOString();
+      const completed = normalizeText(item?.status) === "concluida";
+      const completedAt = completed ? String(item?.completedAt || createdAt).trim() : "";
+      return {
+        id: item?.id || `subtask-${Math.random().toString(36).slice(2, 8)}`,
+        title: String(item?.title || "").trim(),
+        status: completed ? "Concluida" : "Pendente",
+        ownerName: String(item?.ownerName || "").trim(),
+        createdAt,
+        createdAtLabel: formatTimestampLabel(createdAt),
+        completedAt,
+        completedAtLabel: completedAt ? formatTimestampLabel(completedAt) : "",
+      };
+    })
+    .filter((item) => item.title);
+}
+
 export function resolveTicketRequesterId(ticket, users) {
   if (ticket.requesterId && users.some((candidate) => candidate.id === ticket.requesterId)) {
     return ticket.requesterId;
@@ -193,9 +213,13 @@ export function buildTicketSearchText(ticket) {
     ticket.title,
     ticket.description,
     ticket.queue,
+    ticket.department,
     ticket.category,
+    ticket.projectName,
+    ticket.assetName,
     ticket.resolutionNotes,
     ...(Array.isArray(ticket.followUps) ? ticket.followUps.map((followUp) => followUp.message) : []),
+    ...(Array.isArray(ticket.subtasks) ? ticket.subtasks.map((subtask) => subtask.title) : []),
   ]
     .map((item) => normalizeText(item))
     .join(" ");
@@ -266,6 +290,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     ticket.slaDeadlineAt || new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString();
   const history = normalizeHistory(ticket.history);
   const followUps = normalizeFollowUps(ticket.followUps);
+  const subtasks = normalizeTicketSubtasks(ticket.subtasks);
   const approval = normalizeApproval(ticket);
   const isResolved = normalizeText(status) === "resolvido";
   let resolvedAt = ticket.resolvedAt || "";
@@ -307,6 +332,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     resolutionNotes: String(ticket.resolutionNotes || "").trim(),
     reopenReason: String(ticket.reopenReason || "").trim(),
     followUps,
+    subtasks,
     attachments: Array.isArray(ticket.attachments) ? ticket.attachments : [],
     history: nextHistory,
     approval,
@@ -317,6 +343,10 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     resolvedAt,
     resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
     knowledgeArticleIds: Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : [],
+    projectId: String(ticket.projectId || "").trim(),
+    projectName: String(ticket.projectName || "").trim(),
+    assetId: String(ticket.assetId || "").trim(),
+    assetName: String(ticket.assetName || "").trim(),
   };
 
   return {

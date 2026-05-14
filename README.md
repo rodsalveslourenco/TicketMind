@@ -268,6 +268,10 @@ No deploy:
 - exportacao operacional de chamados e cadastros principais
 - aprovacao de requisicoes no fluxo de tickets
 - notificacoes automatizadas por eventos do chamado
+- filtros dedicados para comentarios e timeline do ticket
+- subtarefas tecnicas vinculadas ao chamado principal
+- vinculos operacionais do ticket com projeto, ativo, usuario e departamento
+- sugestoes automaticas da base de conhecimento durante abertura e atendimento
 
 ## Mapeamento de novas funcoes
 
@@ -276,7 +280,6 @@ No deploy:
 - aprovacao multi-etapa com aprovadores por departamento, alcada e valor
 - aprovacao com SLA proprio, fila de pendencias e lembretes automaticos
 - aprovacao com delegado/substituto em ausencia do aprovador principal
-- comentarios publicos e privados com filtros dedicados
 - comentarios internos por equipe, sem exposicao ao solicitante
 - SLA por combinacao de tipo, categoria, prioridade e departamento
 - SLA de atendimento inicial separado do SLA de resolucao
@@ -287,9 +290,6 @@ No deploy:
 - templates de resposta, encerramento e reabertura
 - observadores com notificacao seletiva por evento
 - checklist operacional por tipo de chamado
-- subtarefas tecnicas vinculadas ao chamado principal
-- vinculo entre chamado, ativo, usuario, departamento e projeto
-- base de conhecimento sugerida automaticamente durante a abertura e a triagem
 - abertura de chamado por email com parsing basico de assunto e corpo
 - pesquisa global unificada por chamado, usuario, ativo e artigo
 - relatorios consolidados exportaveis em todos os modulos administrativos

@@ -4921,6 +4921,83 @@ textarea:focus {
   position: relative;
 }
 
+.ticket-inline-panel,
+.ticket-suggestion-panel {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.ticket-inline-panel-head {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.ticket-inline-panel-head strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+}
+
+.ticket-inline-panel-head span {
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.ticket-link-strip {
+  gap: 0.28rem 0.55rem;
+}
+
+.ticket-link-strip span {
+  font-size: 0.72rem;
+}
+
+.ticket-inline-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ticket-inline-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.ticket-subtask-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ticket-subtask-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.ticket-subtask-item input {
+  margin-top: 0.16rem;
+}
+
+.ticket-subtask-item strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.78rem;
+}
+
+.ticket-subtask-item span {
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
 .field-block.is-dirty::after {
   content: "Alterado";
   position: absolute;
