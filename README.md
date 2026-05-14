@@ -272,6 +272,9 @@ No deploy:
 - subtarefas tecnicas vinculadas ao chamado principal
 - vinculos operacionais do ticket com projeto, ativo, usuario e departamento
 - sugestoes automaticas da base de conhecimento durante abertura e atendimento
+- checklist operacional por tipo de chamado
+- macro de atendimento para atribuir, responder e mudar status em um clique
+- reabertura com motivo padronizado e classificacao de reincidencia
 
 ## Mapeamento de novas funcoes
 
@@ -289,7 +292,6 @@ No deploy:
 - campos obrigatorios dinamicos por categoria
 - templates de resposta, encerramento e reabertura
 - observadores com notificacao seletiva por evento
-- checklist operacional por tipo de chamado
 - abertura de chamado por email com parsing basico de assunto e corpo
 - pesquisa global unificada por chamado, usuario, ativo e artigo
 - relatorios consolidados exportaveis em todos os modulos administrativos
@@ -298,8 +300,6 @@ No deploy:
 
 - fila de triagem com acoes rapidas em linha
 - modo analista com preview lateral do chamado sem trocar de pagina
-- macro de atendimento para atribuir, responder e mudar status em um clique
-- reabertura com motivo padronizado e classificacao de reincidencia
 - escalonamento automatico de chamados vencidos ou sem responsavel
 - relacao entre chamado pai e filhos para incidentes maiores
 - status configuraveis por tipo de processo

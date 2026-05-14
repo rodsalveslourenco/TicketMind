@@ -37,6 +37,7 @@ import {
   isOpenTicketStatus,
   normalizeKnowledgeArticle,
   normalizeFollowUps,
+  normalizeTicketChecklist,
   normalizeTicketSubtasks,
   normalizePriorityLabel,
   normalizeText,
@@ -1150,6 +1151,7 @@ export function AppDataProvider({ children }) {
         attachments: payload.attachments || [],
         followUps: normalizeFollowUps(payload.followUps),
         subtasks: normalizeTicketSubtasks(payload.subtasks),
+        checklistItems: normalizeTicketChecklist(payload.checklistItems),
         approval: {
           ...approval,
           requestedAt: approval.required ? nowIso : approval.requestedAt || "",
@@ -1163,6 +1165,7 @@ export function AppDataProvider({ children }) {
         projectName: String(payload.projectName || "").trim(),
         assetId: String(payload.assetId || "").trim(),
         assetName: String(payload.assetName || "").trim(),
+        reopenCategory: String(payload.reopenCategory || "").trim(),
       };
 
       return { ...current, tickets: [createdTicket, ...current.tickets] };
@@ -1250,6 +1253,8 @@ export function AppDataProvider({ children }) {
         const followUpsChanged = JSON.stringify(nextFollowUps) !== JSON.stringify(normalizeFollowUps(ticket.followUps));
         const nextSubtasks = updates.subtasks !== undefined ? normalizeTicketSubtasks(updates.subtasks) : normalizeTicketSubtasks(ticket.subtasks);
         const subtasksChanged = JSON.stringify(nextSubtasks) !== JSON.stringify(normalizeTicketSubtasks(ticket.subtasks));
+        const nextChecklistItems = updates.checklistItems !== undefined ? normalizeTicketChecklist(updates.checklistItems) : normalizeTicketChecklist(ticket.checklistItems);
+        const checklistChanged = JSON.stringify(nextChecklistItems) !== JSON.stringify(normalizeTicketChecklist(ticket.checklistItems));
         const nextDepartmentId = String(updates.departmentId ?? ticket.departmentId ?? "").trim();
         const nextDepartment =
           (current.departments || []).find((department) => department.id === nextDepartmentId)?.name ||
@@ -1258,6 +1263,7 @@ export function AppDataProvider({ children }) {
           ? [...new Set(updates.knowledgeArticleIds.filter(Boolean))]
           : ticket.knowledgeArticleIds || [];
         const nextReopenReason = String((updates.reopenReason ?? ticket.reopenReason) || "").trim();
+        const nextReopenCategory = String((updates.reopenCategory ?? ticket.reopenCategory) || "").trim();
         const nextCategory = String((updates.category ?? ticket.category) || "").trim();
         const nextProjectId = String(updates.projectId ?? ticket.projectId ?? "").trim();
         const nextProjectName =
@@ -1344,6 +1350,7 @@ export function AppDataProvider({ children }) {
                 actorId: user?.id,
                 actorName: user?.name || "Sistema",
                 message: nextReopenReason ? `Chamado reaberto: ${nextReopenReason}` : "Chamado reaberto",
+                metadata: { reopenCategory: nextReopenCategory || "" },
                 createdAt: nowIso,
               }),
             );
@@ -1416,6 +1423,19 @@ export function AppDataProvider({ children }) {
             }),
           );
         }
+        if (checklistChanged) {
+          const completedCount = nextChecklistItems.filter((item) => item.checked).length;
+          historyEntries.push(
+            createHistoryEntry({
+              type: "checklist_updated",
+              actorId: user?.id,
+              actorName: user?.name || "Sistema",
+              message: `Checklist atualizado (${completedCount}/${nextChecklistItems.length})`,
+              metadata: { completedCount, total: nextChecklistItems.length },
+              createdAt: nowIso,
+            }),
+          );
+        }
         if (approvalAction === "request") {
           historyEntries.push(createHistoryEntry({ type: "approval_requested", actorId: user?.id, actorName: user?.name || "Sistema", message: "Aprovacao solicitada", createdAt: nowIso }));
         }
@@ -1467,7 +1487,9 @@ export function AppDataProvider({ children }) {
           resolutionNotes: nextResolutionNotes,
           followUps: nextFollowUps,
           subtasks: nextSubtasks,
+          checklistItems: nextChecklistItems,
           reopenReason: nextReopenReason,
+          reopenCategory: nextReopenCategory,
           approval: nextApproval,
           triage: routedState.triage || ticket.triage || {},
           resolvedAt,

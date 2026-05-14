@@ -186,6 +186,16 @@ export function normalizeTicketSubtasks(subtasks) {
     .filter((item) => item.title);
 }
 
+export function normalizeTicketChecklist(checklistItems) {
+  return (Array.isArray(checklistItems) ? checklistItems : [])
+    .map((item) => ({
+      id: item?.id || `check-${Math.random().toString(36).slice(2, 8)}`,
+      label: String(item?.label || "").trim(),
+      checked: Boolean(item?.checked),
+    }))
+    .filter((item) => item.label);
+}
+
 export function resolveTicketRequesterId(ticket, users) {
   if (ticket.requesterId && users.some((candidate) => candidate.id === ticket.requesterId)) {
     return ticket.requesterId;
@@ -217,6 +227,7 @@ export function buildTicketSearchText(ticket) {
     ticket.category,
     ticket.projectName,
     ticket.assetName,
+    ...(Array.isArray(ticket.checklistItems) ? ticket.checklistItems.map((item) => item.label) : []),
     ticket.resolutionNotes,
     ...(Array.isArray(ticket.followUps) ? ticket.followUps.map((followUp) => followUp.message) : []),
     ...(Array.isArray(ticket.subtasks) ? ticket.subtasks.map((subtask) => subtask.title) : []),
@@ -291,6 +302,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
   const history = normalizeHistory(ticket.history);
   const followUps = normalizeFollowUps(ticket.followUps);
   const subtasks = normalizeTicketSubtasks(ticket.subtasks);
+  const checklistItems = normalizeTicketChecklist(ticket.checklistItems);
   const approval = normalizeApproval(ticket);
   const isResolved = normalizeText(status) === "resolvido";
   let resolvedAt = ticket.resolvedAt || "";
@@ -333,6 +345,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     reopenReason: String(ticket.reopenReason || "").trim(),
     followUps,
     subtasks,
+    checklistItems,
     attachments: Array.isArray(ticket.attachments) ? ticket.attachments : [],
     history: nextHistory,
     approval,
@@ -347,6 +360,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     projectName: String(ticket.projectName || "").trim(),
     assetId: String(ticket.assetId || "").trim(),
     assetName: String(ticket.assetName || "").trim(),
+    reopenCategory: String(ticket.reopenCategory || "").trim(),
   };
 
   return {

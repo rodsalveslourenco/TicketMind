@@ -54,6 +54,24 @@ const solutionTemplates = [
   { id: "sol-3", name: "Orientacao concluida", content: "Chamado concluido com orientacao ao usuario e confirmacao do funcionamento esperado." },
 ];
 
+const reopenReasonTemplates = [
+  { id: "reopen-1", label: "Falha voltou a ocorrer", category: "Reincidencia", content: "O problema voltou a ocorrer apos o encerramento anterior." },
+  { id: "reopen-2", label: "Solucao incompleta", category: "Correcao parcial", content: "A solucao aplicada anteriormente nao resolveu todo o escopo informado." },
+  { id: "reopen-3", label: "Validacao do usuario reprovada", category: "Validacao", content: "O usuario validou e informou que o comportamento esperado nao foi atingido." },
+];
+
+const ticketMacros = [
+  { id: "macro-1", label: "Assumir e iniciar", status: "Em andamento", assignSelf: true, followUpVisibility: "private", followUpMessage: "Chamado assumido e iniciado para analise tecnica." },
+  { id: "macro-2", label: "Responder e aguardar", status: "Aguardando usuario", assignSelf: false, followUpVisibility: "public", followUpMessage: "Retorno enviado ao solicitante. Atendimento aguardando validacao do usuario." },
+  { id: "macro-3", label: "Assumir e solicitar aprovacao", status: "Aguardando aprovacao", assignSelf: true, followUpVisibility: "public", followUpMessage: "Analise inicial concluida. Fluxo movido para aprovacao da requisicao." },
+];
+
+const checklistByType = {
+  incidente: ["Registrar impacto", "Validar ambiente afetado", "Executar diagnostico inicial", "Retornar proximo passo ao solicitante"],
+  requisicao: ["Validar dados do solicitante", "Conferir aprovacao necessaria", "Executar atendimento solicitado", "Registrar evidencia de entrega"],
+  problema: ["Relacionar causa raiz", "Mapear recorrencia", "Definir acao corretiva", "Documentar prevencao futura"],
+};
+
 const TICKET_GRID_COLUMNS = [
   { key: "requester", label: "Solicitante", defaultVisible: true },
   { key: "email", label: "Email", defaultVisible: true },
@@ -148,6 +166,15 @@ function parseDateValue(value, edge = "start") {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function buildChecklistTemplate(type) {
+  const labels = checklistByType[normalizeText(type)] || checklistByType.incidente;
+  return labels.map((label, index) => ({
+    id: `check-template-${normalizeText(type || "incidente")}-${index}`,
+    label,
+    checked: false,
+  }));
+}
+
 function TicketsPage() {
   const {
     addTicketAttachments,
@@ -203,6 +230,8 @@ function TicketsPage() {
   const [followUpVisibility, setFollowUpVisibility] = useState("public");
   const [selectedResponseTemplateId, setSelectedResponseTemplateId] = useState("");
   const [selectedSolutionTemplateId, setSelectedSolutionTemplateId] = useState("");
+  const [selectedReopenTemplateId, setSelectedReopenTemplateId] = useState("");
+  const [selectedMacroId, setSelectedMacroId] = useState("");
   const [approvalReason, setApprovalReason] = useState("");
   const [followUpDraft, setFollowUpDraft] = useState("");
   const [followUpFilter, setFollowUpFilter] = useState("all");
@@ -347,6 +376,17 @@ function TicketsPage() {
     }
     return detailTimeline;
   }, [detailTimeline, timelineFilter]);
+  const reopenCount = useMemo(
+    () => (detailTicket?.history || []).filter((entry) => normalizeText(entry.type) === "reopened").length,
+    [detailTicket?.history],
+  );
+  const recurrenceLabel = useMemo(() => {
+    if (!detailTicket) return "Sem recorrencia";
+    if (reopenCount >= 3) return "Recorrencia cronica";
+    if (reopenCount === 2) return "Recorrencia alta";
+    if (reopenCount === 1) return "Primeira recorrencia";
+    return "Sem recorrencia";
+  }, [detailTicket, reopenCount]);
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
@@ -620,6 +660,7 @@ function TicketsPage() {
       category: detailTicket.category,
       location: detailTicket.location || "",
       reopenReason: detailTicket.reopenReason || "",
+      reopenCategory: detailTicket.reopenCategory || "",
       priority: detailTicket.priority,
       urgency: detailTicket.urgency || detailTicket.priority,
       impact: detailTicket.impact || detailTicket.priority,
@@ -631,12 +672,15 @@ function TicketsPage() {
       assetId: detailTicket.assetId || "",
       assetName: detailTicket.assetName || "",
       subtasks: detailTicket.subtasks || [],
+      checklistItems: detailTicket.checklistItems || buildChecklistTemplate(detailTicket.type),
     });
     setFollowUpDraft("");
     setFollowUpVisibility("public");
     setFollowUpFilter("all");
     setSelectedResponseTemplateId("");
     setSelectedSolutionTemplateId("");
+    setSelectedReopenTemplateId("");
+    setSelectedMacroId("");
     setApprovalReason(detailTicket.approval?.decisionReason || "");
     setTimelineFilter("all");
     setSubtaskDraft("");
@@ -765,6 +809,7 @@ function TicketsPage() {
       category: createForm.category || "Geral",
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
+      checklistItems: buildChecklistTemplate(createForm.type),
       projectName: activeProjectOptions.find((project) => project.id === createForm.projectId)?.name || "",
       assetName:
         activeAssetOptions.find((asset) => asset.id === createForm.assetId)?.tag ||
@@ -793,6 +838,7 @@ function TicketsPage() {
     updateTicket(detailTicket.id, {
       ...detailForm,
       dueDate: detailForm.dueDate || "",
+      checklistItems: detailForm.checklistItems || [],
       projectName: activeProjectOptions.find((project) => project.id === detailForm.projectId)?.name || detailForm.projectName || "",
       assetName:
         activeAssetOptions.find((asset) => asset.id === detailForm.assetId)?.tag ||
@@ -878,6 +924,54 @@ function TicketsPage() {
     const template = solutionTemplates.find((item) => item.id === templateId);
     if (!template) return;
     setDetailForm((current) => ({ ...current, resolutionNotes: template.content }));
+  };
+
+  const handleApplyReopenTemplate = (templateId) => {
+    setSelectedReopenTemplateId(templateId);
+    const template = reopenReasonTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    setDetailForm((current) => ({
+      ...current,
+      reopenReason: template.content,
+      reopenCategory: template.category,
+    }));
+  };
+
+  const handleApplyMacro = (macroId) => {
+    if (!detailTicket || !detailForm) return;
+    const macro = ticketMacros.find((item) => item.id === macroId);
+    setSelectedMacroId(macroId);
+    if (!macro) return;
+    const nextAssignee = macro.assignSelf ? user?.name || detailForm.assignee : detailForm.assignee;
+    const nextFollowUp = createFollowUpEntry({
+      visibility: macro.followUpVisibility,
+      message: macro.followUpMessage,
+      actorId: user?.id,
+      actorName: user?.name || "Sistema",
+    });
+    updateTicket(detailTicket.id, {
+      ...detailForm,
+      assignee: nextAssignee,
+      status: macro.status,
+      followUps: [nextFollowUp, ...(detailTicket.followUps || [])],
+    });
+    setFollowUpDraft("");
+    pushToast("Macro aplicada", macro.label);
+  };
+
+  const handleToggleChecklistItem = (checklistItemId) => {
+    if (!detailTicket || !detailForm) return;
+    const nextChecklistItems = (detailForm.checklistItems || []).map((item) =>
+      item.id === checklistItemId ? { ...item, checked: !item.checked } : item,
+    );
+    setDetailForm((current) => ({ ...current, checklistItems: nextChecklistItems }));
+    updateTicket(detailTicket.id, { checklistItems: nextChecklistItems });
+  };
+
+  const handleResetChecklistForType = () => {
+    if (!detailForm) return;
+    const nextChecklist = buildChecklistTemplate(detailForm.type);
+    setDetailForm((current) => ({ ...current, checklistItems: nextChecklist }));
   };
 
   const handleApprovalAction = (action) => {
@@ -1072,9 +1166,11 @@ function TicketsPage() {
       assignee: String(detailForm.assignee || "") !== String(detailTicket.assignee || ""),
       projectId: String(detailForm.projectId || "") !== String(detailTicket.projectId || ""),
       assetId: String(detailForm.assetId || "") !== String(detailTicket.assetId || ""),
+      checklistItems: JSON.stringify(detailForm.checklistItems || []) !== JSON.stringify(detailTicket.checklistItems || []),
       description: String(detailForm.description || "") !== String(detailTicket.description || ""),
       resolutionNotes: String(detailForm.resolutionNotes || "") !== String(detailTicket.resolutionNotes || ""),
       reopenReason: String(detailForm.reopenReason || "") !== String(detailTicket.reopenReason || ""),
+      reopenCategory: String(detailForm.reopenCategory || "") !== String(detailTicket.reopenCategory || ""),
     };
   }, [detailForm, detailTicket]);
 
@@ -1623,6 +1719,26 @@ function TicketsPage() {
                 <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
               </div>
 
+              <section className="ticket-inline-panel">
+                <div className="ticket-inline-panel-head">
+                  <strong>Macro de atendimento</strong>
+                  <span>Atribua, responda e mova o status em um clique.</span>
+                </div>
+                <div className="ticket-inline-compose">
+                  <select onChange={(event) => setSelectedMacroId(event.target.value)} value={selectedMacroId}>
+                    <option value="">Selecione uma macro</option>
+                    {ticketMacros.map((macro) => (
+                      <option key={macro.id} value={macro.id}>
+                        {macro.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="ghost-button interactive-button" disabled={!selectedMacroId} onClick={() => handleApplyMacro(selectedMacroId)} type="button">
+                    Aplicar macro
+                  </button>
+                </div>
+              </section>
+
               <div className="glpi-info-strip">
                 <div>
                   <span>Prioridade</span>
@@ -1641,6 +1757,10 @@ function TicketsPage() {
                 <div>
                   <span>SLA</span>
                   <strong className={`badge ${getSlaTone(detailTicket)}`}>{detailTicket.slaLabel}</strong>
+                </div>
+                <div>
+                  <span>Reincidencia</span>
+                  <strong className="badge badge-neutral">{recurrenceLabel}</strong>
                 </div>
               </div>
 
@@ -1854,6 +1974,39 @@ function TicketsPage() {
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
 
+              <section className="ticket-inline-panel">
+                <div className="ticket-inline-panel-head">
+                  <strong>Checklist operacional</strong>
+                  <span>Lista base por tipo de chamado para padronizar a execucao do atendimento.</span>
+                </div>
+                <div className="ticket-inline-compose">
+                  <span className="shortcut-hint">
+                    {(detailForm.checklistItems || []).filter((item) => item.checked).length}/{(detailForm.checklistItems || []).length} etapa(s) concluida(s)
+                  </span>
+                  <button className="ghost-button interactive-button" disabled={!canEditTicket} onClick={handleResetChecklistForType} type="button">
+                    Reaplicar checklist do tipo
+                  </button>
+                </div>
+                {(detailForm.checklistItems || []).length ? (
+                  <div className="ticket-subtask-list">
+                    {(detailForm.checklistItems || []).map((item) => (
+                      <label className="ticket-subtask-item" key={item.id}>
+                        <input checked={Boolean(item.checked)} disabled={!canEditTicket} onChange={() => handleToggleChecklistItem(item.id)} type="checkbox" />
+                        <div>
+                          <strong>{item.label}</strong>
+                          <span>{item.checked ? "Concluida" : "Pendente"}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Nenhum checklist carregado.</strong>
+                    <span>Use o botao acima para reaplicar o checklist padrao do tipo atual.</span>
+                  </div>
+                )}
+              </section>
+
               <div className="detail-grid">
                 <label className="field-block">
                   <span>Template de solucao</span>
@@ -1867,10 +2020,33 @@ function TicketsPage() {
                   </select>
                 </label>
                 {normalizeText(detailForm.status) === "reaberto" ? (
-                  <label className={`field-block field-full${detailDirtyFields.reopenReason ? " is-dirty" : ""}`}>
-                    <span>Motivo da reabertura</span>
-                    <textarea disabled={!canEditTicket} onChange={updateDetailField("reopenReason")} value={detailForm.reopenReason || ""} />
-                  </label>
+                  <>
+                    <label className="field-block">
+                      <span>Template de reabertura</span>
+                      <select disabled={!canEditTicket} onChange={(event) => handleApplyReopenTemplate(event.target.value)} value={selectedReopenTemplateId}>
+                        <option value="">Selecione</option>
+                        {reopenReasonTemplates.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={`field-block${detailDirtyFields.reopenCategory ? " is-dirty" : ""}`}>
+                      <span>Classificacao da reabertura</span>
+                      <select disabled={!canEditTicket} onChange={updateDetailField("reopenCategory")} value={detailForm.reopenCategory || ""}>
+                        <option value="">Selecione</option>
+                        <option>Reincidencia</option>
+                        <option>Correcao parcial</option>
+                        <option>Validacao</option>
+                        <option>Novo escopo</option>
+                      </select>
+                    </label>
+                    <label className={`field-block field-full${detailDirtyFields.reopenReason ? " is-dirty" : ""}`}>
+                      <span>Motivo da reabertura</span>
+                      <textarea disabled={!canEditTicket} onChange={updateDetailField("reopenReason")} value={detailForm.reopenReason || ""} />
+                    </label>
+                  </>
                 ) : null}
               </div>
 
