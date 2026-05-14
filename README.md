@@ -229,8 +229,6 @@ O seed atual fica em [`src/data/seedData.js`](src/data/seedData.js).
 
 Usuario administrador padrao:
 
-- email: `admin@ticketmind.local`
-- senha: `admin0123`
 
 Esse seed e usado quando ainda nao existe estado persistido.
 
