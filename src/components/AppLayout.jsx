@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
 import { canAccessModule, hasAnyPermission } from "../data/permissions";
@@ -107,8 +107,6 @@ function AppLayout() {
   const { dismissToast, notifications, summary, navigationSections, permissionCatalog } = useAppData();
   const { density, setDensity } = useUiPreferences();
   const location = useLocation();
-  const navigate = useNavigate();
-  const [globalSearch, setGlobalSearch] = useState("");
   const [expandedSections, setExpandedSections] = useState(() => {
     try {
       const storedValue = window.localStorage.getItem(SIDEBAR_STATE_KEY);
@@ -141,12 +139,6 @@ function AppLayout() {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(expandedSections));
   }, [expandedSections]);
-
-  const handleGlobalSearch = (event) => {
-    event.preventDefault();
-    const query = globalSearch.trim();
-    navigate(query ? `/app/tickets?q=${encodeURIComponent(query)}` : "/app/tickets");
-  };
 
   const toggleSection = (sectionKey) => {
     setExpandedSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }));
@@ -210,21 +202,9 @@ function AppLayout() {
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-copy">
-            <span className="topbar-kicker">Central de operacoes</span>
             <h1>{currentPage?.label || "Dashboard"}</h1>
           </div>
           <div className="topbar-actions">
-            <form className="topbar-search-form" onSubmit={handleGlobalSearch}>
-              <input
-                className="toolbar-search topbar-search"
-                onChange={(event) => setGlobalSearch(event.target.value)}
-                placeholder="Buscar chamado por numero, usuario, email, tecnico ou titulo"
-                value={globalSearch}
-              />
-              <button className="ghost-button interactive-button" type="submit">
-                Buscar
-              </button>
-            </form>
             <div className="toolbar density-toggle" role="group" aria-label="Densidade visual">
               {[
                 ["compacta", "Compacta"],

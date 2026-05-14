@@ -1191,41 +1191,34 @@ function TicketsPage() {
                 style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.06 })}
               >
                 <button className="ticket-row-open interactive-button" onClick={() => setDetailTicketId(ticket.id)} type="button">
-                  <div className="ticket-row-headerline">
-                    <div className="ticket-row-ticketid">{ticket.id}</div>
-                    <div className="ticket-row-badges ticket-row-badges-compact">
-                      <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                      <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
-                      <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
-                    </div>
-                  </div>
                   <div className="ticket-row-main ticket-row-main-compact">
                     <div className="ticket-row-title ticket-row-title-compact">
                       <h3>
                         <span className="ticket-row-key-inline">{ticket.id}</span>
                         <span>{ticket.title}</span>
                       </h3>
-                      <div className="ticket-row-context-chips">
-                        <span className="context-chip">{ticket.requester}</span>
-                        <span className="context-chip">{ticket.department || ticket.queue || "Sem departamento"}</span>
-                        <span className={`context-chip context-chip-status ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
-                        {(ticket.dueSoon || ticket.isOverdue) ? <span className="context-chip">SLA {ticket.slaLabel}</span> : null}
+                      <div className="ticket-row-summaryline">
+                        <span>{ticket.requester}</span>
+                        <span>{ticket.department || ticket.queue || "Sem departamento"}</span>
+                        <span>{ticket.assignee || "Sem responsavel"}</span>
+                        <span>{ticket.openedAtLabel || "-"}</span>
                       </div>
                     </div>
-                    <div className="ticket-row-side-meta">
-                      <strong>{ticket.assignee || "Sem responsavel"}</strong>
-                      <span>{ticket.openedAtLabel || "-"}</span>
+                    <div className="ticket-row-inline-right">
+                      <div className="ticket-row-badges ticket-row-badges-compact">
+                        <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
+                        <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                        {(ticket.dueSoon || ticket.isOverdue || ticket.unassigned) ? (
+                          <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   <div className="ticket-row-meta ticket-row-meta-compact">
                     {visibleColumns.includes("email") && ticket.requesterEmail ? <span>{ticket.requesterEmail}</span> : null}
                     {visibleColumns.includes("category") ? <span>{ticket.category || "Geral"}</span> : null}
-                    {visibleColumns.includes("department") ? <span>{ticket.department || "-"}</span> : null}
-                    {visibleColumns.includes("queue") ? <span>{ticket.queue || "-"}</span> : null}
                     {visibleColumns.includes("urgency") ? <span>Urgencia {ticket.urgency || ticket.priority}</span> : null}
-                    {visibleColumns.includes("openedAt") ? <span>{ticket.openedAtLabel || "-"}</span> : null}
                     {visibleColumns.includes("source") ? <span>{ticket.source || "Portal"}</span> : null}
-                    {visibleColumns.includes("assignee") ? <span>{ticket.assignee || "Sem tecnico"}</span> : null}
                   </div>
                 </button>
                 <div className="compact-row-actions ticket-inline-actions">
