@@ -1088,8 +1088,8 @@ function TicketsPage() {
 
         {showGridConfig ? (
           <div className="board-card compact-record-card ticket-grid-config-panel">
-            <strong>Contexto visivel na grade</strong>
-            <span>Escolha quais colunas leves aparecem por usuario neste modulo.</span>
+            <strong>Contexto visivel na lista</strong>
+            <span>Escolha quais informacoes complementares aparecem em cada linha deste modulo.</span>
             <div className="permissions-inline users-grid-config">
               {TICKET_GRID_COLUMNS.map((column) => (
                 <label className="inline-toggle" key={column.key}>
@@ -1277,17 +1277,6 @@ function TicketsPage() {
         </div>
 
         <div className="ticket-rows ticket-rows-wide ticket-list-compact">
-          {filteredTickets.length ? (
-            <div className="ticket-grid-header">
-              <span>Chamado</span>
-              <div className="ticket-grid-header-columns">
-                {visibleGridColumns.map((column) => (
-                  <span key={column.key}>{column.label}</span>
-                ))}
-              </div>
-              <span>Acoes</span>
-            </div>
-          ) : null}
           {filteredTickets.length ? (
             filteredTickets.map((ticket) => (
               <article

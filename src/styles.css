@@ -4644,7 +4644,6 @@ textarea:focus {
   padding: 0;
 }
 
-.ticket-grid-header,
 .user-grid-header {
   position: sticky;
   top: 0;
@@ -4662,7 +4661,6 @@ textarea:focus {
   text-transform: uppercase;
 }
 
-.ticket-grid-header-columns,
 .user-grid-header-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -4681,8 +4679,12 @@ textarea:focus {
 }
 
 .ticket-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   justify-content: flex-end;
   padding: 0 var(--row-padding-x) var(--row-padding-y);
+  border-top: 1px solid rgba(226, 232, 240, 0.7);
 }
 
 .ticket-row-context-chips {
@@ -4768,15 +4770,25 @@ textarea:focus {
 }
 
 .ticket-row-meta-compact {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.38rem 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  align-items: center;
   margin-top: 0;
   padding-top: 0.55rem;
   border-top: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .ticket-row-meta-compact span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(241, 245, 249, 0.92);
+  color: #5a6c7e;
+  font-size: 0.73rem;
+  line-height: 1.25;
   min-width: 0;
 }
 
@@ -4854,6 +4866,11 @@ textarea:focus {
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.96);
+}
+
+.ticket-rows-wide {
+  border: 0;
+  background: transparent;
 }
 
 .user-list {
