@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { requestJson } from "../lib/api";
+import { loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
 import {
   buildEmptyPermissions,
   getRolePermissions,
@@ -890,10 +890,7 @@ export function AppDataProvider({ children }) {
   };
 
   const persistStateImmediately = async (nextState) => {
-    const persistedState = await requestJson("/api/state", {
-      method: "PUT",
-      body: JSON.stringify(nextState),
-    });
+    const persistedState = await persistAppState(nextState);
     setData(mergeCollections(persistedState));
     return persistedState;
   };
@@ -909,7 +906,7 @@ export function AppDataProvider({ children }) {
 
     async function loadData() {
       try {
-        const serverData = await requestJson("/api/state");
+        const serverData = await loadAppState();
         if (cancelled) return;
         setData(mergeCollections(serverData));
       } catch (error) {
@@ -932,10 +929,7 @@ export function AppDataProvider({ children }) {
     let active = true;
     const timeoutId = window.setTimeout(async () => {
       try {
-        await requestJson("/api/state", {
-          method: "PUT",
-          body: JSON.stringify(data),
-        });
+        await persistAppState(data);
       } catch (error) {
         if (active) console.error(error);
       }
@@ -2504,10 +2498,7 @@ export function AppDataProvider({ children }) {
 
     await persistStateImmediately(nextState);
 
-    return requestJson("/api/notifications/test", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    return sendNotificationTestRequest(payload);
   };
 
   const value = useMemo(

@@ -21,12 +21,20 @@ import {
   verifySessionToken,
 } from "./security.js";
 import { buildActorFromUser, collectStateAuditLogs, createSystemLog, getRequestOrigin, isTiDepartmentUser } from "./systemLogs.js";
+import { createV1Router } from "./api/routes/v1.js";
+import * as stateRepository from "./repositories/stateRepository.js";
+import { createStateService } from "./services/stateService.js";
+import { createTicketService } from "./services/ticketService.js";
+import { createCollectionService } from "./services/collectionService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const distPath = path.resolve(__dirname, "..", "dist");
+const stateService = createStateService({ stateRepository });
+const ticketService = createTicketService({ stateService });
+const collectionService = createCollectionService({ stateService });
 
 app.use(express.json({ limit: "15mb" }));
 
@@ -202,6 +210,50 @@ function buildAdministrativeAuditLogs(changes = [], actor = {}, origin = "") {
   ];
 }
 
+async function persistStateChange(request, response, auth, nextState) {
+  const previousState = auth?.state || (await readState());
+  const protectedState = applyServerStateProtections(previousState, nextState);
+  const criticalChanges = summarizeCriticalStateChanges(previousState, protectedState);
+  const deniedChanges = criticalChanges.filter((change) => !isAllowedCriticalChange(auth.requestUser, change));
+
+  if (deniedChanges.length) {
+    await insertSystemLog(
+      createSystemLog({
+        ...buildActorFromUser(auth.requestUser),
+        module: "administracao",
+        eventType: "permissao",
+        description: `Operacao critica bloqueada para ${auth.requestUser.name}.`,
+        origin: getRequestOrigin(request),
+        status: "erro",
+        metadata: {
+          route: request.originalUrl,
+          method: request.method,
+          deniedChanges,
+        },
+      }),
+    );
+    response.status(403).json({ error: "Voce nao possui permissao para executar uma ou mais alteracoes criticas." });
+    return null;
+  }
+
+  const persistedState = await writeState(protectedState);
+  const actor = buildActorFromUser(auth.requestUser);
+  const auditLogs = collectStateAuditLogs(previousState, persistedState, actor, getRequestOrigin(request));
+  const administrativeLogs = buildAdministrativeAuditLogs(criticalChanges, actor, getRequestOrigin(request));
+  await Promise.all([...auditLogs, ...administrativeLogs].map((entry) => insertSystemLog(entry)));
+
+  void processTicketNotifications({
+    previousState,
+    nextState: persistedState,
+    persistState: writeState,
+    baseUrl: process.env.APP_PUBLIC_URL || "",
+  }).catch((error) => {
+    console.error("notification processing failed", error);
+  });
+
+  return persistedState;
+}
+
 async function denyRequest(request, response, statusCode, message, metadata = {}, requestUser = null) {
   await insertSystemLog(
     createSystemLog({
@@ -298,7 +350,7 @@ async function requireTiAccess(request, response, stateOverride = null) {
 }
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true });
+  response.json({ ok: true, apiVersion: "v1" });
 });
 
 app.post("/api/auth/login", async (request, response) => {
@@ -410,6 +462,17 @@ async function handleSessionRequest(request, response) {
 app.get("/api/auth/session", handleSessionRequest);
 app.get("/api/auth/session/:userId", handleSessionRequest);
 
+app.use(
+  "/api/v1",
+  createV1Router({
+    requireAuthenticatedUser,
+    stateService,
+    ticketService,
+    collectionService,
+    persistStateChange: (context) => persistStateChange(context.request, context.response, context.auth, context.nextState),
+  }),
+);
+
 app.get("/api/state", async (request, response) => {
   const auth = await requireAuthenticatedUser(request, response);
   if (!auth) return;
@@ -422,46 +485,9 @@ app.put("/api/state", async (request, response) => {
   if (!auth) return;
 
   const mergedState = mergeIncomingState(previousState, request.body || {});
-  const protectedState = applyServerStateProtections(previousState, mergedState);
-  const criticalChanges = summarizeCriticalStateChanges(previousState, protectedState);
-  const deniedChanges = criticalChanges.filter((change) => !isAllowedCriticalChange(auth.requestUser, change));
-
-  if (deniedChanges.length) {
-    await insertSystemLog(
-      createSystemLog({
-        ...buildActorFromUser(auth.requestUser),
-        module: "administracao",
-        eventType: "permissao",
-        description: `Operacao critica bloqueada para ${auth.requestUser.name}.`,
-        origin: getRequestOrigin(request),
-        status: "erro",
-        metadata: {
-          route: request.originalUrl,
-          method: request.method,
-          deniedChanges,
-        },
-      }),
-    );
-    response.status(403).json({ error: "Voce nao possui permissao para executar uma ou mais alteracoes criticas." });
-    return;
-  }
-
-  const persistedState = await writeState(protectedState);
+  const persistedState = await persistStateChange(request, response, auth, mergedState);
+  if (!persistedState) return;
   response.json(prepareStateForClient(persistedState));
-
-  const actor = buildActorFromUser(auth.requestUser);
-  const auditLogs = collectStateAuditLogs(previousState, persistedState, actor, getRequestOrigin(request));
-  const administrativeLogs = buildAdministrativeAuditLogs(criticalChanges, actor, getRequestOrigin(request));
-  await Promise.all([...auditLogs, ...administrativeLogs].map((entry) => insertSystemLog(entry)));
-
-  void processTicketNotifications({
-    previousState,
-    nextState: persistedState,
-    persistState: writeState,
-    baseUrl: process.env.APP_PUBLIC_URL || "",
-  }).catch((error) => {
-    console.error("notification processing failed", error);
-  });
 });
 
 app.post("/api/notifications/test", async (request, response) => {

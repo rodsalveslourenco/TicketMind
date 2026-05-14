@@ -17,6 +17,7 @@ import {
   defaultServiceCenterSettings,
   defaultSmtpSettings,
 } from "../src/data/systemDefaults.js";
+import { CURRENT_PAYLOAD_VERSION, CURRENT_STATE_SCHEMA_VERSION, ensureStateSchema } from "./state/schema.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +39,48 @@ const bootstrapSeedState = {
   ...seedData,
   currentUser: null,
 };
+
+const DOMAIN_COLLECTION_KEYS = [
+  "tickets",
+  "assets",
+  "brands",
+  "models",
+  "projects",
+  "knowledgeArticles",
+  "apiConfigs",
+  "emailLayouts",
+  "notificationRules",
+  "notificationLogs",
+  "reports",
+];
+
+const DOMAIN_SINGLETON_KEYS = [
+  "permissionCatalog",
+  "permissionProfiles",
+  "navigationSections",
+  "notificationEvents",
+  "emailPlaceholders",
+  "smtpSettings",
+  "emailServiceSettings",
+  "serviceCenter",
+  "queues",
+];
+
+const DOMAIN_TABLES = {
+  tickets: "tickets_domain",
+  assets: "assets_domain",
+  brands: "brands_domain",
+  models: "models_domain",
+  projects: "projects_domain",
+  knowledgeArticles: "knowledge_articles_domain",
+  apiConfigs: "api_configs_domain",
+  emailLayouts: "email_layouts_domain",
+  notificationRules: "notification_rules_domain",
+  notificationLogs: "notification_logs_domain",
+  reports: "reports_domain",
+};
+
+const DOMAIN_SINGLETON_TABLE = "app_singletons";
 
 function normalizeCode(value, fallback = "") {
   const baseValue = String(value || fallback || "")
@@ -160,60 +203,106 @@ function normalizeText(value) {
 }
 
 function buildStateDefaults(stored = {}) {
-  const currentUser = stored.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null;
+  const versionedState = ensureStateSchema(stored);
+  const currentUser = versionedState.currentUser && typeof versionedState.currentUser === "object" ? versionedState.currentUser : null;
 
   return {
     ...staticSeedState,
-    ...stored,
+    ...versionedState,
     currentUser,
+    schemaVersion: versionedState.schemaVersion || CURRENT_STATE_SCHEMA_VERSION,
+    payloadVersion: versionedState.payloadVersion || CURRENT_PAYLOAD_VERSION,
+    schemaUpdatedAt: versionedState.schemaUpdatedAt || new Date().toISOString(),
+    domainVersions: versionedState.domainVersions,
+    migrationHistory: Array.isArray(versionedState.migrationHistory) ? versionedState.migrationHistory : [],
     permissionCatalog:
-      Array.isArray(stored.permissionCatalog) && stored.permissionCatalog.length
-        ? stored.permissionCatalog
+      Array.isArray(versionedState.permissionCatalog) && versionedState.permissionCatalog.length
+        ? versionedState.permissionCatalog
         : defaultPermissionCatalog,
     permissionProfiles:
-      Array.isArray(stored.permissionProfiles) && stored.permissionProfiles.length
-        ? hydratePermissionProfiles(stored.permissionProfiles)
+      Array.isArray(versionedState.permissionProfiles) && versionedState.permissionProfiles.length
+        ? hydratePermissionProfiles(versionedState.permissionProfiles)
         : hydratePermissionProfiles(defaultPermissionProfiles),
     navigationSections:
-      Array.isArray(stored.navigationSections) && stored.navigationSections.length
-        ? stored.navigationSections
+      Array.isArray(versionedState.navigationSections) && versionedState.navigationSections.length
+        ? versionedState.navigationSections
         : defaultNavigationSections,
     notificationEvents:
-      Array.isArray(stored.notificationEvents) && stored.notificationEvents.length
-        ? stored.notificationEvents
+      Array.isArray(versionedState.notificationEvents) && versionedState.notificationEvents.length
+        ? versionedState.notificationEvents
         : defaultNotificationEvents,
     emailPlaceholders:
-      Array.isArray(stored.emailPlaceholders) && stored.emailPlaceholders.length
-        ? stored.emailPlaceholders
+      Array.isArray(versionedState.emailPlaceholders) && versionedState.emailPlaceholders.length
+        ? versionedState.emailPlaceholders
         : defaultEmailPlaceholders,
-    emailLayouts: Array.isArray(stored.emailLayouts) ? stored.emailLayouts : [],
-    notificationRules: Array.isArray(stored.notificationRules) ? stored.notificationRules : [],
-    notificationLogs: Array.isArray(stored.notificationLogs) ? stored.notificationLogs : [],
+    emailLayouts: Array.isArray(versionedState.emailLayouts) ? versionedState.emailLayouts : [],
+    notificationRules: Array.isArray(versionedState.notificationRules) ? versionedState.notificationRules : [],
+    notificationLogs: Array.isArray(versionedState.notificationLogs) ? versionedState.notificationLogs : [],
     smtpSettings:
-      stored.smtpSettings && typeof stored.smtpSettings === "object"
-        ? { ...defaultSmtpSettings, ...stored.smtpSettings }
+      versionedState.smtpSettings && typeof versionedState.smtpSettings === "object"
+        ? { ...defaultSmtpSettings, ...versionedState.smtpSettings }
         : defaultSmtpSettings,
     emailServiceSettings:
-      stored.emailServiceSettings && typeof stored.emailServiceSettings === "object"
-        ? { ...defaultEmailServiceSettings, ...stored.emailServiceSettings }
+      versionedState.emailServiceSettings && typeof versionedState.emailServiceSettings === "object"
+        ? { ...defaultEmailServiceSettings, ...versionedState.emailServiceSettings }
         : defaultEmailServiceSettings,
     serviceCenter:
-      stored.serviceCenter && typeof stored.serviceCenter === "object"
-        ? { ...defaultServiceCenterSettings, ...stored.serviceCenter }
+      versionedState.serviceCenter && typeof versionedState.serviceCenter === "object"
+        ? { ...defaultServiceCenterSettings, ...versionedState.serviceCenter }
         : defaultServiceCenterSettings,
-    users: Array.isArray(stored.users) ? stored.users : [],
-    departments: Array.isArray(stored.departments) ? stored.departments : [],
-    locations: Array.isArray(stored.locations) ? stored.locations : [],
-    queues: Array.isArray(stored.queues) ? stored.queues : staticSeedState.queues,
-    tickets: Array.isArray(stored.tickets) ? stored.tickets : staticSeedState.tickets,
-    assets: Array.isArray(stored.assets) ? stored.assets : staticSeedState.assets,
-    brands: Array.isArray(stored.brands) ? stored.brands : staticSeedState.brands,
-    models: Array.isArray(stored.models) ? stored.models : staticSeedState.models,
-    projects: Array.isArray(stored.projects) ? stored.projects : staticSeedState.projects,
-    knowledgeArticles: (Array.isArray(stored.knowledgeArticles) ? stored.knowledgeArticles : staticSeedState.knowledgeArticles).map(normalizeKnowledgeArticle),
-    apiConfigs: Array.isArray(stored.apiConfigs) ? stored.apiConfigs : staticSeedState.apiConfigs,
-    reports: Array.isArray(stored.reports) ? stored.reports : staticSeedState.reports,
+    users: Array.isArray(versionedState.users) ? versionedState.users : [],
+    departments: Array.isArray(versionedState.departments) ? versionedState.departments : [],
+    locations: Array.isArray(versionedState.locations) ? versionedState.locations : [],
+    queues: Array.isArray(versionedState.queues) ? versionedState.queues : staticSeedState.queues,
+    tickets: Array.isArray(versionedState.tickets) ? versionedState.tickets : staticSeedState.tickets,
+    assets: Array.isArray(versionedState.assets) ? versionedState.assets : staticSeedState.assets,
+    brands: Array.isArray(versionedState.brands) ? versionedState.brands : staticSeedState.brands,
+    models: Array.isArray(versionedState.models) ? versionedState.models : staticSeedState.models,
+    projects: Array.isArray(versionedState.projects) ? versionedState.projects : staticSeedState.projects,
+    knowledgeArticles: (Array.isArray(versionedState.knowledgeArticles) ? versionedState.knowledgeArticles : staticSeedState.knowledgeArticles).map(normalizeKnowledgeArticle),
+    apiConfigs: Array.isArray(versionedState.apiConfigs) ? versionedState.apiConfigs : staticSeedState.apiConfigs,
+    reports: Array.isArray(versionedState.reports) ? versionedState.reports : staticSeedState.reports,
   };
+}
+
+function pickDomainCollections(state = {}) {
+  return DOMAIN_COLLECTION_KEYS.reduce(
+    (accumulator, key) => ({
+      ...accumulator,
+      [key]: Array.isArray(state?.[key]) ? state[key] : [],
+    }),
+    {},
+  );
+}
+
+function pickDomainSingletons(state = {}) {
+  return DOMAIN_SINGLETON_KEYS.reduce((accumulator, key) => {
+    const value = state?.[key];
+    return {
+      ...accumulator,
+      [key]:
+        value && typeof value === "object" && !Array.isArray(value)
+          ? value
+          : Array.isArray(value)
+            ? value
+            : value ?? null,
+    };
+  }, {});
+}
+
+function buildLegacyAppStatePayload(state = {}) {
+  const baseState = buildStateDefaults(state);
+  return {
+    ...stripNormalizedCollections(baseState),
+    ...pickDomainCollections(baseState),
+    ...pickDomainSingletons(baseState),
+  };
+}
+
+function shouldBackfillDomainStorage(domainCollections = {}, singletonState = {}) {
+  const missingCollections = Object.values(domainCollections).some((value) => value == null);
+  const missingSingletons = DOMAIN_SINGLETON_KEYS.some((key) => !(key in singletonState));
+  return missingCollections || missingSingletons;
 }
 
 function createUniqueIdResolver(prefix) {
@@ -545,6 +634,11 @@ async function getSqliteDb() {
           data TEXT NOT NULL,
           created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS app_singletons (
+          domain_key TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS departments (
           id TEXT PRIMARY KEY,
           code TEXT NOT NULL,
@@ -581,6 +675,61 @@ async function getSqliteDb() {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           FOREIGN KEY (department_id) REFERENCES departments(id)
+        );
+        CREATE TABLE IF NOT EXISTS tickets_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS assets_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS brands_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS models_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS projects_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_articles_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS api_configs_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS email_layouts_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS notification_rules_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS notification_logs_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS reports_domain (
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS system_logs (
           id TEXT PRIMARY KEY,
@@ -642,6 +791,88 @@ function countSqliteRows(tableName) {
     const result = db.exec(`SELECT COUNT(*) AS total FROM ${tableName}`);
     return Number(result?.[0]?.values?.[0]?.[0] || 0);
   });
+}
+
+function hasDomainRowsInSqlite(db, tableName) {
+  const result = db.exec(`SELECT COUNT(*) AS total FROM ${tableName}`);
+  return Number(result?.[0]?.values?.[0]?.[0] || 0) > 0;
+}
+
+function hasDomainRowsInPostgres(rows = []) {
+  return Number(rows?.[0]?.total || 0) > 0;
+}
+
+function getDomainUpdatedAt(item = {}) {
+  return String(item.updatedAtIso || item.updatedAt || item.openedAt || item.createdAt || new Date().toISOString());
+}
+
+function normalizeDomainItemId(key, item = {}, index = 0) {
+  const preferredId = String(item?.id || "").trim();
+  if (preferredId) return preferredId;
+  return `${key}-${index + 1}`;
+}
+
+async function readSqliteDomainCollections() {
+  const db = await getSqliteDb();
+  const domainCollections = {};
+
+  for (const [key, tableName] of Object.entries(DOMAIN_TABLES)) {
+    if (!hasDomainRowsInSqlite(db, tableName)) {
+      domainCollections[key] = null;
+      continue;
+    }
+    const result = db.exec(`SELECT payload FROM ${tableName} ORDER BY updated_at DESC, id ASC`);
+    domainCollections[key] =
+      result?.[0]?.values?.map((valueRow) => parseJson(valueRow[0], null)).filter(Boolean) || [];
+  }
+
+  return domainCollections;
+}
+
+async function readSqliteSingletons() {
+  const db = await getSqliteDb();
+  const result = db.exec(`SELECT domain_key, payload FROM ${DOMAIN_SINGLETON_TABLE}`);
+  const values = result?.[0]?.values || [];
+  return values.reduce((accumulator, valueRow) => {
+    const domainKey = String(valueRow[0] || "").trim();
+    if (!domainKey) return accumulator;
+    return {
+      ...accumulator,
+      [domainKey]: parseJson(valueRow[1], null),
+    };
+  }, {});
+}
+
+async function writeSqliteDomainCollections(state = {}) {
+  const db = await getSqliteDb();
+
+  for (const [key, tableName] of Object.entries(DOMAIN_TABLES)) {
+    db.run(`DELETE FROM ${tableName}`);
+    const items = Array.isArray(state?.[key]) ? state[key] : [];
+    if (!items.length) continue;
+    const insertStatement = db.prepare(`INSERT INTO ${tableName} (id, payload, updated_at) VALUES (?, ?, ?)`);
+    items.forEach((item, index) => {
+      insertStatement.run([
+        normalizeDomainItemId(key, item, index),
+        JSON.stringify(item),
+        getDomainUpdatedAt(item),
+      ]);
+    });
+    insertStatement.free();
+  }
+}
+
+async function writeSqliteSingletons(state = {}) {
+  const db = await getSqliteDb();
+  db.run(`DELETE FROM ${DOMAIN_SINGLETON_TABLE}`);
+  const nowIso = new Date().toISOString();
+  const insertStatement = db.prepare(`INSERT INTO ${DOMAIN_SINGLETON_TABLE} (domain_key, payload, updated_at) VALUES (?, ?, ?)`);
+  for (const key of DOMAIN_SINGLETON_KEYS) {
+    const value = state?.[key];
+    if (value === undefined) continue;
+    insertStatement.run([key, JSON.stringify(value), nowIso]);
+  }
+  insertStatement.free();
 }
 
 async function readSqliteStateRaw() {
@@ -818,11 +1049,13 @@ async function writeSqliteState(nextState) {
     locations: protectedState.locations || [],
     users: protectedState.users || [],
   });
+  await writeSqliteDomainCollections(protectedState);
+  await writeSqliteSingletons(protectedState);
 
   db.run("DELETE FROM app_state WHERE id = 1");
   db.run("INSERT INTO app_state (id, data, updated_at) VALUES (?, ?, ?)", [
     1,
-    JSON.stringify(stripNormalizedCollections(protectedState)),
+    JSON.stringify(buildLegacyAppStatePayload(protectedState)),
     now,
   ]);
   db.run("INSERT INTO app_state_history (data, created_at) VALUES (?, ?)", [JSON.stringify(protectedState), now]);
@@ -854,6 +1087,11 @@ async function ensurePgSchema() {
           id BIGSERIAL PRIMARY KEY,
           data JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS app_singletons (
+          domain_key TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE TABLE IF NOT EXISTS departments (
           id TEXT PRIMARY KEY,
@@ -889,6 +1127,61 @@ async function ensurePgSchema() {
           permissions JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL,
           updated_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS tickets_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS assets_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS brands_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS models_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS projects_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_articles_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS api_configs_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS email_layouts_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS notification_rules_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS notification_logs_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS reports_domain (
+          id TEXT PRIMARY KEY,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE TABLE IF NOT EXISTS system_logs (
           id TEXT PRIMARY KEY,
@@ -1008,6 +1301,62 @@ async function countPostgresRows(tableName) {
   return Number(rows[0]?.total || 0);
 }
 
+async function readPostgresDomainCollections() {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const domainCollections = {};
+
+  for (const [key, tableName] of Object.entries(DOMAIN_TABLES)) {
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM ${tableName}`);
+    if (!hasDomainRowsInPostgres(countResult.rows)) {
+      domainCollections[key] = null;
+      continue;
+    }
+    const { rows } = await pool.query(`SELECT payload FROM ${tableName} ORDER BY updated_at DESC, id ASC`);
+    domainCollections[key] = rows.map((row) => row.payload).filter(Boolean);
+  }
+
+  return domainCollections;
+}
+
+async function readPostgresSingletons() {
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const { rows } = await pool.query(`SELECT domain_key, payload FROM ${DOMAIN_SINGLETON_TABLE}`);
+  return rows.reduce(
+    (accumulator, row) => ({
+      ...accumulator,
+      [row.domain_key]: row.payload,
+    }),
+    {},
+  );
+}
+
+async function writePostgresDomainCollections(client, state = {}) {
+  for (const [key, tableName] of Object.entries(DOMAIN_TABLES)) {
+    await client.query(`TRUNCATE TABLE ${tableName}`);
+    const items = Array.isArray(state?.[key]) ? state[key] : [];
+    for (const [index, item] of items.entries()) {
+      await client.query(
+        `INSERT INTO ${tableName} (id, payload, updated_at) VALUES ($1, $2::jsonb, $3)`,
+        [normalizeDomainItemId(key, item, index), JSON.stringify(item), getDomainUpdatedAt(item)],
+      );
+    }
+  }
+}
+
+async function writePostgresSingletons(client, state = {}) {
+  await client.query(`TRUNCATE TABLE ${DOMAIN_SINGLETON_TABLE}`);
+  for (const key of DOMAIN_SINGLETON_KEYS) {
+    const value = state?.[key];
+    if (value === undefined) continue;
+    await client.query(
+      `INSERT INTO ${DOMAIN_SINGLETON_TABLE} (domain_key, payload, updated_at) VALUES ($1, $2::jsonb, NOW())`,
+      [key, JSON.stringify(value)],
+    );
+  }
+}
+
 async function writePostgresCollections(collections) {
   await ensurePgSchema();
   const pool = getPgPool();
@@ -1098,6 +1447,18 @@ async function writePostgresState(nextState) {
     locations: protectedState.locations || [],
     users: protectedState.users || [],
   });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await writePostgresDomainCollections(client, protectedState);
+    await writePostgresSingletons(client, protectedState);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 
   await pool.query(
     `
@@ -1107,7 +1468,7 @@ async function writePostgresState(nextState) {
         data = EXCLUDED.data,
         updated_at = EXCLUDED.updated_at
     `,
-    [JSON.stringify(stripNormalizedCollections(protectedState))],
+    [JSON.stringify(buildLegacyAppStatePayload(protectedState))],
   );
   await pool.query("INSERT INTO app_state_history (data, created_at) VALUES ($1::jsonb, NOW())", [JSON.stringify(protectedState)]);
 
@@ -1356,7 +1717,12 @@ async function queryPostgresSystemLogs(filters = {}) {
 export async function readState() {
   if (!isPostgresEnabled()) {
     await migrateSqliteCollectionsIfNeeded();
-    const [sqliteState, collections] = await Promise.all([readSqliteStateRaw(), readSqliteCollections()]);
+    const [sqliteState, collections, domainCollections, singletonState] = await Promise.all([
+      readSqliteStateRaw(),
+      readSqliteCollections(),
+      readSqliteDomainCollections(),
+      readSqliteSingletons(),
+    ]);
     let hydratedCollections = collections;
     if (isLegacyBootstrapUserCollection(collections)) {
       hydratedCollections = buildSeedBootstrapCollections();
@@ -1365,8 +1731,17 @@ export async function readState() {
     if (shouldHydrateMissingCollections(hydratedCollections)) {
       hydratedCollections = await restoreSqliteCollectionsFromRecoveryState(hydratedCollections, sqliteState);
     }
-    const initialState = buildCombinedState(sqliteState || buildStateDefaults({}), hydratedCollections);
-    if (!sqliteState) {
+    const initialState = buildCombinedState(
+      {
+        ...(sqliteState || buildStateDefaults({})),
+        ...singletonState,
+        ...Object.fromEntries(
+          Object.entries(domainCollections).filter(([, value]) => Array.isArray(value)),
+        ),
+      },
+      hydratedCollections,
+    );
+    if (!sqliteState || shouldBackfillDomainStorage(domainCollections, singletonState)) {
       await writeSqliteState(initialState);
     }
     return initialState;
@@ -1374,8 +1749,12 @@ export async function readState() {
 
   await migratePostgresCollectionsIfNeeded();
   await ensurePgSchema();
-  const postgresState = await readPostgresStateRaw();
-  const collections = await readPostgresCollections();
+  const [postgresState, collections, domainCollections, singletonState] = await Promise.all([
+    readPostgresStateRaw(),
+    readPostgresCollections(),
+    readPostgresDomainCollections(),
+    readPostgresSingletons(),
+  ]);
   let hydratedCollections = collections;
   if (isLegacyBootstrapUserCollection(collections)) {
     hydratedCollections = buildSeedBootstrapCollections();
@@ -1384,8 +1763,17 @@ export async function readState() {
   if (shouldHydrateMissingCollections(hydratedCollections)) {
     hydratedCollections = await restorePostgresCollectionsFromRecoveryState(hydratedCollections, postgresState);
   }
-  const initialState = buildCombinedState(postgresState || (await loadBootstrapState()), hydratedCollections);
-  if (!postgresState) {
+  const initialState = buildCombinedState(
+    {
+      ...(postgresState || (await loadBootstrapState())),
+      ...singletonState,
+      ...Object.fromEntries(
+        Object.entries(domainCollections).filter(([, value]) => Array.isArray(value)),
+      ),
+    },
+    hydratedCollections,
+  );
+  if (!postgresState || shouldBackfillDomainStorage(domainCollections, singletonState)) {
     await writePostgresState(initialState);
   }
   return initialState;

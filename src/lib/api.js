@@ -38,3 +38,11 @@ export async function requestJson(path, options = {}) {
   if (response.status === 204) return null;
   return readJsonSafely(response);
 }
+
+export async function requestEnvelope(path, options = {}) {
+  const payload = await requestJson(path, options);
+  if (!payload || typeof payload !== "object" || !("meta" in payload)) {
+    throw new Error("Resposta da API nao possui envelope versionado.");
+  }
+  return payload;
+}
