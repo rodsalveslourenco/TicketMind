@@ -1070,12 +1070,43 @@ function getPgPool() {
       ssl: databaseUrl.includes("render.com") ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 30000,
+      keepAlive: true,
     });
     pgPool.on("error", (error) => {
       console.error("postgres pool error", error);
     });
   }
   return pgPool;
+}
+
+function attachPgClientErrorHandler(client) {
+  const handleError = (error) => {
+    console.error("postgres client error", error);
+  };
+  client.on("error", handleError);
+  return () => {
+    client.off("error", handleError);
+  };
+}
+
+async function rollbackPgTransaction(client) {
+  try {
+    await client.query("ROLLBACK");
+  } catch (rollbackError) {
+    console.error("postgres rollback skipped", rollbackError);
+  }
+}
+
+async function withPgClient(callback) {
+  const pool = getPgPool();
+  const client = await pool.connect();
+  const detachErrorHandler = attachPgClientErrorHandler(client);
+  try {
+    return await callback(client);
+  } finally {
+    detachErrorHandler();
+    client.release();
+  }
 }
 
 async function ensurePgSchema() {
@@ -1364,68 +1395,66 @@ async function writePostgresSingletons(client, state = {}) {
 
 async function writePostgresCollections(collections) {
   await ensurePgSchema();
-  const pool = getPgPool();
-  const client = await pool.connect();
-  try {
+  await withPgClient(async (client) => {
     await client.query("BEGIN");
-    await client.query("TRUNCATE TABLE users, locations, departments CASCADE");
+    try {
+      await client.query("TRUNCATE TABLE users, locations, departments CASCADE");
 
-    for (const department of collections.departments) {
-      await client.query(
-        `
-          INSERT INTO departments (id, code, name, color, status, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `,
-        [department.id, department.code, department.name, department.color || "", department.status, department.createdAt, department.updatedAt],
-      );
+      for (const department of collections.departments) {
+        await client.query(
+          `
+            INSERT INTO departments (id, code, name, color, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `,
+          [department.id, department.code, department.name, department.color || "", department.status, department.createdAt, department.updatedAt],
+        );
+      }
+
+      for (const location of collections.locations) {
+        await client.query(
+          `
+            INSERT INTO locations (id, code, name, department_id, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `,
+          [location.id, location.code, location.name, location.departmentId || null, location.status, location.createdAt, location.updatedAt],
+        );
+      }
+
+      for (const user of collections.users) {
+        await client.query(
+          `
+            INSERT INTO users (
+              id, name, email, password, status, role, permission_profile_id, team, department_id, avatar,
+              additional_permissions, restricted_permissions, permissions, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15)
+          `,
+          [
+            user.id,
+            user.name,
+            user.email,
+            user.password,
+            user.status || "Ativo",
+            user.role,
+            user.permissionProfileId || "",
+            user.team,
+            user.departmentId || null,
+            user.avatar || "",
+            JSON.stringify(user.additionalPermissions || {}),
+            JSON.stringify(user.restrictedPermissions || {}),
+            JSON.stringify(user.permissions || {}),
+            user.createdAt,
+            user.updatedAt,
+          ],
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await rollbackPgTransaction(client);
+      throw error;
     }
-
-    for (const location of collections.locations) {
-      await client.query(
-        `
-          INSERT INTO locations (id, code, name, department_id, status, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `,
-        [location.id, location.code, location.name, location.departmentId || null, location.status, location.createdAt, location.updatedAt],
-      );
-    }
-
-    for (const user of collections.users) {
-      await client.query(
-        `
-          INSERT INTO users (
-            id, name, email, password, status, role, permission_profile_id, team, department_id, avatar,
-            additional_permissions, restricted_permissions, permissions, created_at, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15)
-        `,
-        [
-          user.id,
-          user.name,
-          user.email,
-          user.password,
-          user.status || "Ativo",
-          user.role,
-          user.permissionProfileId || "",
-          user.team,
-          user.departmentId || null,
-          user.avatar || "",
-          JSON.stringify(user.additionalPermissions || {}),
-          JSON.stringify(user.restrictedPermissions || {}),
-          JSON.stringify(user.permissions || {}),
-          user.createdAt,
-          user.updatedAt,
-        ],
-      );
-    }
-
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function writePostgresState(nextState) {
@@ -1452,18 +1481,17 @@ async function writePostgresState(nextState) {
     locations: protectedState.locations || [],
     users: protectedState.users || [],
   });
-  const client = await pool.connect();
-  try {
+  await withPgClient(async (client) => {
     await client.query("BEGIN");
-    await writePostgresDomainCollections(client, protectedState);
-    await writePostgresSingletons(client, protectedState);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+    try {
+      await writePostgresDomainCollections(client, protectedState);
+      await writePostgresSingletons(client, protectedState);
+      await client.query("COMMIT");
+    } catch (error) {
+      await rollbackPgTransaction(client);
+      throw error;
+    }
+  });
 
   await pool.query(
     `
