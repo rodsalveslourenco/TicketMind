@@ -15,6 +15,7 @@ const defaultCreateForm = {
   departmentId: "",
   projectId: "",
   assetId: "",
+  approvalApproverId: "",
   category: "Geral",
   location: "",
   priority: "Media",
@@ -408,6 +409,15 @@ function TicketsPage() {
     if (!currentDetailDepartmentId) return [];
     return users.filter((candidate) => candidate.departmentId === currentDetailDepartmentId);
   }, [assigneeDepartment, currentDetailDepartmentId, serviceCenterEnabled, users]);
+  const approvalCandidates = useMemo(
+    () =>
+      users.filter(
+        (candidate) =>
+          normalizeText(candidate.status || "Ativo") !== "inativo" &&
+          hasAnyPermission(candidate, ["tickets_close", "tickets_admin"]),
+      ),
+    [users],
+  );
 
   useEffect(() => {
     setSearch(searchParams.get("q") || "");
@@ -667,6 +677,8 @@ function TicketsPage() {
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
       knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
+      approvalApproverId: detailTicket.approval?.approverId || "",
+      approvalApproverName: detailTicket.approval?.approverName || "",
       projectId: detailTicket.projectId || "",
       projectName: detailTicket.projectName || "",
       assetId: detailTicket.assetId || "",
@@ -797,6 +809,11 @@ function TicketsPage() {
       pushToast("Departamento obrigatorio", "Selecione um departamento para abrir o chamado.", "warning");
       return;
     }
+    if (normalizeText(createForm.type) === "requisicao" && !String(createForm.approvalApproverId || "").trim()) {
+      pushToast("Aprovador obrigatorio", "Selecione quem vai aprovar esta requisicao antes de registrar.", "warning");
+      return;
+    }
+    const selectedApprover = approvalCandidates.find((candidate) => candidate.id === createForm.approvalApproverId) || null;
 
     const createdTicket = createTicket({
       ...createForm,
@@ -810,6 +827,15 @@ function TicketsPage() {
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
       checklistItems: buildChecklistTemplate(createForm.type),
+      approval:
+        normalizeText(createForm.type) === "requisicao"
+          ? {
+              required: true,
+              status: "pending",
+              approverId: selectedApprover?.id || "",
+              approverName: selectedApprover?.name || "",
+            }
+          : undefined,
       projectName: activeProjectOptions.find((project) => project.id === createForm.projectId)?.name || "",
       assetName:
         activeAssetOptions.find((asset) => asset.id === createForm.assetId)?.tag ||
@@ -838,6 +864,14 @@ function TicketsPage() {
     updateTicket(detailTicket.id, {
       ...detailForm,
       dueDate: detailForm.dueDate || "",
+      approval: normalizeText(detailForm.type) === "requisicao"
+        ? {
+            ...(detailTicket.approval || {}),
+            required: true,
+            approverId: String(detailForm.approvalApproverId || "").trim(),
+            approverName: String(detailForm.approvalApproverName || "").trim(),
+          }
+        : detailTicket.approval,
       checklistItems: detailForm.checklistItems || [],
       projectName: activeProjectOptions.find((project) => project.id === detailForm.projectId)?.name || detailForm.projectName || "",
       assetName:
@@ -976,10 +1010,24 @@ function TicketsPage() {
 
   const handleApprovalAction = (action) => {
     if (!detailTicket || !detailForm) return;
+    const selectedApprover = approvalCandidates.find((candidate) => candidate.id === detailForm.approvalApproverId) || null;
+    const approvalOwnerId = String(detailTicket.approval?.approverId || detailForm.approvalApproverId || "").trim();
+    const canCurrentUserDecide =
+      canDecideApproval && (!approvalOwnerId || approvalOwnerId === String(user?.id || "").trim() || hasAnyPermission(user, ["tickets_admin"]));
+    if (action === "request" && !selectedApprover) {
+      pushToast("Aprovador obrigatorio", "Selecione um aprovador antes de solicitar a aprovacao.", "warning");
+      return;
+    }
+    if ((action === "approve" || action === "reject") && !canCurrentUserDecide) {
+      pushToast("Aprovador incorreto", "Somente o aprovador selecionado pode decidir esta requisicao.", "warning");
+      return;
+    }
     const nextApproval = {
       ...(detailTicket.approval || {}),
       required: true,
       status: action === "approve" ? "approved" : action === "reject" ? "rejected" : "pending",
+      approverId: selectedApprover?.id || detailTicket.approval?.approverId || "",
+      approverName: selectedApprover?.name || detailTicket.approval?.approverName || "",
       decisionReason: approvalReason,
       requestedAt: action === "request" ? new Date().toISOString() : detailTicket.approval?.requestedAt || "",
       requestedById: action === "request" ? user?.id || "" : detailTicket.approval?.requestedById || "",
@@ -1164,6 +1212,7 @@ function TicketsPage() {
       dueDate: String(detailForm.dueDate || "") !== String(detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : ""),
       watchers: String(detailForm.watchers || "") !== String(detailTicket.watchers || ""),
       assignee: String(detailForm.assignee || "") !== String(detailTicket.assignee || ""),
+      approvalApproverId: String(detailForm.approvalApproverId || "") !== String(detailTicket.approval?.approverId || ""),
       projectId: String(detailForm.projectId || "") !== String(detailTicket.projectId || ""),
       assetId: String(detailForm.assetId || "") !== String(detailTicket.assetId || ""),
       checklistItems: JSON.stringify(detailForm.checklistItems || []) !== JSON.stringify(detailTicket.checklistItems || []),
@@ -1514,6 +1563,19 @@ function TicketsPage() {
                   <span>Categoria</span>
                   <input onChange={updateCreateField("category")} value={createForm.category} />
                 </label>
+                {normalizeText(createForm.type) === "requisicao" ? (
+                  <label className="field-block">
+                    <span>Aprovador da requisicao</span>
+                    <select onChange={updateCreateField("approvalApproverId")} required value={createForm.approvalApproverId || ""}>
+                      <option value="">Selecione o aprovador</option>
+                      {approvalCandidates.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name} {candidate.team ? `| ${candidate.team}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label className="field-block">
                   <span>Projeto vinculado</span>
                   <select onChange={updateCreateField("projectId")} value={createForm.projectId || ""}>
@@ -1774,6 +1836,7 @@ function TicketsPage() {
                   <span>Departamento: {detailDepartment?.name || detailForm.department || detailForm.queue || "-"}</span>
                   <span>Projeto: {detailForm.projectName || "Nao vinculado"}</span>
                   <span>Ativo: {detailForm.assetName || "Nao vinculado"}</span>
+                  {normalizeText(detailForm.type) === "requisicao" ? <span>Aprovador: {detailTicket.approval?.approverName || detailForm.approvalApproverName || "Nao definido"}</span> : null}
                 </div>
               </section>
 
@@ -1916,6 +1979,31 @@ function TicketsPage() {
                     value={detailForm.assignee || ""}
                   />
                 </label>
+                {normalizeText(detailForm.type) === "requisicao" ? (
+                  <label className={`field-block${detailDirtyFields.approvalApproverId ? " is-dirty" : ""}`}>
+                    <span>Aprovador da requisicao</span>
+                    <select
+                      disabled={!canEditTicket}
+                      onChange={(event) => {
+                        const nextApproverId = event.target.value;
+                        const nextApprover = approvalCandidates.find((candidate) => candidate.id === nextApproverId) || null;
+                        setDetailForm((current) => ({
+                          ...current,
+                          approvalApproverId: nextApproverId,
+                          approvalApproverName: nextApprover?.name || "",
+                        }));
+                      }}
+                      value={detailForm.approvalApproverId || ""}
+                    >
+                      <option value="">Selecione o aprovador</option>
+                      {approvalCandidates.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name} {candidate.team ? `| ${candidate.team}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label className={`field-block${detailDirtyFields.projectId ? " is-dirty" : ""}`}>
                   <span>Projeto vinculado</span>
                   <select

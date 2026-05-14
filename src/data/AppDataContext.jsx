@@ -857,10 +857,26 @@ function isStatusTransitionAllowed(currentStatus, nextStatus) {
 function resolveApprovalState(type, approval = null, action = "") {
   const approvalRequired = normalizeText(type) === "requisicao";
   const baseApproval = approval && typeof approval === "object" ? approval : {};
-  if (!approvalRequired) return { ...baseApproval, required: false, status: "not_required", history: Array.isArray(baseApproval.history) ? baseApproval.history : [] };
+  if (!approvalRequired) {
+    return {
+      ...baseApproval,
+      required: false,
+      status: "not_required",
+      approverId: String(baseApproval.approverId || "").trim(),
+      approverName: String(baseApproval.approverName || "").trim(),
+      history: Array.isArray(baseApproval.history) ? baseApproval.history : [],
+    };
+  }
   const currentStatus = String(baseApproval.status || "pending").trim() || "pending";
   const nextStatus = action === "approve" ? "approved" : action === "reject" ? "rejected" : action === "request" ? "pending" : currentStatus;
-  return { ...baseApproval, required: true, status: nextStatus, history: Array.isArray(baseApproval.history) ? baseApproval.history : [] };
+  return {
+    ...baseApproval,
+    required: true,
+    status: nextStatus,
+    approverId: String(baseApproval.approverId || "").trim(),
+    approverName: String(baseApproval.approverName || "").trim(),
+    history: Array.isArray(baseApproval.history) ? baseApproval.history : [],
+  };
 }
 
 function applyRoutingRules(ticketLike = {}) {

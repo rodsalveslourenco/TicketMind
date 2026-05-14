@@ -278,6 +278,8 @@ function normalizeApproval(ticket) {
   return {
     required: Boolean(approval.required),
     status: String(approval.status || "not_required").trim() || "not_required",
+    approverId: String(approval.approverId || "").trim(),
+    approverName: String(approval.approverName || "").trim(),
     requestedAt: String(approval.requestedAt || "").trim(),
     decidedAt: String(approval.decidedAt || "").trim(),
     requestedById: String(approval.requestedById || "").trim(),
