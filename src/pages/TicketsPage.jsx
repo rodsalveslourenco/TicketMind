@@ -248,6 +248,7 @@ function TicketsPage() {
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canCloseTicket = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
+  const canReopenTicket = hasAnyPermission(user, ["tickets_reopen", "tickets_admin"]);
   const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);
   const canViewPrivateFollowUps = hasAnyPermission(user, ["tickets_admin", "tickets_edit", "tickets_assign", "tickets_change_status"]);
   const canAssignTicket = hasAnyPermission(user, ["tickets_assign", "tickets_admin"]);
@@ -329,6 +330,8 @@ function TicketsPage() {
   );
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
+  const isDetailResolved = normalizeText(detailTicket?.status) === "resolvido";
+  const isDetailReopened = normalizeText(detailTicket?.status) === "reaberto";
   const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
   const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => canViewPrivateFollowUps || followUp.visibility === "public");
   const filteredFollowUps = useMemo(() => {
@@ -931,6 +934,10 @@ function TicketsPage() {
 
   const handleFinishTicket = () => {
     if (!detailTicket || !detailForm) return;
+    if (normalizeText(detailTicket.status) === "resolvido") {
+      pushToast("Chamado ja resolvido", "Use a reabertura se precisar retomar o atendimento.", "warning");
+      return;
+    }
     if (!detailForm.resolutionNotes.trim()) {
       pushToast("Solucao obrigatoria", "Informe a solucao final antes de encerrar o chamado.", "warning");
       return;
@@ -1131,6 +1138,26 @@ function TicketsPage() {
 
   const handleQuickAction = (action) => {
     if (!detailTicket || !detailForm) return;
+    const normalizedStatus = normalizeText(detailTicket.status);
+
+    if (action === "reopen") {
+      if (!canReopenTicket) return;
+      if (normalizedStatus !== "resolvido") {
+        pushToast("Reabertura indisponivel", "Somente chamados resolvidos podem ser reabertos.", "warning");
+        return;
+      }
+      setDetailForm((current) => ({
+        ...current,
+        status: "Reaberto",
+      }));
+      pushToast("Chamado pronto para reabertura", "Informe o motivo e salve para reabrir.");
+      return;
+    }
+
+    if (normalizedStatus === "resolvido") {
+      pushToast("Acao bloqueada", "Chamados resolvidos nao aceitam essa interacao. Use reabrir se necessario.", "warning");
+      return;
+    }
 
     if (action === "assignSelf") {
       updateTicket(detailTicket.id, { ...detailForm, assignee: user?.name || detailForm.assignee, status: ["aberto", "reaberto"].includes(normalizeText(detailForm.status)) ? "Em andamento" : detailForm.status });
@@ -1168,6 +1195,10 @@ function TicketsPage() {
 
   const handleInlineTicketAction = (ticket, action) => {
     if (!ticket) return;
+    if (normalizeText(ticket.status) === "resolvido") {
+      pushToast("Acao bloqueada", `${ticket.id} ja esta resolvido. Reabra antes de continuar o atendimento.`, "warning");
+      return;
+    }
 
     if (action === "assignSelf" && canAssignTicket) {
       updateTicket(ticket.id, {
@@ -1460,17 +1491,17 @@ function TicketsPage() {
                   </div>
                 </button>
                 <div className="compact-row-actions ticket-inline-actions">
-                  {canAssignTicket ? (
+                  {canAssignTicket && normalizeText(ticket.status) !== "resolvido" ? (
                     <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "assignSelf")} type="button">
                       Assumir
                     </button>
                   ) : null}
-                  {canChangeStatus ? (
+                  {canChangeStatus && normalizeText(ticket.status) !== "resolvido" ? (
                     <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "start")} type="button">
                       Iniciar
                     </button>
                   ) : null}
-                  {canCloseTicket ? (
+                  {canCloseTicket && normalizeText(ticket.status) !== "resolvido" ? (
                     <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "resolve")} type="button">
                       Resolver
                     </button>
@@ -1758,24 +1789,29 @@ function TicketsPage() {
               </div>
 
               <div className="ticket-create-actions compact-actions">
-                {canAssignTicket ? (
+                {canAssignTicket && !isDetailResolved ? (
                   <button className="ghost-button interactive-button" onClick={() => handleQuickAction("assignSelf")} type="button">
                     Assumir chamado
                   </button>
                 ) : null}
-                {canChangeStatus ? (
+                {canChangeStatus && !isDetailResolved ? (
                   <button className="ghost-button interactive-button" onClick={() => handleQuickAction("start")} type="button">
                     Iniciar atendimento
                   </button>
                 ) : null}
-                {canChangeStatus ? (
+                {canChangeStatus && !isDetailResolved ? (
                   <button className="ghost-button interactive-button" onClick={() => handleQuickAction("wait")} type="button">
                     Aguardar usuario
                   </button>
                 ) : null}
-                {canCloseTicket ? (
+                {canCloseTicket && !isDetailResolved ? (
                   <button className="ghost-button interactive-button" onClick={() => handleQuickAction("resolve")} type="button">
                     Resolver agora
+                  </button>
+                ) : null}
+                {canReopenTicket && isDetailResolved ? (
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("reopen")} type="button">
+                    Reabrir chamado
                   </button>
                 ) : null}
                 <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
@@ -2473,9 +2509,14 @@ function TicketsPage() {
                     Salvar alteracoes
                   </button>
                 ) : null}
-                {canCloseTicket ? (
+                {canCloseTicket && !isDetailResolved ? (
                   <button className="ghost-button interactive-button" onClick={handleFinishTicket} type="button">
                     Finalizar chamado
+                  </button>
+                ) : null}
+                {canReopenTicket && isDetailResolved && !isDetailReopened ? (
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("reopen")} type="button">
+                    Reabrir chamado
                   </button>
                 ) : null}
               </div>
