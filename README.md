@@ -334,21 +334,8 @@ No deploy:
 
 ### Melhorias de experiencia
 
-- linhas mais densas e refinadas no estilo GLPI, com menos blocos e mais leitura tabular
-- filtros salvos por usuario em mais modulos
-- colunas configuraveis alem da tela de usuarios
 - painel lateral persistente para detalhes em vez de modal em algumas areas
-- atalhos de teclado para triagem, atribuicao e conclusao rapida
-- estados vazios mais informativos e com acao direta
 - indicadores contextuais no topo de cada cadastro
-- acoes rapidas em linha nas grades, sem abrir modal para tudo
-- densidade visual configuravel: compacta, media e confortavel
-- tema de operacao com foco em contraste leve e linhas finas
-- chips de contexto por departamento, fila, urgencia e status
-- alertas menos intrusivos e mais informativos
-- destaque visual de campos alterados antes de salvar
-- cabecalhos de grade fixos com scroll interno suave
-- configuracao de grade por usuario e por modulo
 
 ### Melhorias de automacao
 

@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission, normalizeText } from "../data/permissions";
 import { exportRowsAsCsv } from "../lib/export";
+import { useUiPreferences } from "../ui/UiPreferencesContext";
 
 function getInitials(name) {
   return String(name || "")
@@ -68,8 +69,6 @@ function buildOverrideForm(rawMap = {}, permissionCatalog = []) {
   };
 }
 
-const USER_GRID_CONFIG_KEY = "ticketmind.users.grid.columns";
-
 const USER_GRID_COLUMNS = [
   { key: "name", label: "Usuario", defaultVisible: true, render: (candidate) => candidate.name || "-" },
   { key: "email", label: "Login", defaultVisible: true, render: (candidate) => candidate.email || "Sem email definido" },
@@ -82,20 +81,12 @@ const USER_GRID_COLUMNS = [
 ];
 
 function loadUserGridColumns() {
-  try {
-    const storedValue = window.localStorage.getItem(USER_GRID_CONFIG_KEY);
-    if (!storedValue) return USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
-    const parsed = JSON.parse(storedValue);
-    const allowedKeys = new Set(USER_GRID_COLUMNS.map((column) => column.key));
-    const filtered = (Array.isArray(parsed) ? parsed : []).filter((key) => allowedKeys.has(key));
-    return filtered.length ? filtered : USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
-  } catch {
-    return USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
-  }
+  return USER_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key);
 }
 
 function UsersPage() {
   const { user } = useAuth();
+  const { getModulePreference, setModulePreference } = useUiPreferences();
   const {
     addUser,
     deleteUser,
@@ -109,14 +100,14 @@ function UsersPage() {
     users,
   } = useAppData();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => getModulePreference("users", "search", ""));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [detailUserId, setDetailUserId] = useState(null);
   const [editingUserId, setEditingUserId] = useState(null);
   const [revealedUserIds, setRevealedUserIds] = useState([]);
   const [showGridConfig, setShowGridConfig] = useState(false);
-  const [showExcluded, setShowExcluded] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState(loadUserGridColumns);
+  const [showExcluded, setShowExcluded] = useState(() => Boolean(getModulePreference("users", "showExcluded", false)));
+  const [visibleColumns, setVisibleColumns] = useState(() => getModulePreference("users", "visibleColumns", loadUserGridColumns()));
   const [form, setForm] = useState(() => createDefaultUserForm(permissionProfiles, permissionCatalog));
 
   const canRevealPasswords = normalizeText(user?.department) === "ti";
@@ -128,8 +119,23 @@ function UsersPage() {
   const canManagePermissions = hasAnyPermission(user, ["users_manage_permissions", "users_admin"]);
 
   useEffect(() => {
-    window.localStorage.setItem(USER_GRID_CONFIG_KEY, JSON.stringify(visibleColumns));
-  }, [visibleColumns]);
+    setModulePreference("users", "visibleColumns", visibleColumns);
+  }, [setModulePreference, visibleColumns]);
+
+  useEffect(() => {
+    setModulePreference("users", "search", search);
+  }, [search, setModulePreference]);
+
+  useEffect(() => {
+    setModulePreference("users", "showExcluded", showExcluded);
+  }, [setModulePreference, showExcluded]);
+
+  useEffect(() => {
+    const nextVisibleColumns = getModulePreference("users", "visibleColumns", loadUserGridColumns());
+    setVisibleColumns(Array.isArray(nextVisibleColumns) && nextVisibleColumns.length ? nextVisibleColumns : loadUserGridColumns());
+    setSearch(String(getModulePreference("users", "search", "")));
+    setShowExcluded(Boolean(getModulePreference("users", "showExcluded", false)));
+  }, [getModulePreference, user?.id]);
 
   const activeProfiles = useMemo(
     () => permissionProfiles.filter((profile) => profile.status !== "Inativo" || profile.id === form.permissionProfileId),
@@ -169,6 +175,19 @@ function UsersPage() {
     () => USER_GRID_COLUMNS.filter((column) => visibleColumns.includes(column.key)),
     [visibleColumns],
   );
+  const detailDirtyFields = useMemo(() => {
+    if (!detailUser) return {};
+    return {
+      name: String(form.name || "") !== String(detailUser.name || ""),
+      email: String(form.email || "") !== String(detailUser.email || ""),
+      password: String(form.password || "") !== String(detailUser.password || ""),
+      status: String(form.status || "") !== String(detailUser.status || ""),
+      permissionProfileId: String(form.permissionProfileId || "") !== String(detailUser.permissionProfileId || ""),
+      team: String(form.team || "") !== String(detailUser.team || ""),
+      departmentId: String(form.departmentId || "") !== String(detailUser.departmentId || ""),
+      avatar: String(form.avatar || "") !== String(detailUser.avatar || ""),
+    };
+  }, [detailUser, form]);
 
   const permissionGroups = useMemo(
     () =>
@@ -498,58 +517,86 @@ function UsersPage() {
         ) : null}
 
         <div className="user-list">
-          {orderedUsers.map((candidate) => (
-            <article className="table-row user-row user-grid-row" key={candidate.id}>
-              <button className="user-card-open user-grid-open interactive-button" onClick={() => openDetailModal(candidate)} type="button">
-                <div className="user-row-main user-grid-main">
-                  <div className="user-avatar user-avatar-list">
-                    {candidate.avatar ? (
-                      <img alt={candidate.name} className="user-avatar-image" src={candidate.avatar} />
-                    ) : (
-                      <span>{getInitials(candidate.name)}</span>
-                    )}
+          {orderedUsers.length ? (
+            <div className="user-grid-header">
+              <span>Usuario</span>
+              <div className="user-grid-header-columns">
+                {visibleGridColumns.map((column) => (
+                  <span key={column.key}>{column.label}</span>
+                ))}
+              </div>
+              <span>Acoes</span>
+            </div>
+          ) : null}
+          {orderedUsers.length ? (
+            orderedUsers.map((candidate) => (
+              <article className="table-row user-row user-grid-row" key={candidate.id}>
+                <button className="user-card-open user-grid-open interactive-button" onClick={() => openDetailModal(candidate)} type="button">
+                  <div className="user-row-main user-grid-main">
+                    <div className="user-avatar user-avatar-list">
+                      {candidate.avatar ? (
+                        <img alt={candidate.name} className="user-avatar-image" src={candidate.avatar} />
+                      ) : (
+                        <span>{getInitials(candidate.name)}</span>
+                      )}
+                    </div>
+                    <div className="user-grid-columns">
+                      {visibleGridColumns.map((column) => (
+                        <div className="user-grid-cell" key={`${candidate.id}-${column.key}`}>
+                          <small>{column.label}</small>
+                          <span>
+                            {column.key === "status" ? (
+                              <span className={`badge ${candidate.status === "Ativo" ? "status-badge-resolvido" : candidate.status === "Inativo" ? "status-badge-aguardando" : "status-badge-reaberto"}`}>
+                                {column.render(candidate, activePermissionCount(candidate))}
+                              </span>
+                            ) : (
+                              column.render(candidate, activePermissionCount(candidate))
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="user-grid-columns">
-                    {visibleGridColumns.map((column) => (
-                      <div className="user-grid-cell" key={`${candidate.id}-${column.key}`}>
-                        <small>{column.label}</small>
-                        <span>
-                          {column.key === "status" ? (
-                            <span className={`badge ${candidate.status === "Ativo" ? "status-badge-resolvido" : candidate.status === "Inativo" ? "status-badge-aguardando" : "status-badge-reaberto"}`}>
-                              {column.render(candidate, activePermissionCount(candidate))}
-                            </span>
-                          ) : (
-                            column.render(candidate, activePermissionCount(candidate))
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                </button>
+                <div className="compact-row-actions user-quick-actions">
+                  {candidate.status === "Ativo" ? (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => setUserStatus(candidate.id, "Inativo")} type="button">
+                      Desativar
+                    </button>
+                  ) : (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => setUserStatus(candidate.id, "Ativo")} type="button">
+                      Ativar
+                    </button>
+                  )}
+                  {canCreateUsers ? (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => handleDuplicateUser(candidate)} type="button">
+                      Duplicar
+                    </button>
+                  ) : null}
+                  {canDeleteUsers ? (
+                    <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteUser(candidate)} type="button">
+                      Excluir
+                    </button>
+                  ) : null}
                 </div>
-              </button>
-              <div className="compact-row-actions user-quick-actions">
-                {candidate.status === "Ativo" ? (
-                  <button className="ghost-button compact-button interactive-button" onClick={() => setUserStatus(candidate.id, "Inativo")} type="button">
-                    Desativar
-                  </button>
-                ) : (
-                  <button className="ghost-button compact-button interactive-button" onClick={() => setUserStatus(candidate.id, "Ativo")} type="button">
-                    Ativar
-                  </button>
-                )}
+              </article>
+            ))
+          ) : (
+            <div className="empty-state">
+              <strong>Nenhum usuario encontrado.</strong>
+              <span>Revise o filtro atual ou cadastre um novo usuario para iniciar a operacao.</span>
+              <div className="empty-state-actions">
+                <button className="ghost-button interactive-button" onClick={() => setSearch("")} type="button">
+                  Limpar busca
+                </button>
                 {canCreateUsers ? (
-                  <button className="ghost-button compact-button interactive-button" onClick={() => handleDuplicateUser(candidate)} type="button">
-                    Duplicar
-                  </button>
-                ) : null}
-                {canDeleteUsers ? (
-                  <button className="danger-button compact-button interactive-button" onClick={() => handleDeleteUser(candidate)} type="button">
-                    Excluir
+                  <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
+                    Novo usuario
                   </button>
                 ) : null}
               </div>
-            </article>
-          ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -566,7 +613,7 @@ function UsersPage() {
                 </button>
               </div>
               <div className="glpi-form-grid">
-                <label className="field-block field-span-2">
+                <label className={`field-block field-span-2${detailDirtyFields.avatar ? " is-dirty" : ""}`}>
                   <span>Foto do usuario</span>
                   <div className="profile-avatar-panel">
                     <div className="user-avatar profile-avatar">
@@ -579,11 +626,11 @@ function UsersPage() {
                     <input accept="image/*" onChange={handleAvatarChange} type="file" />
                   </div>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.name ? " is-dirty" : ""}`}>
                   <span>Nome</span>
                   <input onChange={updateField("name")} value={form.name} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.email ? " is-dirty" : ""}`}>
                   <span>Email / Login</span>
                   <input onChange={updateField("email")} type="email" value={form.email} />
                 </label>
@@ -696,7 +743,7 @@ function UsersPage() {
                   <span>Email / Login</span>
                   <input disabled={!canEditUsers} onChange={updateField("email")} type="email" value={form.email} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.password ? " is-dirty" : ""}`}>
                   <span>Senha</span>
                   <div className="user-password-row">
                     <input
@@ -720,7 +767,7 @@ function UsersPage() {
                     ) : null}
                   </div>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.status ? " is-dirty" : ""}`}>
                   <span>Status</span>
                   <select disabled={!canEditUsers} onChange={updateField("status")} value={form.status}>
                     <option>Ativo</option>
@@ -728,7 +775,7 @@ function UsersPage() {
                     <option>Excluido</option>
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.permissionProfileId ? " is-dirty" : ""}`}>
                   <span>Perfil de permissao</span>
                   <select disabled={!canManagePermissions} onChange={updateProfileField} value={form.permissionProfileId}>
                     <option value="">Selecione</option>
@@ -739,11 +786,11 @@ function UsersPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.team ? " is-dirty" : ""}`}>
                   <span>Equipe</span>
                   <input disabled={!canEditUsers} onChange={updateField("team")} value={form.team} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.departmentId ? " is-dirty" : ""}`}>
                   <span>Departamento</span>
                   <select disabled={!canEditUsers} onChange={updateDepartmentField} value={form.departmentId}>
                     <option value="">Sem departamento</option>

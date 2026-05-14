@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
 import { canAccessModule, hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { useUiPreferences } from "../ui/UiPreferencesContext";
 
 function getInitials(name) {
   return String(name || "")
@@ -104,6 +105,7 @@ const navigationIcons = {
 function AppLayout() {
   const { user, logout } = useAuth();
   const { dismissToast, notifications, summary, navigationSections, permissionCatalog } = useAppData();
+  const { density, setDensity } = useUiPreferences();
   const location = useLocation();
   const navigate = useNavigate();
   const [globalSearch, setGlobalSearch] = useState("");
@@ -228,6 +230,22 @@ function AppLayout() {
                 Abrir chamado
               </button>
             ) : null}
+            <div className="toolbar density-toggle" role="group" aria-label="Densidade visual">
+              {[
+                ["compacta", "Compacta"],
+                ["media", "Media"],
+                ["confortavel", "Confortavel"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  className={`filter-pill interactive-button${density === value ? " is-active" : ""}`}
+                  onClick={() => setDensity(value)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <NavLink className="user-badge interactive-button" to="/app/profile">
               <div className="user-avatar">
                 {user?.avatar ? <img alt={user.name} className="user-avatar-image" src={user.avatar} /> : <span>{getInitials(user?.name)}</span>}
@@ -270,8 +288,10 @@ function AppLayout() {
             onClick={() => dismissToast(toast.id)}
             type="button"
           >
+            <span className="toast-meta">{toast.tone === "warning" ? "Alerta operacional" : toast.tone === "success" ? "Atualizacao concluida" : "Informacao"}</span>
             <strong>{toast.title}</strong>
             {toast.detail ? <span>{toast.detail}</span> : null}
+            <small>Clique para dispensar</small>
           </button>
         ))}
       </div>

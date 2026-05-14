@@ -7,6 +7,7 @@ import { hasAnyPermission } from "../data/permissions";
 import { PRIORITY_LEVELS, TICKET_STATUSES, createFollowUpEntry, normalizeText } from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
 import { downloadCsv } from "../lib/export";
+import { useUiPreferences } from "../ui/UiPreferencesContext";
 
 const defaultCreateForm = {
   title: "",
@@ -49,6 +50,18 @@ const solutionTemplates = [
   { id: "sol-1", name: "Acesso liberado", content: "Acesso concedido apos validacao de perfil, grupo e politica de seguranca." },
   { id: "sol-2", name: "Servico restabelecido", content: "Servico normalizado apos ajuste corretivo e validacao com a area solicitante." },
   { id: "sol-3", name: "Orientacao concluida", content: "Chamado concluido com orientacao ao usuario e confirmacao do funcionamento esperado." },
+];
+
+const TICKET_GRID_COLUMNS = [
+  { key: "requester", label: "Solicitante", defaultVisible: true },
+  { key: "email", label: "Email", defaultVisible: true },
+  { key: "category", label: "Categoria", defaultVisible: true },
+  { key: "department", label: "Departamento", defaultVisible: true },
+  { key: "queue", label: "Fila", defaultVisible: true },
+  { key: "urgency", label: "Urgencia", defaultVisible: true },
+  { key: "openedAt", label: "Abertura", defaultVisible: true },
+  { key: "source", label: "Origem", defaultVisible: false },
+  { key: "assignee", label: "Tecnico", defaultVisible: false },
 ];
 
 function readFileAsDataUrl(file) {
@@ -155,6 +168,7 @@ function TicketsPage() {
     users,
   } = useAppData();
   const { user } = useAuth();
+  const { getModulePreference, setModulePreference } = useUiPreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState("list");
   const [statusFilter, setStatusFilter] = useState("Todos");
@@ -175,6 +189,7 @@ function TicketsPage() {
   const [savedFilters, setSavedFilters] = useState([]);
   const [savedFilterName, setSavedFilterName] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [showGridConfig, setShowGridConfig] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
@@ -187,6 +202,9 @@ function TicketsPage() {
   const [approvalReason, setApprovalReason] = useState("");
   const [followUpDraft, setFollowUpDraft] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
+  const [visibleColumns, setVisibleColumns] = useState(
+    () => getModulePreference("tickets", "visibleColumns", TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key)),
+  );
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
@@ -304,6 +322,10 @@ function TicketsPage() {
   const currentDetailDepartmentId = detailForm?.departmentId || detailTicket?.departmentId || "";
   const detailDepartment = currentDetailDepartmentId ? serviceDepartmentDirectory[currentDetailDepartmentId] || null : null;
   const assigneeDepartment = serviceCenterEnabled ? detailDepartment?.serviceConfig || {} : null;
+  const visibleGridColumns = useMemo(
+    () => TICKET_GRID_COLUMNS.filter((column) => visibleColumns.includes(column.key)),
+    [visibleColumns],
+  );
 
   const assigneeUsers = useMemo(() => {
     if (!serviceCenterEnabled) {
@@ -336,6 +358,19 @@ function TicketsPage() {
   useEffect(() => {
     window.localStorage.setItem(getTicketFiltersStorageKey(user?.id), JSON.stringify(savedFilters));
   }, [savedFilters, user?.id]);
+
+  useEffect(() => {
+    setModulePreference("tickets", "visibleColumns", visibleColumns);
+  }, [setModulePreference, visibleColumns]);
+
+  useEffect(() => {
+    const nextVisibleColumns = getModulePreference(
+      "tickets",
+      "visibleColumns",
+      TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key),
+    );
+    setVisibleColumns(Array.isArray(nextVisibleColumns) && nextVisibleColumns.length ? nextVisibleColumns : TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key));
+  }, [getModulePreference, user?.id]);
 
   useEffect(() => {
     if (searchParams.get("new") === "1" && canCreateTicket) {
@@ -570,6 +605,39 @@ function TicketsPage() {
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [showCreateForm]);
+
+  useEffect(() => {
+    if (!detailTicket || !detailForm) return undefined;
+
+    const handleKeydown = (event) => {
+      if (!event.altKey) return;
+      if (event.target instanceof HTMLElement) {
+        const tagName = event.target.tagName.toLowerCase();
+        if (["input", "textarea", "select"].includes(tagName)) return;
+      }
+
+      const actionKey = event.key.toLowerCase();
+      if (actionKey === "a" && canAssignTicket) {
+        event.preventDefault();
+        handleQuickAction("assignSelf");
+      }
+      if (actionKey === "i" && canChangeStatus) {
+        event.preventDefault();
+        handleQuickAction("start");
+      }
+      if (actionKey === "u" && canChangeStatus) {
+        event.preventDefault();
+        handleQuickAction("wait");
+      }
+      if (actionKey === "r" && canCloseTicket) {
+        event.preventDefault();
+        handleQuickAction("resolve");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [canAssignTicket, canChangeStatus, canCloseTicket, detailForm, detailTicket]);
 
   if (
     !hasAnyPermission(user, [
@@ -856,6 +924,67 @@ function TicketsPage() {
     }
   };
 
+  const toggleGridColumn = (columnKey) => {
+    setVisibleColumns((current) => {
+      if (current.includes(columnKey)) {
+        return current.length > 1 ? current.filter((key) => key !== columnKey) : current;
+      }
+      return [...current, columnKey];
+    });
+  };
+
+  const handleInlineTicketAction = (ticket, action) => {
+    if (!ticket) return;
+
+    if (action === "assignSelf" && canAssignTicket) {
+      updateTicket(ticket.id, {
+        assignee: user?.name || ticket.assignee,
+        status: ["aberto", "reaberto"].includes(normalizeText(ticket.status)) ? "Em andamento" : ticket.status,
+      });
+      pushToast("Atalho aplicado", `${ticket.id} assumido por voce.`);
+      return;
+    }
+
+    if (action === "start" && canChangeStatus) {
+      updateTicket(ticket.id, { status: "Em andamento" });
+      pushToast("Atalho aplicado", `${ticket.id} em andamento.`);
+      return;
+    }
+
+    if (action === "resolve" && canCloseTicket) {
+      if (!String(ticket.resolutionNotes || "").trim()) {
+        pushToast("Solucao obrigatoria", `Preencha a solucao de ${ticket.id} antes de resolver.`, "warning");
+        return;
+      }
+      updateTicket(ticket.id, { status: "Resolvido", resolutionNotes: String(ticket.resolutionNotes || "").trim() });
+      pushToast("Atalho aplicado", `${ticket.id} resolvido.`);
+    }
+  };
+
+  const detailDirtyFields = useMemo(() => {
+    if (!detailTicket || !detailForm) return {};
+    return {
+      title: String(detailForm.title || "") !== String(detailTicket.title || ""),
+      type: String(detailForm.type || "") !== String(detailTicket.type || ""),
+      status: String(detailForm.status || "") !== String(detailTicket.status || ""),
+      department: String(detailForm.departmentId || detailForm.queue || "") !== String(detailTicket.departmentId || detailTicket.queue || ""),
+      requester: String(detailForm.requester || "") !== String(detailTicket.requester || ""),
+      requesterEmail: String(detailForm.requesterEmail || "") !== String(detailTicket.requesterEmail || ""),
+      source: String(detailForm.source || "") !== String(detailTicket.source || ""),
+      category: String(detailForm.category || "") !== String(detailTicket.category || ""),
+      location: String(detailForm.location || "") !== String(detailTicket.location || ""),
+      priority: String(detailForm.priority || "") !== String(detailTicket.priority || ""),
+      urgency: String(detailForm.urgency || "") !== String(detailTicket.urgency || detailTicket.priority || ""),
+      impact: String(detailForm.impact || "") !== String(detailTicket.impact || detailTicket.priority || ""),
+      dueDate: String(detailForm.dueDate || "") !== String(detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : ""),
+      watchers: String(detailForm.watchers || "") !== String(detailTicket.watchers || ""),
+      assignee: String(detailForm.assignee || "") !== String(detailTicket.assignee || ""),
+      description: String(detailForm.description || "") !== String(detailTicket.description || ""),
+      resolutionNotes: String(detailForm.resolutionNotes || "") !== String(detailTicket.resolutionNotes || ""),
+      reopenReason: String(detailForm.reopenReason || "") !== String(detailTicket.reopenReason || ""),
+    };
+  }, [detailForm, detailTicket]);
+
   return (
     <div className="ticket-page">
       <section className="tickets-header board-card">
@@ -927,6 +1056,9 @@ function TicketsPage() {
                 Lista
               </button>
             </div>
+            <button className="ghost-button interactive-button" onClick={() => setShowGridConfig((current) => !current)} type="button">
+              Grade
+            </button>
             <button className="ghost-button interactive-button" onClick={() => setShowFilters((current) => !current)} type="button">
               {showFilters ? "Ocultar filtros" : "Mostrar filtros"}
             </button>
@@ -953,6 +1085,26 @@ function TicketsPage() {
             {search.trim() ? <span className="badge badge-neutral">Busca: {search}</span> : null}
           </div>
         </div>
+
+        {showGridConfig ? (
+          <div className="board-card compact-record-card ticket-grid-config-panel">
+            <strong>Contexto visivel na grade</strong>
+            <span>Escolha quais colunas leves aparecem por usuario neste modulo.</span>
+            <div className="permissions-inline users-grid-config">
+              {TICKET_GRID_COLUMNS.map((column) => (
+                <label className="inline-toggle" key={column.key}>
+                  <input
+                    checked={visibleColumns.includes(column.key)}
+                    disabled={visibleColumns.length === 1 && visibleColumns.includes(column.key)}
+                    onChange={() => toggleGridColumn(column.key)}
+                    type="checkbox"
+                  />
+                  <span>{column.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
                 {showFilters ? (
           <div className="dashboard-filter-shell compact-filter-shell ticket-filters-panel">
@@ -1126,47 +1278,95 @@ function TicketsPage() {
 
         <div className="ticket-rows ticket-rows-wide ticket-list-compact">
           {filteredTickets.length ? (
+            <div className="ticket-grid-header">
+              <span>Chamado</span>
+              <div className="ticket-grid-header-columns">
+                {visibleGridColumns.map((column) => (
+                  <span key={column.key}>{column.label}</span>
+                ))}
+              </div>
+              <span>Acoes</span>
+            </div>
+          ) : null}
+          {filteredTickets.length ? (
             filteredTickets.map((ticket) => (
-              <button
-                className={`ticket-row-card ticket-row-compact interactive-button ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
+              <article
+                className={`ticket-row-card ticket-row-compact ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
                 key={ticket.id}
-                onClick={() => setDetailTicketId(ticket.id)}
                 style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.06 })}
-                type="button"
               >
-                <div className="ticket-row-headerline">
-                  <div className="ticket-row-ticketid">{ticket.id}</div>
-                  <div className="ticket-row-badges ticket-row-badges-compact">
-                    <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
-                    <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
-                    <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
+                <button className="ticket-row-open interactive-button" onClick={() => setDetailTicketId(ticket.id)} type="button">
+                  <div className="ticket-row-headerline">
+                    <div className="ticket-row-ticketid">{ticket.id}</div>
+                    <div className="ticket-row-badges ticket-row-badges-compact">
+                      <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
+                      <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                      <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="ticket-row-main ticket-row-main-compact">
-                  <div className="ticket-row-title ticket-row-title-compact">
-                    <h3>{ticket.title}</h3>
-                    <p>{ticket.description}</p>
+                  <div className="ticket-row-main ticket-row-main-compact">
+                    <div className="ticket-row-title ticket-row-title-compact">
+                      <h3>{ticket.title}</h3>
+                      <p>{ticket.description}</p>
+                      <div className="ticket-row-context-chips">
+                        <span className="context-chip">{ticket.department || "Sem departamento"}</span>
+                        <span className="context-chip">{ticket.queue || "Sem fila"}</span>
+                        <span className="context-chip">Urgencia {ticket.urgency || ticket.priority}</span>
+                        <span className={`context-chip context-chip-status ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                      </div>
+                    </div>
+                    <div className="ticket-row-side-meta">
+                      <span className="department-badge" style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.16 })}>
+                        {ticket.department || ticket.queue}
+                      </span>
+                      <strong>{ticket.assignee || "Sem tecnico"}</strong>
+                    </div>
                   </div>
-                  <div className="ticket-row-side-meta">
-                    <span className="department-badge" style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.16 })}>
-                      {ticket.department || ticket.queue}
-                    </span>
-                    <strong>{ticket.assignee || "Sem tecnico"}</strong>
+                  <div className="ticket-row-meta ticket-row-meta-compact">
+                    {visibleColumns.includes("requester") ? <span>Solicitante: {ticket.requester}</span> : null}
+                    {visibleColumns.includes("email") ? <span>Email: {ticket.requesterEmail || "-"}</span> : null}
+                    {visibleColumns.includes("category") ? <span>Categoria: {ticket.category || "Geral"}</span> : null}
+                    {visibleColumns.includes("department") ? <span>Departamento: {ticket.department || "-"}</span> : null}
+                    {visibleColumns.includes("queue") ? <span>Fila: {ticket.queue || "-"}</span> : null}
+                    {visibleColumns.includes("urgency") ? <span>Urgencia: {ticket.urgency || ticket.priority}</span> : null}
+                    {visibleColumns.includes("openedAt") ? <span>Abertura: {ticket.openedAtLabel || "-"}</span> : null}
+                    {visibleColumns.includes("source") ? <span>Origem: {ticket.source || "Portal"}</span> : null}
+                    {visibleColumns.includes("assignee") ? <span>Tecnico: {ticket.assignee || "Sem tecnico"}</span> : null}
                   </div>
+                </button>
+                <div className="compact-row-actions ticket-inline-actions">
+                  {canAssignTicket ? (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "assignSelf")} type="button">
+                      Assumir
+                    </button>
+                  ) : null}
+                  {canChangeStatus ? (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "start")} type="button">
+                      Iniciar
+                    </button>
+                  ) : null}
+                  {canCloseTicket ? (
+                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "resolve")} type="button">
+                      Resolver
+                    </button>
+                  ) : null}
                 </div>
-                <div className="ticket-row-meta ticket-row-meta-compact">
-                  <span>Solicitante: {ticket.requester}</span>
-                  <span>Email: {ticket.requesterEmail || "-"}</span>
-                  <span>Categoria: {ticket.category || "Geral"}</span>
-                  <span>Origem: {ticket.source || "Portal"}</span>
-                  <span>Abertura: {ticket.openedAtLabel || "-"}</span>
-                </div>
-              </button>
+              </article>
             ))
           ) : (
             <div className="empty-state">
               <strong>Nenhum chamado encontrado.</strong>
               <span>Ajuste busca, filtros ou registre um novo chamado.</span>
+              <div className="empty-state-actions">
+                <button className="ghost-button interactive-button" onClick={handleResetFilters} type="button">
+                  Limpar filtros
+                </button>
+                {canCreateTicket ? (
+                  <button className="primary-button interactive-button" onClick={handleOpenCreateModal} type="button">
+                    Abrir chamado
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
         </div>
@@ -1421,6 +1621,7 @@ function TicketsPage() {
                     Resolver agora
                   </button>
                 ) : null}
+                <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
               </div>
 
               <div className="glpi-info-strip">
@@ -1444,13 +1645,13 @@ function TicketsPage() {
                 </div>
               </div>
 
-              <label className="field-block field-full">
+              <label className={`field-block field-full${detailDirtyFields.title ? " is-dirty" : ""}`}>
                 <span>Titulo</span>
                 <input disabled={!canEditTicket} onChange={updateDetailField("title")} value={detailForm.title} />
               </label>
 
               <div className="detail-grid">
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.type ? " is-dirty" : ""}`}>
                   <span>Tipo</span>
                   <select disabled={!canEditTicket} onChange={updateDetailField("type")} value={detailForm.type}>
                     <option>Incidente</option>
@@ -1458,7 +1659,7 @@ function TicketsPage() {
                     <option>Problema</option>
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.status ? " is-dirty" : ""}`}>
                   <span>Status</span>
                   <select disabled={!canChangeStatus} onChange={updateDetailField("status")} value={detailForm.status}>
                     {allowedDetailStatuses.map((status) => (
@@ -1466,7 +1667,7 @@ function TicketsPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.department ? " is-dirty" : ""}`}>
                   <span>{serviceCenterEnabled ? "Departamento de atendimento" : "Fila"}</span>
                   {serviceCenterEnabled ? (
                     <select
@@ -1500,15 +1701,15 @@ function TicketsPage() {
                     </select>
                   )}
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.requester ? " is-dirty" : ""}`}>
                   <span>Solicitante</span>
                   <input disabled={!canEditTicket || !canSeeAllTickets} onChange={updateDetailField("requester")} value={detailForm.requester} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.requesterEmail ? " is-dirty" : ""}`}>
                   <span>Email solicitante</span>
                   <input disabled={!canEditTicket || !canSeeAllTickets} onChange={updateDetailField("requesterEmail")} value={detailForm.requesterEmail} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.source ? " is-dirty" : ""}`}>
                   <span>Origem</span>
                   <select disabled={!canEditTicket} onChange={updateDetailField("source")} value={detailForm.source}>
                     <option>Portal</option>
@@ -1517,15 +1718,15 @@ function TicketsPage() {
                     <option>Monitoramento</option>
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.category ? " is-dirty" : ""}`}>
                   <span>Categoria</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("category")} value={detailForm.category || ""} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.location ? " is-dirty" : ""}`}>
                   <span>Localizacao</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("location")} value={detailForm.location || ""} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.priority ? " is-dirty" : ""}`}>
                   <span>Prioridade</span>
                   <select disabled={!canChangePriority} onChange={updateDetailField("priority")} value={detailForm.priority}>
                     {PRIORITY_LEVELS.map((priority) => (
@@ -1533,7 +1734,7 @@ function TicketsPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.urgency ? " is-dirty" : ""}`}>
                   <span>Urgencia</span>
                   <select disabled={!canChangePriority} onChange={updateDetailField("urgency")} value={detailForm.urgency}>
                     {PRIORITY_LEVELS.map((priority) => (
@@ -1541,7 +1742,7 @@ function TicketsPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.impact ? " is-dirty" : ""}`}>
                   <span>Impacto</span>
                   <select disabled={!canChangePriority} onChange={updateDetailField("impact")} value={detailForm.impact}>
                     {PRIORITY_LEVELS.map((priority) => (
@@ -1549,7 +1750,7 @@ function TicketsPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.dueDate ? " is-dirty" : ""}`}>
                   <span>Data limite</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("dueDate")} type="date" value={detailForm.dueDate || ""} />
                 </label>
@@ -1557,11 +1758,11 @@ function TicketsPage() {
                   <span>Abertura</span>
                   <input disabled readOnly value={detailTicket.openedAtLabel || "-"} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.watchers ? " is-dirty" : ""}`}>
                   <span>Observadores</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("watchers")} value={detailForm.watchers || ""} />
                 </label>
-                <label className="field-block">
+                <label className={`field-block${detailDirtyFields.assignee ? " is-dirty" : ""}`}>
                   <span>Tecnico responsavel</span>
                   <UserAutocomplete
                     filterFn={(candidate) =>
@@ -1585,12 +1786,12 @@ function TicketsPage() {
                 </label>
               </div>
 
-              <label className="field-block field-full">
+              <label className={`field-block field-full${detailDirtyFields.description ? " is-dirty" : ""}`}>
                 <span>Descricao</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} value={detailForm.description} />
               </label>
 
-              <label className="field-block field-full">
+              <label className={`field-block field-full${detailDirtyFields.resolutionNotes ? " is-dirty" : ""}`}>
                 <span>Solucao tecnica</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
@@ -1608,7 +1809,7 @@ function TicketsPage() {
                   </select>
                 </label>
                 {normalizeText(detailForm.status) === "reaberto" ? (
-                  <label className="field-block field-full">
+                  <label className={`field-block field-full${detailDirtyFields.reopenReason ? " is-dirty" : ""}`}>
                     <span>Motivo da reabertura</span>
                     <textarea disabled={!canEditTicket} onChange={updateDetailField("reopenReason")} value={detailForm.reopenReason || ""} />
                   </label>
