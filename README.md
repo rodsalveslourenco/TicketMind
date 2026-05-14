@@ -279,6 +279,8 @@ No deploy:
 - campos obrigatorios dinamicos por categoria
 - templates de resposta, encerramento e reabertura
 - pesquisa global unificada por chamado, usuario, ativo e artigo
+- fila de triagem com acoes rapidas em linha
+- sugestao de tecnico por departamento, carga e especialidade
 
 ## Mapeamento de novas funcoes
 
@@ -298,7 +300,6 @@ No deploy:
 
 ### Melhorias para chamados
 
-- fila de triagem com acoes rapidas em linha
 - modo analista com preview lateral do chamado sem trocar de pagina
 - escalonamento automatico de chamados vencidos ou sem responsavel
 - relacao entre chamado pai e filhos para incidentes maiores
@@ -306,7 +307,6 @@ No deploy:
 - motivo de pausa e motivo de espera obrigatorios em status especificos
 - aprovacoes visiveis na timeline do chamado com decisor, data e justificativa
 - historico de decisao de aprovacao separado do historico tecnico
-- sugestao de tecnico por departamento, carga e especialidade
 
 ### Melhorias para inventario e cadastros
 

@@ -5053,6 +5053,69 @@ textarea:focus {
   font-size: 0.72rem;
 }
 
+.ticket-triage-panel {
+  margin-bottom: 0.75rem;
+}
+
+.ticket-triage-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ticket-triage-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.58rem 0.68rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.ticket-triage-copy {
+  display: grid;
+  gap: 0.08rem;
+  text-align: left;
+}
+
+.ticket-triage-copy span {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.ticket-triage-copy strong {
+  color: #0f172a;
+  font-size: 0.78rem;
+}
+
+.ticket-technician-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.ticket-technician-chip {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 160px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(191, 219, 254, 0.92);
+  border-radius: 10px;
+  background: rgba(239, 246, 255, 0.92);
+  text-align: left;
+}
+
+.ticket-technician-chip strong {
+  color: #0f172a;
+  font-size: 0.76rem;
+}
+
+.ticket-technician-chip span {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
 .field-block.is-dirty::after {
   content: "Alterado";
   position: absolute;

@@ -480,6 +480,40 @@ function TicketsPage() {
       ),
     [users],
   );
+  const triageTickets = useMemo(
+    () =>
+      filteredTickets
+        .filter((ticket) => normalizeText(ticket.status) === "aberto" || ticket.unassigned || ticket.criticalWaitingTechnician)
+        .slice(0, 6),
+    [filteredTickets],
+  );
+  const suggestedAssignees = useMemo(() => {
+    if (!detailTicket) return [];
+    const openStatuses = new Set(["aberto", "em andamento", "aguardando usuario", "aguardando aprovacao", "reaberto"]);
+    const workloadByName = tickets.reduce((accumulator, ticket) => {
+      const normalizedAssignee = normalizeText(ticket.assignee);
+      if (!normalizedAssignee || !openStatuses.has(normalizeText(ticket.status))) return accumulator;
+      return {
+        ...accumulator,
+        [normalizedAssignee]: (accumulator[normalizedAssignee] || 0) + 1,
+      };
+    }, {});
+    return assigneeUsers
+      .map((candidate) => {
+        const departmentScore = candidate.departmentId && candidate.departmentId === currentDetailDepartmentId ? 2 : 0;
+        const teamScore = normalizeText(candidate.team).includes(normalizeText(detailTicket.category)) ? 1 : 0;
+        const workload = workloadByName[normalizeText(candidate.name)] || 0;
+        return {
+          id: candidate.id,
+          name: candidate.name,
+          team: candidate.team || candidate.department || "",
+          workload,
+          score: departmentScore + teamScore - workload * 0.15,
+        };
+      })
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 4);
+  }, [assigneeUsers, currentDetailDepartmentId, detailTicket, tickets]);
 
   useEffect(() => {
     setSearch(searchParams.get("q") || "");
@@ -1487,6 +1521,37 @@ function TicketsPage() {
           </div>
         ) : null}
 
+        {triageTickets.length ? (
+          <div className="ticket-inline-panel ticket-triage-panel">
+            <div className="ticket-inline-panel-head">
+              <strong>Fila de triagem</strong>
+              <span>Chamados abertos, sem responsavel ou com atencao imediata para despacho rapido.</span>
+            </div>
+            <div className="ticket-triage-list">
+              {triageTickets.map((ticket) => (
+                <article className="ticket-triage-item" key={ticket.id}>
+                  <button className="ticket-triage-copy interactive-button" onClick={() => setDetailTicketId(ticket.id)} type="button">
+                    <span>{ticket.id} | {ticket.department || ticket.queue || "Sem departamento"}</span>
+                    <strong>{ticket.title}</strong>
+                  </button>
+                  <div className="ticket-inline-actions">
+                    {canAssignTicket ? (
+                      <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "assignSelf")} type="button">
+                        Assumir
+                      </button>
+                    ) : null}
+                    {canChangeStatus ? (
+                      <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "start")} type="button">
+                        Iniciar
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {showGridConfig ? (
           <div className="board-card compact-record-card ticket-grid-config-panel">
             <strong>Contexto visivel na lista</strong>
@@ -2218,6 +2283,30 @@ function TicketsPage() {
                     value={detailForm.assignee || ""}
                   />
                 </label>
+                {suggestedAssignees.length ? (
+                  <div className="field-block field-full">
+                    <span>Sugestao de tecnicos</span>
+                    <div className="ticket-technician-suggestions">
+                      {suggestedAssignees.map((candidate) => (
+                        <button
+                          className="ticket-technician-chip interactive-button"
+                          key={candidate.id}
+                          onClick={() =>
+                            setDetailForm((current) => ({
+                              ...current,
+                              assignee: candidate.name,
+                              status: ["aberto", "reaberto"].includes(normalizeText(current.status)) ? "Em andamento" : current.status,
+                            }))
+                          }
+                          type="button"
+                        >
+                          <strong>{candidate.name}</strong>
+                          <span>{candidate.team || "Tecnico"} | {candidate.workload} chamado(s)</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {normalizeText(detailForm.type) === "requisicao" ? (
                   <label className={`field-block${detailDirtyFields.approvalApproverId ? " is-dirty" : ""}`}>
                     <span>Aprovador da requisicao</span>
