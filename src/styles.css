@@ -4998,6 +4998,61 @@ textarea:focus {
   font-size: 0.7rem;
 }
 
+.ticket-rule-alert {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 247, 237, 0.92);
+  color: #9a3412;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.ticket-global-search-panel {
+  margin-bottom: 0.75rem;
+}
+
+.ticket-global-search-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.ticket-global-search-grid > div {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ticket-global-search-grid > div > strong {
+  color: #0f172a;
+  font-size: 0.78rem;
+}
+
+.ticket-global-search-item {
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.5rem 0.62rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 10px;
+  background: #ffffff;
+  text-align: left;
+}
+
+.ticket-global-search-item span {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.ticket-global-search-item strong {
+  color: #0f172a;
+  font-size: 0.76rem;
+}
+
+.ticket-global-search-empty {
+  color: #94a3b8;
+  font-size: 0.72rem;
+}
+
 .field-block.is-dirty::after {
   content: "Alterado";
   position: absolute;

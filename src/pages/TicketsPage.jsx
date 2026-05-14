@@ -73,6 +73,52 @@ const checklistByType = {
   problema: ["Relacionar causa raiz", "Mapear recorrencia", "Definir acao corretiva", "Documentar prevencao futura"],
 };
 
+const requestTypeProfiles = {
+  incidente: {
+    category: "Infraestrutura",
+    priority: "Alta",
+    helper: "Use para indisponibilidade, falha operacional ou impacto tecnico imediato.",
+    suggestedFields: ["Localizacao", "Categoria", "Urgencia"],
+  },
+  requisicao: {
+    category: "Acesso",
+    priority: "Media",
+    helper: "Use para acesso, liberacao, cadastro, compra ou qualquer entrega dependente de aprovacao.",
+    suggestedFields: ["Aprovador", "Projeto", "Observadores"],
+  },
+  problema: {
+    category: "Analise de causa",
+    priority: "Alta",
+    helper: "Use para causa raiz, recorrencia e correcoes estruturais.",
+    suggestedFields: ["Projeto", "Ativo", "Descricao tecnica"],
+  },
+};
+
+const categoryFieldRules = [
+  {
+    match: ["acesso"],
+    message: "Categoria de acesso exige e-mail do solicitante e aprovador para requisições.",
+    validate: (form) =>
+      Boolean(String(form.requesterEmail || "").trim()) &&
+      (normalizeText(form.type) !== "requisicao" || Boolean(String(form.approvalApproverId || "").trim())),
+  },
+  {
+    match: ["infraestrutura", "rede", "facilities"],
+    message: "Categorias operacionais exigem localização informada.",
+    validate: (form) => Boolean(String(form.location || "").trim()),
+  },
+  {
+    match: ["hardware", "equipamento", "ativo"],
+    message: "Categorias de ativo exigem vínculo com ativo ou localização.",
+    validate: (form) => Boolean(String(form.assetId || "").trim() || String(form.location || "").trim()),
+  },
+  {
+    match: ["projeto", "projetos", "demanda de projeto"],
+    message: "Categorias de projeto exigem vínculo com um projeto.",
+    validate: (form) => Boolean(String(form.projectId || "").trim()),
+  },
+];
+
 const TICKET_GRID_COLUMNS = [
   { key: "requester", label: "Solicitante", defaultVisible: true },
   { key: "email", label: "Email", defaultVisible: true },
@@ -174,6 +220,17 @@ function buildChecklistTemplate(type) {
     label,
     checked: false,
   }));
+}
+
+function getTypeProfile(type) {
+  return requestTypeProfiles[normalizeText(type)] || requestTypeProfiles.incidente;
+}
+
+function getDynamicCategoryValidation(formLike = {}) {
+  const normalizedCategory = normalizeText(formLike.category);
+  const matchedRule = categoryFieldRules.find((rule) => rule.match.some((item) => normalizedCategory.includes(normalizeText(item))));
+  if (!matchedRule) return "";
+  return matchedRule.validate(formLike) ? "" : matchedRule.message;
 }
 
 function TicketsPage() {
@@ -328,10 +385,12 @@ function TicketsPage() {
     () => (assets || []).filter((asset) => !["baixado", "excluido"].includes(normalizeText(asset.status || ""))),
     [assets],
   );
+  const createTypeProfile = useMemo(() => getTypeProfile(createForm.type), [createForm.type]);
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
   const isDetailResolved = normalizeText(detailTicket?.status) === "resolvido";
   const isDetailReopened = normalizeText(detailTicket?.status) === "reaberto";
+  const detailTypeProfile = useMemo(() => getTypeProfile(detailForm?.type), [detailForm?.type]);
   const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
   const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => canViewPrivateFollowUps || followUp.visibility === "public");
   const filteredFollowUps = useMemo(() => {
@@ -648,6 +707,22 @@ function TicketsPage() {
       )
       .slice(0, 6);
   }, [createForm.watchers, user?.id, users, watcherQuery]);
+  const globalSearchResults = useMemo(() => {
+    const normalizedQuery = normalizeText(search);
+    if (normalizedQuery.length < 2) {
+      return { tickets: [], users: [], assets: [], articles: [] };
+    }
+    return {
+      tickets: filteredTickets.slice(0, 5),
+      users: users
+        .filter((candidate) => [candidate.name, candidate.email, candidate.team, candidate.department].some((value) => normalizeText(value).includes(normalizedQuery)))
+        .slice(0, 4),
+      assets: activeAssetOptions
+        .filter((asset) => [asset.tag, asset.name, asset.serialNumber, asset.location].some((value) => normalizeText(value).includes(normalizedQuery)))
+        .slice(0, 4),
+      articles: searchKnowledgeArticles(search, knowledgeArticles).slice(0, 4),
+    };
+  }, [activeAssetOptions, filteredTickets, knowledgeArticles, search, searchKnowledgeArticles, users]);
 
   useEffect(() => {
     if (!detailTicket) {
@@ -763,6 +838,30 @@ function TicketsPage() {
   const updateCreateField = (field) => (event) => setCreateForm((current) => ({ ...current, [field]: event.target.value }));
   const updateDetailField = (field) => (event) => setDetailForm((current) => ({ ...current, [field]: event.target.value }));
 
+  const handleCreateTypeChange = (event) => {
+    const nextType = event.target.value;
+    const profile = getTypeProfile(nextType);
+    setCreateForm((current) => ({
+      ...current,
+      type: nextType,
+      category: !current.category || current.category === "Geral" ? profile.category : current.category,
+      priority: current.priority === "Media" ? profile.priority : current.priority,
+      urgency: current.urgency === "Media" ? profile.priority : current.urgency,
+      impact: current.impact === "Media" ? profile.priority : current.impact,
+    }));
+  };
+
+  const handleDetailTypeChange = (event) => {
+    const nextType = event.target.value;
+    const profile = getTypeProfile(nextType);
+    setDetailForm((current) => ({
+      ...current,
+      type: nextType,
+      category: !current.category || current.category === "Geral" ? profile.category : current.category,
+      checklistItems: current.checklistItems?.length ? current.checklistItems : buildChecklistTemplate(nextType),
+    }));
+  };
+
   const handleSearchChange = (value) => {
     setSearch(value);
     const nextParams = new URLSearchParams(searchParams);
@@ -812,6 +911,14 @@ function TicketsPage() {
       pushToast("Departamento obrigatorio", "Selecione um departamento para abrir o chamado.", "warning");
       return;
     }
+    const dynamicCreateValidation = getDynamicCategoryValidation({
+      ...createForm,
+      requesterEmail: user?.email || "",
+    });
+    if (dynamicCreateValidation) {
+      pushToast("Campos obrigatorios da categoria", dynamicCreateValidation, "warning");
+      return;
+    }
     if (normalizeText(createForm.type) === "requisicao" && !String(createForm.approvalApproverId || "").trim()) {
       pushToast("Aprovador obrigatorio", "Selecione quem vai aprovar esta requisicao antes de registrar.", "warning");
       return;
@@ -859,6 +966,11 @@ function TicketsPage() {
   const handleSaveTicket = (event) => {
     event.preventDefault();
     if (!detailTicket || !detailForm?.title || !detailForm?.requester) return;
+    const dynamicDetailValidation = getDynamicCategoryValidation(detailForm);
+    if (dynamicDetailValidation) {
+      pushToast("Campos obrigatorios da categoria", dynamicDetailValidation, "warning");
+      return;
+    }
     if (normalizeText(detailForm.status) === "reaberto" && !String(detailForm.reopenReason || "").trim()) {
       pushToast("Motivo obrigatorio", "Informe o motivo da reabertura antes de salvar o chamado.", "warning");
       return;
@@ -1312,6 +1424,69 @@ function TicketsPage() {
           </div>
         </div>
 
+        {normalizeText(search).length >= 2 ? (
+          <div className="ticket-inline-panel ticket-global-search-panel">
+            <div className="ticket-inline-panel-head">
+              <strong>Pesquisa operacional unificada</strong>
+              <span>Resultados locais por chamados, usuarios, ativos e base de conhecimento.</span>
+            </div>
+            <div className="ticket-global-search-grid">
+              <div>
+                <strong>Chamados</strong>
+                {globalSearchResults.tickets.length ? (
+                  globalSearchResults.tickets.map((ticket) => (
+                    <button className="ticket-global-search-item interactive-button" key={ticket.id} onClick={() => setDetailTicketId(ticket.id)} type="button">
+                      <span>{ticket.id}</span>
+                      <strong>{ticket.title}</strong>
+                    </button>
+                  ))
+                ) : (
+                  <span className="ticket-global-search-empty">Sem chamados</span>
+                )}
+              </div>
+              <div>
+                <strong>Usuarios</strong>
+                {globalSearchResults.users.length ? (
+                  globalSearchResults.users.map((candidate) => (
+                    <div className="ticket-global-search-item" key={candidate.id}>
+                      <span>{candidate.team || candidate.role || "Usuario"}</span>
+                      <strong>{candidate.name}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <span className="ticket-global-search-empty">Sem usuarios</span>
+                )}
+              </div>
+              <div>
+                <strong>Ativos</strong>
+                {globalSearchResults.assets.length ? (
+                  globalSearchResults.assets.map((asset) => (
+                    <div className="ticket-global-search-item" key={asset.id}>
+                      <span>{asset.location || asset.category || "Ativo"}</span>
+                      <strong>{asset.tag || asset.name}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <span className="ticket-global-search-empty">Sem ativos</span>
+                )}
+              </div>
+              <div>
+                <strong>Artigos</strong>
+                {globalSearchResults.articles.length ? (
+                  globalSearchResults.articles.map((article) => (
+                    <div className="ticket-global-search-item" key={article.id}>
+                      <span>{article.category}</span>
+                      <strong>{article.title}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <span className="ticket-global-search-empty">Sem artigos</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {showGridConfig ? (
           <div className="board-card compact-record-card ticket-grid-config-panel">
             <strong>Contexto visivel na lista</strong>
@@ -1549,12 +1724,19 @@ function TicketsPage() {
                 </label>
                 <label className="field-block">
                   <span>Tipo</span>
-                  <select onChange={updateCreateField("type")} value={createForm.type}>
+                  <select onChange={handleCreateTypeChange} value={createForm.type}>
                     <option>Incidente</option>
                     <option>Requisicao</option>
                     <option>Problema</option>
                   </select>
                 </label>
+                <div className="field-block">
+                  <span>Modelo do formulario</span>
+                  <div className="requester-stamp">
+                    <strong>{createTypeProfile.category} | Prioridade sugerida {createTypeProfile.priority}</strong>
+                    <small>{createTypeProfile.helper} Campos foco: {createTypeProfile.suggestedFields.join(", ")}.</small>
+                  </div>
+                </div>
                 {serviceCenterEnabled ? (
                   <label className="field-block field-full">
                     <span>Departamento de destino</span>
@@ -1594,6 +1776,13 @@ function TicketsPage() {
                   <span>Categoria</span>
                   <input onChange={updateCreateField("category")} value={createForm.category} />
                 </label>
+                {getDynamicCategoryValidation({ ...createForm, requesterEmail: user?.email || "" }) ? (
+                  <div className="field-block field-full">
+                    <div className="ticket-rule-alert">
+                      {getDynamicCategoryValidation({ ...createForm, requesterEmail: user?.email || "" })}
+                    </div>
+                  </div>
+                ) : null}
                 {normalizeText(createForm.type) === "requisicao" ? (
                   <label className="field-block">
                     <span>Aprovador da requisicao</span>
@@ -1884,12 +2073,19 @@ function TicketsPage() {
               <div className="detail-grid">
                 <label className={`field-block${detailDirtyFields.type ? " is-dirty" : ""}`}>
                   <span>Tipo</span>
-                  <select disabled={!canEditTicket} onChange={updateDetailField("type")} value={detailForm.type}>
+                  <select disabled={!canEditTicket} onChange={handleDetailTypeChange} value={detailForm.type}>
                     <option>Incidente</option>
                     <option>Requisicao</option>
                     <option>Problema</option>
                   </select>
                 </label>
+                <div className="field-block">
+                  <span>Modelo do formulario</span>
+                  <div className="requester-stamp">
+                    <strong>{detailTypeProfile.category} | Prioridade sugerida {detailTypeProfile.priority}</strong>
+                    <small>{detailTypeProfile.helper} Campos foco: {detailTypeProfile.suggestedFields.join(", ")}.</small>
+                  </div>
+                </div>
                 <label className={`field-block${detailDirtyFields.status ? " is-dirty" : ""}`}>
                   <span>Status</span>
                   <select disabled={!canChangeStatus} onChange={updateDetailField("status")} value={detailForm.status}>
@@ -1953,6 +2149,13 @@ function TicketsPage() {
                   <span>Categoria</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("category")} value={detailForm.category || ""} />
                 </label>
+                {getDynamicCategoryValidation(detailForm) ? (
+                  <div className="field-block field-full">
+                    <div className="ticket-rule-alert">
+                      {getDynamicCategoryValidation(detailForm)}
+                    </div>
+                  </div>
+                ) : null}
                 <label className={`field-block${detailDirtyFields.location ? " is-dirty" : ""}`}>
                   <span>Localizacao</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("location")} value={detailForm.location || ""} />

@@ -275,6 +275,10 @@ No deploy:
 - checklist operacional por tipo de chamado
 - macro de atendimento para atribuir, responder e mudar status em um clique
 - reabertura com motivo padronizado e classificacao de reincidencia
+- modelos de formulario por tipo de solicitacao
+- campos obrigatorios dinamicos por categoria
+- templates de resposta, encerramento e reabertura
+- pesquisa global unificada por chamado, usuario, ativo e artigo
 
 ## Mapeamento de novas funcoes
 
@@ -288,12 +292,8 @@ No deploy:
 - SLA de atendimento inicial separado do SLA de resolucao
 - roteamento automatico de triagem por categoria, prioridade e localizacao
 - roteamento por palavra-chave, origem e horario de atendimento
-- modelos de formulario por tipo de solicitacao
-- campos obrigatorios dinamicos por categoria
-- templates de resposta, encerramento e reabertura
 - observadores com notificacao seletiva por evento
 - abertura de chamado por email com parsing basico de assunto e corpo
-- pesquisa global unificada por chamado, usuario, ativo e artigo
 - relatorios consolidados exportaveis em todos os modulos administrativos
 
 ### Melhorias para chamados
