@@ -1068,6 +1068,11 @@ function getPgPool() {
     pgPool = new Pool({
       connectionString: databaseUrl,
       ssl: databaseUrl.includes("render.com") ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    });
+    pgPool.on("error", (error) => {
+      console.error("postgres pool error", error);
     });
   }
   return pgPool;

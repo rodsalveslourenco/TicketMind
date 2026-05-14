@@ -2,6 +2,12 @@ import { Router } from "express";
 import { hasAnyPermission } from "../../../src/data/permissions.js";
 import { buildEnvelope } from "../envelope.js";
 
+function handleAsync(handler) {
+  return (request, response, next) => {
+    Promise.resolve(handler(request, response, next)).catch(next);
+  };
+}
+
 function toCollectionEnvelope(state, domainKey, items, extraMeta = {}) {
   return buildEnvelope(
     {
@@ -56,7 +62,7 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
     "reports",
   ];
 
-  router.get("/meta", async (request, response) => {
+  router.get("/meta", handleAsync(async (request, response) => {
     const auth = await requireAuthenticatedUser(request, response);
     if (!auth) return;
     const state = await stateService.getState();
@@ -69,9 +75,9 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         domainVersions: state.domainVersions,
       }),
     );
-  });
+  }));
 
-  router.get("/state", async (request, response) => {
+  router.get("/state", handleAsync(async (request, response) => {
     const auth = await requireAuthenticatedUser(request, response);
     if (!auth) return;
     const state = await stateService.getState();
@@ -87,9 +93,9 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         state,
       ),
     );
-  });
+  }));
 
-  router.get("/tickets", async (request, response) => {
+  router.get("/tickets", handleAsync(async (request, response) => {
     const auth = await requireAuthenticatedUser(request, response);
     if (!auth) return;
     const result = await ticketService.listTickets({
@@ -116,9 +122,9 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         result.items,
       ),
     );
-  });
+  }));
 
-  router.get("/tickets/:ticketId", async (request, response) => {
+  router.get("/tickets/:ticketId", handleAsync(async (request, response) => {
     const auth = await requireAuthenticatedUser(request, response);
     if (!auth) return;
     const state = await stateService.getState();
@@ -128,17 +134,17 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
       return;
     }
     response.json(toCollectionEnvelope(state, "tickets", ticket));
-  });
+  }));
 
   for (const domainKey of readableCollectionDomains) {
-    router.get(`/${domainKey}`, async (request, response) => {
+    router.get(`/${domainKey}`, handleAsync(async (request, response) => {
       const auth = await requireAuthenticatedUser(request, response);
       if (!auth) return;
       const { items, state } = await collectionService.list(domainKey);
       response.json(toCollectionEnvelope(state, domainKey, items, { total: items.length }));
-    });
+    }));
 
-    router.get(`/${domainKey}/:itemId`, async (request, response) => {
+    router.get(`/${domainKey}/:itemId`, handleAsync(async (request, response) => {
       const auth = await requireAuthenticatedUser(request, response);
       if (!auth) return;
       const { item, state } = await collectionService.getById(domainKey, request.params.itemId);
@@ -147,11 +153,11 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         return;
       }
       response.json(toCollectionEnvelope(state, domainKey, item));
-    });
+    }));
   }
 
   for (const domainKey of ["tickets", "users", "departments", "locations"]) {
-    router.post(`/${domainKey}`, async (request, response) => {
+    router.post(`/${domainKey}`, handleAsync(async (request, response) => {
       const auth = await requireAuthenticatedUser(request, response);
       if (!auth) return;
       if (!canManageDomain(auth.requestUser, domainKey)) {
@@ -172,9 +178,9 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
       response.status(result.created ? 201 : 200).json(
         toCollectionEnvelope(persistedState, domainKey, persistedItem, { created: result.created }),
       );
-    });
+    }));
 
-    router.put(`/${domainKey}/:itemId`, async (request, response) => {
+    router.put(`/${domainKey}/:itemId`, handleAsync(async (request, response) => {
       const auth = await requireAuthenticatedUser(request, response);
       if (!auth) return;
       if (!canManageDomain(auth.requestUser, domainKey)) {
@@ -197,9 +203,9 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         (persistedState?.[domainKey] || []).find((candidate) => String(candidate.id || "").trim() === String(result.item.id || "").trim()) ||
         result.item;
       response.json(toCollectionEnvelope(persistedState, domainKey, persistedItem, { created: result.created }));
-    });
+    }));
 
-    router.delete(`/${domainKey}/:itemId`, async (request, response) => {
+    router.delete(`/${domainKey}/:itemId`, handleAsync(async (request, response) => {
       const auth = await requireAuthenticatedUser(request, response);
       if (!auth) return;
       if (!canManageDomain(auth.requestUser, domainKey)) {
@@ -219,7 +225,7 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
       });
       if (!persistedState) return;
       response.status(204).end();
-    });
+    }));
   }
 
   return router;

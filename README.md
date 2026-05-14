@@ -274,13 +274,63 @@ No deploy:
 ### Melhorias funcionais
 
 - aprovacao multi-etapa com aprovadores por departamento, alcada e valor
+- aprovacao com SLA proprio, fila de pendencias e lembretes automaticos
+- aprovacao com delegado/substituto em ausencia do aprovador principal
 - comentarios publicos e privados com filtros dedicados
+- comentarios internos por equipe, sem exposicao ao solicitante
 - SLA por combinacao de tipo, categoria, prioridade e departamento
+- SLA de atendimento inicial separado do SLA de resolucao
 - roteamento automatico de triagem por categoria, prioridade e localizacao
+- roteamento por palavra-chave, origem e horario de atendimento
 - modelos de formulario por tipo de solicitacao
 - campos obrigatorios dinamicos por categoria
+- templates de resposta, encerramento e reabertura
 - observadores com notificacao seletiva por evento
+- checklist operacional por tipo de chamado
+- subtarefas tecnicas vinculadas ao chamado principal
+- vinculo entre chamado, ativo, usuario, departamento e projeto
+- base de conhecimento sugerida automaticamente durante a abertura e a triagem
+- abertura de chamado por email com parsing basico de assunto e corpo
+- pesquisa global unificada por chamado, usuario, ativo e artigo
 - relatorios consolidados exportaveis em todos os modulos administrativos
+
+### Melhorias para chamados
+
+- fila de triagem com acoes rapidas em linha
+- modo analista com preview lateral do chamado sem trocar de pagina
+- macro de atendimento para atribuir, responder e mudar status em um clique
+- reabertura com motivo padronizado e classificacao de reincidencia
+- escalonamento automatico de chamados vencidos ou sem responsavel
+- relacao entre chamado pai e filhos para incidentes maiores
+- status configuraveis por tipo de processo
+- motivo de pausa e motivo de espera obrigatorios em status especificos
+- aprovacoes visiveis na timeline do chamado com decisor, data e justificativa
+- historico de decisao de aprovacao separado do historico tecnico
+- sugestao de tecnico por departamento, carga e especialidade
+
+### Melhorias para inventario e cadastros
+
+- importacao em lote de ativos via CSV
+- importacao em lote de usuarios, departamentos e localizacoes
+- movimentacao de ativo com historico de posse e localizacao
+- termo de entrega e aceite por ativo
+- garantia, fornecedor e nota fiscal por equipamento
+- componentes vinculados ao ativo: disco, memoria, monitor e perifericos
+- calendario de manutencao preventiva
+- campos customizados por tipo de ativo
+- exportacao configuravel por colunas nos cadastros
+- filtros persistidos por modulo administrativo
+
+### Melhorias para relatorios e gestao
+
+- relatorio por tecnico, departamento, categoria, prioridade e origem
+- relatorio de produtividade com tempo medio de resposta e resolucao
+- relatorio de aprovacoes pendentes, aprovadas e reprovadas
+- relatorio de reincidencia por solicitante, ativo ou categoria
+- relatorio de backlog por faixa de SLA
+- dashboard com comparativo por periodo
+- exportacao CSV e Excel com layout operacional
+- agenda executiva com projetos, chamados criticos e acoes pendentes
 
 ### Melhorias de experiencia
 
@@ -291,6 +341,24 @@ No deploy:
 - atalhos de teclado para triagem, atribuicao e conclusao rapida
 - estados vazios mais informativos e com acao direta
 - indicadores contextuais no topo de cada cadastro
+- acoes rapidas em linha nas grades, sem abrir modal para tudo
+- densidade visual configuravel: compacta, media e confortavel
+- tema de operacao com foco em contraste leve e linhas finas
+- chips de contexto por departamento, fila, urgencia e status
+- alertas menos intrusivos e mais informativos
+- destaque visual de campos alterados antes de salvar
+- cabecalhos de grade fixos com scroll interno suave
+- configuracao de grade por usuario e por modulo
+
+### Melhorias de automacao
+
+- notificacao automatica por vencimento de SLA
+- resumo diario para tecnicos e aprovadores
+- alertas de fila sem responsavel
+- criacao automatica de follow-up de sistema para eventos importantes
+- regras de atribuicao por departamento e categoria
+- sincronizacao futura com AD, Google Workspace ou ERP
+- webhook de saida para eventos de chamado e aprovacao
 
 ### Melhorias tecnicas
 
@@ -299,6 +367,10 @@ No deploy:
 - completar a separacao por entidades reais em banco
 - criar testes de integracao para autenticacao, chamados, aprovacao e notificacao
 - adicionar smoke tests de deploy
+- criar testes de regressao para exportacoes
+- validar permissao por rota e por acao de forma centralizada
+- implementar migracoes formais de dados por versao
+- adicionar observabilidade de backend com logs estruturados
 
 ## Resumo executivo
 

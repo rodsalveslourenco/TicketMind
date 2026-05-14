@@ -38,6 +38,22 @@ const collectionService = createCollectionService({ stateService });
 
 app.use(express.json({ limit: "15mb" }));
 
+function handleAsync(handler) {
+  return (request, response, next) => {
+    Promise.resolve(handler(request, response, next)).catch(next);
+  };
+}
+
+function isDatabaseConnectionError(error) {
+  const code = String(error?.code || "").trim().toUpperCase();
+  const message = String(error?.message || "").trim().toLowerCase();
+  return (
+    ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P01", "57P02", "57P03"].includes(code) ||
+    message.includes("connection terminated unexpectedly") ||
+    message.includes("connect econnrefused")
+  );
+}
+
 function hasPermission(user, permissionKey) {
   return Boolean(user?.permissions && user.permissions[permissionKey]);
 }
@@ -353,7 +369,7 @@ app.get("/api/health", (_request, response) => {
   response.json({ ok: true, apiVersion: "v1" });
 });
 
-app.post("/api/auth/login", async (request, response) => {
+app.post("/api/auth/login", handleAsync(async (request, response) => {
   const { email, password } = request.body || {};
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const normalizedPassword = String(password || "");
@@ -427,31 +443,41 @@ app.post("/api/auth/login", async (request, response) => {
   );
 
   response.json({ user: sanitizeSessionUser(authenticatedUser), expiresAt });
-});
+}));
 
-app.post("/api/auth/logout", async (request, response) => {
-  const state = await readState();
+app.post("/api/auth/logout", handleAsync(async (request, response) => {
   const session = verifySessionToken(getSessionTokenFromRequest(request));
-  const requestUser = session?.userId ? (state.users || []).find((candidate) => candidate.id === session.userId) || null : null;
 
   response.setHeader("Set-Cookie", clearSessionCookie());
 
-  if (requestUser) {
-    await insertSystemLog(
-      createSystemLog({
-        ...buildActorFromUser(requestUser),
-        module: "autenticacao",
-        eventType: "logout",
-        description: `Logout realizado por ${requestUser.name}.`,
-        origin: getRequestOrigin(request),
-        status: "sucesso",
-        metadata: { userId: requestUser.id },
-      }),
-    );
+  if (!session?.userId) {
+    response.status(204).end();
+    return;
+  }
+
+  try {
+    const state = await readState();
+    const requestUser = (state.users || []).find((candidate) => candidate.id === session.userId) || null;
+
+    if (requestUser) {
+      await insertSystemLog(
+        createSystemLog({
+          ...buildActorFromUser(requestUser),
+          module: "autenticacao",
+          eventType: "logout",
+          description: `Logout realizado por ${requestUser.name}.`,
+          origin: getRequestOrigin(request),
+          status: "sucesso",
+          metadata: { userId: requestUser.id },
+        }),
+      );
+    }
+  } catch (error) {
+    console.error("logout log skipped", error);
   }
 
   response.status(204).end();
-});
+}));
 
 async function handleSessionRequest(request, response) {
   const auth = await requireAuthenticatedUser(request, response);
@@ -459,8 +485,8 @@ async function handleSessionRequest(request, response) {
   response.json({ user: sanitizeSessionUser(auth.requestUser), expiresAt: auth.session.expiresAt });
 }
 
-app.get("/api/auth/session", handleSessionRequest);
-app.get("/api/auth/session/:userId", handleSessionRequest);
+app.get("/api/auth/session", handleAsync(handleSessionRequest));
+app.get("/api/auth/session/:userId", handleAsync(handleSessionRequest));
 
 app.use(
   "/api/v1",
@@ -473,13 +499,13 @@ app.use(
   }),
 );
 
-app.get("/api/state", async (request, response) => {
+app.get("/api/state", handleAsync(async (request, response) => {
   const auth = await requireAuthenticatedUser(request, response);
   if (!auth) return;
   response.json(prepareStateForClient(auth.state));
-});
+}));
 
-app.put("/api/state", async (request, response) => {
+app.put("/api/state", handleAsync(async (request, response) => {
   const previousState = await readState();
   const auth = await requireAuthenticatedUser(request, response, previousState);
   if (!auth) return;
@@ -488,9 +514,9 @@ app.put("/api/state", async (request, response) => {
   const persistedState = await persistStateChange(request, response, auth, mergedState);
   if (!persistedState) return;
   response.json(prepareStateForClient(persistedState));
-});
+}));
 
-app.post("/api/notifications/test", async (request, response) => {
+app.post("/api/notifications/test", handleAsync(async (request, response) => {
   const auth = await requireAuthenticatedUser(request, response);
   if (!auth) return;
   if (!hasAnyPermission(auth.requestUser, ["users_manage_permissions", "users_admin", "service_center_manage"])) {
@@ -517,9 +543,9 @@ app.post("/api/notifications/test", async (request, response) => {
       error: error instanceof Error ? error.message : "Falha ao testar envio de email.",
     });
   }
-});
+}));
 
-app.get("/api/system-logs", async (request, response) => {
+app.get("/api/system-logs", handleAsync(async (request, response) => {
   const access = await requireTiAccess(request, response);
   if (!access) return;
 
@@ -539,9 +565,29 @@ app.get("/api/system-logs", async (request, response) => {
   });
 
   response.json(queryResult);
-});
+}));
 
 app.use(express.static(distPath));
+
+app.use((error, request, response, next) => {
+  if (response.headersSent) {
+    next(error);
+    return;
+  }
+
+  console.error("request failed", error);
+  const statusCode = isDatabaseConnectionError(error) ? 503 : 500;
+  const message = isDatabaseConnectionError(error)
+    ? "Banco de dados temporariamente indisponivel."
+    : "Falha interna do servidor.";
+
+  if (request.path.startsWith("/api/")) {
+    response.status(statusCode).json({ error: message });
+    return;
+  }
+
+  response.status(statusCode).send(message);
+});
 
 app.get("*", (request, response) => {
   if (request.path.startsWith("/api/")) {
