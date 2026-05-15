@@ -48,11 +48,36 @@ function runValidation() {
     cwd: process.cwd(),
     stdio: "inherit",
     env: process.env,
+    shell: process.platform === "win32",
   });
+
+  if (result.error) {
+    throw result.error;
+  }
 
   if (result.status !== 0) {
     process.exit(result.status || 1);
   }
+}
+
+function readHeadCommitSha() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    shell: process.platform === "win32",
+  });
+
+  if (result.error || result.status !== 0) {
+    return "";
+  }
+
+  return String(result.stdout || "").trim();
+}
+
+function normalizeDeployList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.value)) return payload.value;
+  return [];
 }
 
 async function main() {
@@ -64,8 +89,38 @@ async function main() {
   if (!serviceId) fail("RENDER_SERVICE_ID is required.");
 
   console.log(`Triggering Render deploy for service ${serviceId}...`);
+  const expectedCommitSha = readHeadCommitSha();
+  const beforeList = await renderRequest(`/services/${serviceId}/deploys`);
+  const normalizedBeforeList = normalizeDeployList(beforeList);
+  const latestBeforeId = String(normalizedBeforeList[0]?.deploy?.id || "").trim();
+  const latestBeforeUpdatedAt = String(normalizedBeforeList[0]?.deploy?.updatedAt || "").trim();
+
   const deploy = await renderRequest(`/services/${serviceId}/deploys`, { method: "POST", body: {} });
-  const deployId = String(deploy?.id || "").trim();
+  let deployId = String(deploy?.id || "").trim();
+
+  if (!deployId) {
+    const startedLookupAt = Date.now();
+    while (!deployId && Date.now() - startedLookupAt < 30000) {
+      await delay(3000);
+      const afterList = await renderRequest(`/services/${serviceId}/deploys`);
+      const normalizedAfterList = normalizeDeployList(afterList);
+      const matchedDeploy =
+        normalizedAfterList.find((entry) => String(entry?.deploy?.commit?.id || "").trim() === expectedCommitSha)?.deploy || null;
+      const latestDeploy = matchedDeploy || normalizedAfterList[0]?.deploy || null;
+      const candidateId = String(latestDeploy?.id || "").trim();
+      const candidateUpdatedAt = String(latestDeploy?.updatedAt || "").trim();
+
+      if (
+        candidateId &&
+        (candidateId !== latestBeforeId ||
+          candidateUpdatedAt !== latestBeforeUpdatedAt ||
+          String(latestDeploy?.commit?.id || "").trim() === expectedCommitSha)
+      ) {
+        deployId = candidateId;
+      }
+    }
+  }
+
   if (!deployId) fail("Render deploy trigger did not return a deploy id.");
 
   console.log(`Render deploy triggered: ${deployId}`);
