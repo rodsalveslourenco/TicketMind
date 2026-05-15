@@ -607,9 +607,32 @@ function protectProductionCollections(nextCollections = {}, existingCollections 
 let sqlitePromise = null;
 let pgPool = null;
 let pgSchemaPromise = null;
+let stateCache = null;
+let stateCacheBackend = "";
+let stateReadPromise = null;
+let stateReadPromiseBackend = "";
 
 function isPostgresEnabled() {
   return Boolean(databaseUrl);
+}
+
+function getStateBackendKey() {
+  return isPostgresEnabled() ? "postgres" : "sqlite";
+}
+
+function primeStateCache(nextState) {
+  stateCache = nextState;
+  stateCacheBackend = getStateBackendKey();
+  stateReadPromise = null;
+  stateReadPromiseBackend = "";
+  return nextState;
+}
+
+function clearStateCache() {
+  stateCache = null;
+  stateCacheBackend = "";
+  stateReadPromise = null;
+  stateReadPromiseBackend = "";
 }
 
 function sqliteTableHasColumn(db, tableName, columnName) {
@@ -1858,7 +1881,7 @@ async function queryPostgresSystemLogs(filters = {}) {
   };
 }
 
-export async function readState() {
+async function loadStateFromStorage() {
   if (!isPostgresEnabled()) {
     await migrateSqliteCollectionsIfNeeded();
     const [sqliteState, collections, domainCollections, singletonState] = await Promise.all([
@@ -1923,6 +1946,28 @@ export async function readState() {
   return initialState;
 }
 
+export async function readState() {
+  const backendKey = getStateBackendKey();
+
+  if (stateCache && stateCacheBackend === backendKey) {
+    return stateCache;
+  }
+
+  if (stateReadPromise && stateReadPromiseBackend === backendKey) {
+    return stateReadPromise;
+  }
+
+  stateReadPromiseBackend = backendKey;
+  stateReadPromise = loadStateFromStorage()
+    .then((nextState) => primeStateCache(nextState))
+    .catch((error) => {
+      clearStateCache();
+      throw error;
+    });
+
+  return stateReadPromise;
+}
+
 export async function readUserByEmail(email) {
   if (!isPostgresEnabled()) {
     return readSqliteUserByEmail(email);
@@ -1961,9 +2006,11 @@ export async function updateUserPassword(userId, passwordHash) {
 
 export async function writeState(nextState) {
   if (!isPostgresEnabled()) {
-    return writeSqliteState(nextState);
+    const persistedState = await writeSqliteState(nextState);
+    return primeStateCache(persistedState);
   }
-  return writePostgresState(nextState);
+  const persistedState = await writePostgresState(nextState);
+  return primeStateCache(persistedState);
 }
 
 export async function insertSystemLog(entry) {
