@@ -242,6 +242,33 @@ Build:
 npm run build
 ```
 
+Validacao minima de release:
+
+```bash
+npm run validate
+```
+
+Esse fluxo executa:
+
+- `npm run build`
+- smoke local com SQLite temporario
+- healthcheck da API
+- login admin
+- sessao autenticada
+- listagem de chamados
+- criacao, leitura, atualizacao e remocao de um chamado temporario
+
+Deploy manual validado para o Render:
+
+```bash
+npm run deploy:render
+```
+
+Variaveis exigidas para o deploy manual:
+
+- `RENDER_API_KEY`
+- `RENDER_SERVICE_ID`
+
 ## Deploy no Render
 
 O projeto esta preparado para deploy via `Blueprint` com o arquivo `render.yaml`.
@@ -257,6 +284,27 @@ No deploy:
 - sobe o backend com `npm run start`
 - serve o frontend compilado em `dist`
 - injeta `DATABASE_URL` automaticamente a partir do banco criado
+
+## Validacao continua e deploy controlado
+
+O repositorio inclui o workflow [`.github/workflows/validate-and-deploy.yml`](.github/workflows/validate-and-deploy.yml).
+
+Fluxo configurado:
+
+- em `pull_request`: instala dependencias e roda `npm run validate`
+- em `push` para `main`: valida primeiro
+- so depois da validacao bem-sucedida dispara deploy no Render via API
+
+Secrets esperados no GitHub Actions:
+
+- `RENDER_API_KEY`
+- `RENDER_SERVICE_ID`
+
+Observacao operacional:
+
+- o servico atual no Render estava com `autoDeploy: no`
+- por isso o push isolado para `main` nao publica sozinho
+- o caminho seguro passa a ser validacao obrigatoria seguida de deploy via API
 
 ## Melhorias ja entregues
 
