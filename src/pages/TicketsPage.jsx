@@ -8,6 +8,7 @@ import { PRIORITY_LEVELS, TICKET_STATUSES, createFollowUpEntry, normalizeText } 
 import { useAppData } from "../data/AppDataContext";
 import { downloadCsv } from "../lib/export";
 import { useUiPreferences } from "../ui/UiPreferencesContext";
+import { DEFAULT_WATCHER_EVENT_KEYS } from "../data/ticketAutomation";
 
 const defaultCreateForm = {
   title: "",
@@ -16,12 +17,14 @@ const defaultCreateForm = {
   projectId: "",
   assetId: "",
   approvalApproverId: "",
+  approvalAmount: "",
   category: "Geral",
   location: "",
   priority: "Media",
   urgency: "Media",
   impact: "Media",
   watchers: [],
+  watcherEventKeys: [...DEFAULT_WATCHER_EVENT_KEYS],
   description: "",
   attachments: [],
   knowledgeArticleIds: [],
@@ -292,10 +295,12 @@ function TicketsPage() {
   const [selectedMacroId, setSelectedMacroId] = useState("");
   const [approvalReason, setApprovalReason] = useState("");
   const [followUpDraft, setFollowUpDraft] = useState("");
+  const [followUpTeamIds, setFollowUpTeamIds] = useState([]);
   const [followUpFilter, setFollowUpFilter] = useState("all");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [timelineFilter, setTimelineFilter] = useState("all");
   const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [showTriagePanel, setShowTriagePanel] = useState(() => Boolean(getModulePreference("tickets", "showTriagePanel", true)));
   const [visibleColumns, setVisibleColumns] = useState(
     () => getModulePreference("tickets", "visibleColumns", TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key)),
   );
@@ -392,7 +397,13 @@ function TicketsPage() {
   const isDetailReopened = normalizeText(detailTicket?.status) === "reaberto";
   const detailTypeProfile = useMemo(() => getTypeProfile(detailForm?.type), [detailForm?.type]);
   const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
-  const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => canViewPrivateFollowUps || followUp.visibility === "public");
+  const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => {
+    if (followUp.visibility === "public") return true;
+    if (!canViewPrivateFollowUps) return false;
+    const audienceTeamIds = Array.isArray(followUp.audienceTeamIds) ? followUp.audienceTeamIds : [];
+    if (!audienceTeamIds.length) return true;
+    return audienceTeamIds.includes(String(user?.departmentId || "").trim()) || hasAnyPermission(user, ["tickets_admin"]);
+  });
   const filteredFollowUps = useMemo(() => {
     if (followUpFilter === "public") return visibleFollowUps.filter((followUp) => followUp.visibility === "public");
     if (followUpFilter === "private") return visibleFollowUps.filter((followUp) => followUp.visibility === "private");
@@ -531,12 +542,17 @@ function TicketsPage() {
   }, [setModulePreference, visibleColumns]);
 
   useEffect(() => {
+    setModulePreference("tickets", "showTriagePanel", showTriagePanel);
+  }, [setModulePreference, showTriagePanel]);
+
+  useEffect(() => {
     const nextVisibleColumns = getModulePreference(
       "tickets",
       "visibleColumns",
       TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key),
     );
     setVisibleColumns(Array.isArray(nextVisibleColumns) && nextVisibleColumns.length ? nextVisibleColumns : TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key));
+    setShowTriagePanel(Boolean(getModulePreference("tickets", "showTriagePanel", true)));
   }, [getModulePreference, user?.id]);
 
   useEffect(() => {
@@ -788,6 +804,7 @@ function TicketsPage() {
       impact: detailTicket.impact || detailTicket.priority,
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
+      approvalAmount: String(detailTicket.approvalAmount || ""),
       knowledgeArticleIds: detailTicket.knowledgeArticleIds || [],
       approvalApproverId: detailTicket.approval?.approverId || "",
       approvalApproverName: detailTicket.approval?.approverName || "",
@@ -800,6 +817,7 @@ function TicketsPage() {
     });
     setFollowUpDraft("");
     setFollowUpVisibility("public");
+    setFollowUpTeamIds([]);
     setFollowUpFilter("all");
     setSelectedResponseTemplateId("");
     setSelectedSolutionTemplateId("");
@@ -970,7 +988,14 @@ function TicketsPage() {
       category: createForm.category || "Geral",
       source: "Portal",
       watchers: createForm.watchers.map((watcher) => watcher.name).join(", "),
+      watcherDetails: createForm.watchers.map((watcher) => ({
+        userId: watcher.id,
+        name: watcher.name,
+        email: watcher.email,
+        eventKeys: createForm.watcherEventKeys || DEFAULT_WATCHER_EVENT_KEYS,
+      })),
       checklistItems: buildChecklistTemplate(createForm.type),
+      approvalAmount: Number(createForm.approvalAmount) || 0,
       approval:
         normalizeText(createForm.type) === "requisicao"
           ? {
@@ -1013,6 +1038,7 @@ function TicketsPage() {
     updateTicket(detailTicket.id, {
       ...detailForm,
       dueDate: detailForm.dueDate || "",
+      approvalAmount: Number(detailForm.approvalAmount) || 0,
       approval: normalizeText(detailForm.type) === "requisicao"
         ? {
             ...(detailTicket.approval || {}),
@@ -1039,6 +1065,7 @@ function TicketsPage() {
       message: followUpDraft,
       actorId: user?.id,
       actorName: user?.name || "Sistema",
+      audienceTeamIds: followUpVisibility === "private" ? followUpTeamIds : [],
     });
     updateTicket(detailTicket.id, {
       followUps: [nextFollowUp, ...(detailTicket.followUps || [])],
@@ -1390,6 +1417,7 @@ function TicketsPage() {
       watchers: String(detailForm.watchers || "") !== String(detailTicket.watchers || ""),
       assignee: String(detailForm.assignee || "") !== String(detailTicket.assignee || ""),
       approvalApproverId: String(detailForm.approvalApproverId || "") !== String(detailTicket.approval?.approverId || ""),
+      approvalAmount: String(detailForm.approvalAmount || "") !== String(detailTicket.approvalAmount || ""),
       projectId: String(detailForm.projectId || "") !== String(detailTicket.projectId || ""),
       assetId: String(detailForm.assetId || "") !== String(detailTicket.assetId || ""),
       checklistItems: JSON.stringify(detailForm.checklistItems || []) !== JSON.stringify(detailTicket.checklistItems || []),
@@ -1433,6 +1461,9 @@ function TicketsPage() {
             </button>
             <button className="ghost-button interactive-button" onClick={() => setShowFilters((current) => !current)} type="button">
               {showFilters ? "Ocultar filtros" : "Mostrar filtros"}
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => setShowTriagePanel((current) => !current)} type="button">
+              {showTriagePanel ? "Ocultar triagem" : "Mostrar triagem"}
             </button>
             <button className="ghost-button interactive-button" onClick={handleExportTickets} type="button">
               Exportar
@@ -1521,7 +1552,7 @@ function TicketsPage() {
           </div>
         ) : null}
 
-        {triageTickets.length ? (
+        {serviceCenter?.triagePanelVisible !== false && showTriagePanel && triageTickets.length ? (
           <div className="ticket-inline-panel ticket-triage-panel">
             <div className="ticket-inline-panel-head">
               <strong>Fila de triagem</strong>
@@ -1849,17 +1880,23 @@ function TicketsPage() {
                   </div>
                 ) : null}
                 {normalizeText(createForm.type) === "requisicao" ? (
-                  <label className="field-block">
-                    <span>Aprovador da requisicao</span>
-                    <select onChange={updateCreateField("approvalApproverId")} required value={createForm.approvalApproverId || ""}>
-                      <option value="">Selecione o aprovador</option>
-                      {approvalCandidates.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.name} {candidate.team ? `| ${candidate.team}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <>
+                    <label className="field-block">
+                      <span>Valor / alcada da requisicao</span>
+                      <input min="0" onChange={updateCreateField("approvalAmount")} step="0.01" type="number" value={createForm.approvalAmount || ""} />
+                    </label>
+                    <label className="field-block">
+                      <span>Aprovador fallback</span>
+                      <select onChange={updateCreateField("approvalApproverId")} required value={createForm.approvalApproverId || ""}>
+                        <option value="">Selecione o aprovador</option>
+                        {approvalCandidates.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.name} {candidate.team ? `| ${candidate.team}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
                 ) : null}
                 <label className="field-block">
                   <span>Projeto vinculado</span>
@@ -1936,6 +1973,27 @@ function TicketsPage() {
                       </div>
                     ) : null}
                   </div>
+                  {createForm.watchers.length ? (
+                    <div className="permissions-inline">
+                      {DEFAULT_WATCHER_EVENT_KEYS.map((eventKey) => (
+                        <label className="inline-toggle" key={eventKey}>
+                          <input
+                            checked={(createForm.watcherEventKeys || DEFAULT_WATCHER_EVENT_KEYS).includes(eventKey)}
+                            onChange={(event) =>
+                              setCreateForm((current) => ({
+                                ...current,
+                                watcherEventKeys: event.target.checked
+                                  ? [...new Set([...(current.watcherEventKeys || []), eventKey])]
+                                  : (current.watcherEventKeys || []).filter((item) => item !== eventKey),
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                          <span>{eventKey.replace("ticket_", "").replaceAll("_", " ")}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 <label className="field-block field-full">
                   <span>Descricao</span>
@@ -2332,6 +2390,12 @@ function TicketsPage() {
                     </select>
                   </label>
                 ) : null}
+                {normalizeText(detailForm.type) === "requisicao" ? (
+                  <label className="field-block">
+                    <span>Valor / alcada</span>
+                    <input disabled={!canEditTicket} onChange={updateDetailField("approvalAmount")} step="0.01" type="number" value={detailForm.approvalAmount || ""} />
+                  </label>
+                ) : null}
                 <label className={`field-block${detailDirtyFields.projectId ? " is-dirty" : ""}`}>
                   <span>Projeto vinculado</span>
                   <select
@@ -2474,6 +2538,20 @@ function TicketsPage() {
                       <span>Solicite, aprove ou reprove sem remover o restante do fluxo do chamado.</span>
                     </div>
                   </div>
+                  <div className="glpi-info-strip">
+                    <div>
+                      <span>Etapa atual</span>
+                      <strong>{(detailTicket.approval?.currentStepIndex || 0) + 1} / {detailTicket.approval?.steps?.length || 1}</strong>
+                    </div>
+                    <div>
+                      <span>Aprovador atual</span>
+                      <strong>{detailTicket.approval?.currentApproverName || detailTicket.approval?.approverName || "Nao definido"}</strong>
+                    </div>
+                    <div>
+                      <span>SLA da aprovacao</span>
+                      <strong>{detailTicket.approvalDueSoon || detailTicket.approvalOverdue ? detailTicket.slaLabel : detailTicket.approval?.dueAt ? new Date(detailTicket.approval.dueAt).toLocaleString("pt-BR") : "-"}</strong>
+                    </div>
+                  </div>
                   <label className="field-block field-full">
                     <span>Justificativa / parecer</span>
                     <textarea onChange={(event) => setApprovalReason(event.target.value)} value={approvalReason} />
@@ -2521,9 +2599,25 @@ function TicketsPage() {
                     <span>Visibilidade</span>
                     <select disabled={!canEditTicket} onChange={(event) => setFollowUpVisibility(event.target.value)} value={followUpVisibility}>
                       <option value="public">Publico</option>
-                      <option value="private">Privado</option>
+                      <option value="private">Interno</option>
                     </select>
                   </label>
+                  {followUpVisibility === "private" ? (
+                    <label className="field-block">
+                      <span>Equipes internas</span>
+                      <select
+                        multiple
+                        onChange={(event) => setFollowUpTeamIds(Array.from(event.target.selectedOptions).map((option) => option.value))}
+                        value={followUpTeamIds}
+                      >
+                        {departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <div className="ticket-inline-filter-bar">
                   <button className={`filter-pill interactive-button${followUpFilter === "all" ? " is-active" : ""}`} onClick={() => setFollowUpFilter("all")} type="button">
@@ -2564,7 +2658,8 @@ function TicketsPage() {
                             <h3>{followUp.message}</h3>
                           </div>
                           <div className="ticket-row-badges">
-                            <span className="badge badge-neutral">{followUp.visibility === "public" ? "publico" : "privado"}</span>
+                            <span className="badge badge-neutral">{followUp.visibility === "public" ? "publico" : "interno"}</span>
+                            {followUp.audienceTeamIds?.length ? <span className="badge badge-neutral">{followUp.audienceTeamIds.length} equipe(s)</span> : null}
                           </div>
                         </div>
                         <div className="ticket-row-meta">

@@ -48,6 +48,16 @@ import {
   toLocalDatetimeInput,
 } from "./helpdesk";
 import { normalizeDepartmentColor } from "./departments";
+import {
+  DEFAULT_WATCHER_EVENT_KEYS,
+  applyAdvancedRoutingRules,
+  buildWatchersLabel,
+  normalizeWatcherDetails,
+  parseInboundEmailTicket,
+  progressApprovalWorkflow,
+  resolveApprovalWorkflow,
+  resolveTicketSlaTargets,
+} from "./ticketAutomation";
 
 const AppDataContext = createContext(null);
 
@@ -146,6 +156,108 @@ function sanitizeServiceCenterDepartmentConfig(payload, currentConfig = {}) {
   };
 }
 
+function sanitizeRoutingRulePayload(payload = {}, currentRule = {}) {
+  return {
+    id: String(payload.id || currentRule.id || "").trim(),
+    name: String(payload.name || currentRule.name || "").trim(),
+    active: payload.active !== false,
+    type: String(payload.type || currentRule.type || "").trim(),
+    priority: String(payload.priority || currentRule.priority || "").trim(),
+    category: String(payload.category || currentRule.category || "").trim(),
+    departmentId: String(payload.departmentId || currentRule.departmentId || "").trim(),
+    department: String(payload.department || currentRule.department || "").trim(),
+    queue: String(payload.queue || currentRule.queue || "").trim(),
+    location: String(payload.location || currentRule.location || "").trim(),
+    source: String(payload.source || currentRule.source || "").trim(),
+    keyword: String(payload.keyword || currentRule.keyword || "").trim(),
+    triageLabel: String(payload.triageLabel || currentRule.triageLabel || "").trim(),
+    assigneeUserId: String(payload.assigneeUserId || currentRule.assigneeUserId || "").trim(),
+    assigneeName: String(payload.assigneeName || currentRule.assigneeName || "").trim(),
+    businessHoursOnly: Boolean(payload.businessHoursOnly ?? currentRule.businessHoursOnly),
+    startHour: Number(payload.startHour ?? currentRule.startHour ?? 8) || 8,
+    endHour: Number(payload.endHour ?? currentRule.endHour ?? 18) || 18,
+    preserveManualAssignment: payload.preserveManualAssignment !== false,
+  };
+}
+
+function sanitizeSlaPolicyPayload(payload = {}, currentPolicy = {}) {
+  return {
+    id: String(payload.id || currentPolicy.id || "").trim(),
+    name: String(payload.name || currentPolicy.name || "").trim(),
+    active: payload.active !== false,
+    type: String(payload.type || currentPolicy.type || "").trim(),
+    priority: String(payload.priority || currentPolicy.priority || "").trim(),
+    category: String(payload.category || currentPolicy.category || "").trim(),
+    departmentId: String(payload.departmentId || currentPolicy.departmentId || "").trim(),
+    department: String(payload.department || currentPolicy.department || "").trim(),
+    initialResponseMinutes: Number(payload.initialResponseMinutes ?? currentPolicy.initialResponseMinutes) || 60,
+    resolutionMinutes: Number(payload.resolutionMinutes ?? currentPolicy.resolutionMinutes) || 240,
+  };
+}
+
+function sanitizeApprovalStepPayload(payload = {}, currentStep = {}) {
+  return {
+    id: String(payload.id || currentStep.id || "").trim(),
+    name: String(payload.name || currentStep.name || "").trim(),
+    approverUserId: String(payload.approverUserId || currentStep.approverUserId || "").trim(),
+    approverName: String(payload.approverName || currentStep.approverName || "").trim(),
+    departmentId: String(payload.departmentId || currentStep.departmentId || "").trim(),
+    department: String(payload.department || currentStep.department || "").trim(),
+  };
+}
+
+function sanitizeApprovalRulePayload(payload = {}, currentRule = {}) {
+  return {
+    id: String(payload.id || currentRule.id || "").trim(),
+    name: String(payload.name || currentRule.name || "").trim(),
+    active: payload.active !== false,
+    type: String(payload.type || currentRule.type || "Requisicao").trim() || "Requisicao",
+    departmentId: String(payload.departmentId || currentRule.departmentId || "").trim(),
+    department: String(payload.department || currentRule.department || "").trim(),
+    minAmount: Number(payload.minAmount ?? currentRule.minAmount) || 0,
+    maxAmount: Number(payload.maxAmount ?? currentRule.maxAmount) || 0,
+    slaMinutes: Number(payload.slaMinutes ?? currentRule.slaMinutes) || 240,
+    steps: (Array.isArray(payload.steps) ? payload.steps : Array.isArray(currentRule.steps) ? currentRule.steps : [])
+      .map((step) => sanitizeApprovalStepPayload(step, step))
+      .filter((step) => step.approverUserId || step.approverName),
+  };
+}
+
+function sanitizeApproverDelegationPayload(payload = {}, currentDelegation = {}) {
+  return {
+    id: String(payload.id || currentDelegation.id || "").trim(),
+    active: payload.active !== false,
+    approverUserId: String(payload.approverUserId || currentDelegation.approverUserId || "").trim(),
+    delegateUserId: String(payload.delegateUserId || currentDelegation.delegateUserId || "").trim(),
+    startDate: String(payload.startDate || currentDelegation.startDate || "").trim(),
+    endDate: String(payload.endDate || currentDelegation.endDate || "").trim(),
+  };
+}
+
+function sanitizeEmailIntakeConfig(payload = {}, currentConfig = {}) {
+  const nextConfig = payload && typeof payload === "object" ? payload : {};
+  return {
+    enabled: Boolean(nextConfig.enabled ?? currentConfig.enabled),
+    inboxAddress: String(nextConfig.inboxAddress || currentConfig.inboxAddress || "").trim().toLowerCase(),
+    defaultDepartmentId: String(nextConfig.defaultDepartmentId || currentConfig.defaultDepartmentId || "").trim(),
+    defaultPriority: String(nextConfig.defaultPriority || currentConfig.defaultPriority || "Media").trim() || "Media",
+    categoryHints: (Array.isArray(nextConfig.categoryHints) ? nextConfig.categoryHints : Array.isArray(currentConfig.categoryHints) ? currentConfig.categoryHints : [])
+      .map((hint) => ({
+        keyword: String(hint.keyword || "").trim(),
+        category: String(hint.category || "").trim(),
+        type: String(hint.type || "Incidente").trim() || "Incidente",
+        location: String(hint.location || "").trim(),
+      }))
+      .filter((hint) => hint.keyword && hint.category),
+    priorityHints: (Array.isArray(nextConfig.priorityHints) ? nextConfig.priorityHints : Array.isArray(currentConfig.priorityHints) ? currentConfig.priorityHints : [])
+      .map((hint) => ({
+        keyword: String(hint.keyword || "").trim(),
+        priority: String(hint.priority || "Media").trim() || "Media",
+      }))
+      .filter((hint) => hint.keyword),
+  };
+}
+
 function hydrateDepartments(storedDepartments) {
   return (Array.isArray(storedDepartments) ? storedDepartments : [])
     .map((department) => ({
@@ -173,6 +285,20 @@ function hydrateServiceCenter(storedConfig, departments = []) {
     ...rawConfig,
     enabled: Boolean(rawConfig.enabled),
     departments: departmentsConfig,
+    triagePanelVisible: rawConfig.triagePanelVisible !== false,
+    routingRules: (Array.isArray(rawConfig.routingRules) ? rawConfig.routingRules : [])
+      .map((rule) => sanitizeRoutingRulePayload(rule, rule))
+      .filter((rule) => rule.id || rule.name),
+    slaPolicies: (Array.isArray(rawConfig.slaPolicies) ? rawConfig.slaPolicies : [])
+      .map((policy) => sanitizeSlaPolicyPayload(policy, policy))
+      .filter((policy) => policy.id || policy.name),
+    approvalRules: (Array.isArray(rawConfig.approvalRules) ? rawConfig.approvalRules : [])
+      .map((rule) => sanitizeApprovalRulePayload(rule, rule))
+      .filter((rule) => rule.id || rule.name || rule.steps.length),
+    approverDelegations: (Array.isArray(rawConfig.approverDelegations) ? rawConfig.approverDelegations : [])
+      .map((delegation) => sanitizeApproverDelegationPayload(delegation, delegation))
+      .filter((delegation) => delegation.approverUserId && delegation.delegateUserId),
+    emailIntake: sanitizeEmailIntakeConfig(rawConfig.emailIntake, defaultServiceCenterSettings.emailIntake),
     updatedAt: String(rawConfig.updatedAt || "").trim(),
   };
 }
@@ -473,21 +599,43 @@ function hydrateNavigationSections(storedSections) {
 }
 
 function hydrateNotificationEvents(storedEvents) {
-  const events = Array.isArray(storedEvents) && storedEvents.length ? storedEvents : defaultNotificationEvents;
-  return events.map((event) => ({
+  const normalizedDefaults = defaultNotificationEvents.map((event) => ({
     key: String(event.key || "").trim(),
     label: String(event.label || "").trim(),
     description: String(event.description || "").trim(),
   }));
+  const normalizedStored = (Array.isArray(storedEvents) ? storedEvents : [])
+    .map((event) => ({
+      key: String(event.key || "").trim(),
+      label: String(event.label || "").trim(),
+      description: String(event.description || "").trim(),
+    }))
+    .filter((event) => event.key);
+  return normalizedDefaults
+    .map((defaultEvent) => {
+      const storedEvent = normalizedStored.find((event) => event.key === defaultEvent.key);
+      return storedEvent ? { ...defaultEvent, ...storedEvent } : defaultEvent;
+    })
+    .concat(normalizedStored.filter((event) => !normalizedDefaults.some((candidate) => candidate.key === event.key)));
 }
 
 function hydrateEmailPlaceholders(storedPlaceholders) {
-  const placeholders =
-    Array.isArray(storedPlaceholders) && storedPlaceholders.length ? storedPlaceholders : defaultEmailPlaceholders;
-  return placeholders.map((placeholder) => ({
+  const normalizedDefaults = defaultEmailPlaceholders.map((placeholder) => ({
     key: String(placeholder.key || "").trim(),
     label: String(placeholder.label || "").trim(),
   }));
+  const normalizedStored = (Array.isArray(storedPlaceholders) ? storedPlaceholders : [])
+    .map((placeholder) => ({
+      key: String(placeholder.key || "").trim(),
+      label: String(placeholder.label || "").trim(),
+    }))
+    .filter((placeholder) => placeholder.key);
+  return normalizedDefaults
+    .map((defaultPlaceholder) => {
+      const storedPlaceholder = normalizedStored.find((placeholder) => placeholder.key === defaultPlaceholder.key);
+      return storedPlaceholder ? { ...defaultPlaceholder, ...storedPlaceholder } : defaultPlaceholder;
+    })
+    .concat(normalizedStored.filter((placeholder) => !normalizedDefaults.some((candidate) => candidate.key === placeholder.key)));
 }
 
 function hydrateEmailLayouts(storedLayouts, notificationEvents) {
@@ -811,35 +959,8 @@ const TICKET_STATUS_TRANSITIONS = {
   Reaberto: ["Em andamento", "Aguardando usuario", "Resolvido"],
 };
 
-const TICKET_SLA_RULES = [
-  { department: "seguranca", priority: "critica", minutes: 30 },
-  { department: "infraestrutura", priority: "critica", minutes: 60 },
-  { category: "acesso", priority: "alta", minutes: 120 },
-  { category: "acesso", priority: "media", minutes: 240 },
-  { category: "incidente de seguranca", minutes: 45 },
-  { type: "requisicao", priority: "baixa", minutes: 1440 },
-];
-
-const TICKET_ROUTING_RULES = [
-  { department: "seguranca", queue: "Seguranca", triageLabel: "Fila de seguranca" },
-  { department: "infraestrutura", queue: "Infraestrutura", triageLabel: "Fila de infraestrutura" },
-  { category: "acesso", queue: "Aplicacoes", triageLabel: "Fila de acessos" },
-  { category: "incidente de seguranca", queue: "Seguranca", triageLabel: "Resposta a incidentes" },
-  { priority: "critica", queue: "Service Desk", triageLabel: "Escalonamento prioritario" },
-];
-
-function matchTicketRule(rule, ticketLike = {}) {
-  const fields = ["type", "priority", "category", "department", "queue"];
-  return fields.every((field) => {
-    if (!rule[field]) return true;
-    return normalizeText(ticketLike[field]) === normalizeText(rule[field]);
-  });
-}
-
-function resolveTicketSlaPolicyMinutes(ticketLike = {}) {
-  const matchedRule = TICKET_SLA_RULES.find((rule) => matchTicketRule(rule, ticketLike));
-  if (matchedRule?.minutes) return matchedRule.minutes;
-  return getSlaPolicyMinutes(ticketLike.priority);
+function resolveTicketSlaPolicyMinutes(ticketLike = {}, serviceCenter = defaultServiceCenterSettings) {
+  return resolveTicketSlaTargets(ticketLike, serviceCenter?.slaPolicies || []).resolutionMinutes;
 }
 
 function getAllowedTicketStatusesForTicket(ticket) {
@@ -879,19 +1000,8 @@ function resolveApprovalState(type, approval = null, action = "") {
   };
 }
 
-function applyRoutingRules(ticketLike = {}) {
-  const matchedRule = TICKET_ROUTING_RULES.find((rule) => matchTicketRule(rule, ticketLike));
-  return {
-    ...ticketLike,
-    queue: String(matchedRule?.queue || ticketLike.queue || "Service Desk").trim() || "Service Desk",
-    triage: {
-      ...(ticketLike.triage && typeof ticketLike.triage === "object" ? ticketLike.triage : {}),
-      routedByRule: Boolean(matchedRule),
-      routeLabel: String(matchedRule?.triageLabel || ticketLike.triage?.routeLabel || "Triagem manual").trim(),
-      queue: String(matchedRule?.queue || ticketLike.queue || ticketLike.triage?.queue || "Service Desk").trim() || "Service Desk",
-      lastRoutedAt: new Date().toISOString(),
-    },
-  };
+function applyRoutingRules(ticketLike = {}, serviceCenter = defaultServiceCenterSettings, users = []) {
+  return applyAdvancedRoutingRules(ticketLike, serviceCenter?.routingRules || [], users, { hidden: serviceCenter?.triagePanelVisible === false });
 }
 
 export function AppDataProvider({ children }) {
@@ -1099,22 +1209,57 @@ export function AppDataProvider({ children }) {
         return current;
       }
 
+      const watcherDetails = normalizeWatcherDetails(payload.watcherDetails || payload.watchers, current.users || [], payload.watchers || "");
       const routedPayload = applyRoutingRules({
         ...payload,
         type: payload.type,
         priority,
         category: String(payload.category || "Geral").trim(),
+        location: String(payload.location || "").trim(),
+        title: String(payload.title || "").trim(),
+        description: String(payload.description || "").trim(),
+        source: String(payload.source || "Portal").trim(),
+        departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
         department: String(targetDepartment?.name || payload.department || "").trim(),
         queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
-      });
-      const approval = resolveApprovalState(routedPayload.type, payload.approval);
+      }, current.serviceCenter || defaultServiceCenterSettings, current.users || []);
+      const approvalBase = resolveApprovalWorkflow(
+        {
+          ...routedPayload,
+          approvalAmount: Number(payload.approvalAmount) || 0,
+        },
+        current.serviceCenter?.approvalRules || [],
+        current.serviceCenter?.approverDelegations || [],
+        current.users || [],
+        String(payload.approval?.approverId || payload.approvalApproverId || "").trim(),
+      );
+      const approval = approvalBase.required
+        ? {
+            ...approvalBase,
+            requestedAt: nowIso,
+            requestedById: user?.id || "",
+            requestedByName: user?.name || "Sistema",
+          }
+        : resolveApprovalState(routedPayload.type, payload.approval);
       const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
-      const slaTargetMinutes = resolveTicketSlaPolicyMinutes({
+      const slaTargets = resolveTicketSlaTargets(
+        {
+          type: routedPayload.type,
+          priority,
+          category: routedPayload.category,
+          department: routedPayload.department,
+          departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
+        },
+        current.serviceCenter?.slaPolicies || [],
+      );
+      const slaTargetMinutes = slaTargets.resolutionMinutes;
+      const initialResponseTargetMinutes = slaTargets.initialResponseMinutes;
+      const slaRuleScope = {
         type: routedPayload.type,
         priority,
         category: routedPayload.category,
         department: routedPayload.department,
-      });
+      };
       const history = [
         createHistoryEntry({
           type: "created",
@@ -1126,6 +1271,8 @@ export function AppDataProvider({ children }) {
             departmentId: targetDepartment?.id || "",
             department: targetDepartment?.name || "",
             queue: routedPayload.queue || "Service Desk",
+            approvalAmount: Number(payload.approvalAmount) || 0,
+            slaRule: slaTargets.matchedRuleName || "",
           },
           createdAt: nowIso,
         }),
@@ -1152,6 +1299,9 @@ export function AppDataProvider({ children }) {
         sla: `${computeSlaFromMinutes(slaTargetMinutes)}`,
         slaTargetMinutes,
         slaDeadlineAt: new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString(),
+        initialResponseTargetMinutes,
+        initialResponseDeadlineAt: new Date(new Date(openedAt).getTime() + initialResponseTargetMinutes * 60 * 1000).toISOString(),
+        firstResponseAt: "",
         updatedAt: formatTimestampLabel(nowIso),
         updatedAtIso: nowIso,
         openedAt,
@@ -1163,17 +1313,14 @@ export function AppDataProvider({ children }) {
         reopenReason: "",
         resolvedAt: "",
         resolvedAtLabel: "",
-        watchers: payload.watchers || "",
+        watchers: buildWatchersLabel(watcherDetails),
+        watcherDetails,
         attachments: payload.attachments || [],
         followUps: normalizeFollowUps(payload.followUps),
         subtasks: normalizeTicketSubtasks(payload.subtasks),
         checklistItems: normalizeTicketChecklist(payload.checklistItems),
-        approval: {
-          ...approval,
-          requestedAt: approval.required ? nowIso : approval.requestedAt || "",
-          requestedById: approval.required ? user?.id || "" : approval.requestedById || "",
-          requestedByName: approval.required ? user?.name || "Sistema" : approval.requestedByName || "",
-        },
+        approvalAmount: Number(payload.approvalAmount) || 0,
+        approval,
         triage: routedPayload.triage || {},
         history,
         knowledgeArticleIds: Array.isArray(payload.knowledgeArticleIds) ? payload.knowledgeArticleIds : [],
@@ -1182,6 +1329,7 @@ export function AppDataProvider({ children }) {
         assetId: String(payload.assetId || "").trim(),
         assetName: String(payload.assetName || "").trim(),
         reopenCategory: String(payload.reopenCategory || "").trim(),
+        slaRuleScope,
       };
 
       return { ...current, tickets: [createdTicket, ...current.tickets] };
@@ -1210,9 +1358,11 @@ export function AppDataProvider({ children }) {
         const requestedStatus = normalizeTicketStatus(
           updates.status ??
             (approvalAction === "approve"
-              ? nextAssignee
-                ? "Em andamento"
-                : "Aberto"
+              ? normalizeText(ticket.approval?.status) === "pending" && Array.isArray(ticket.approval?.steps) && ticket.approval.steps.length > 1
+                ? "Aguardando aprovacao"
+                : nextAssignee
+                  ? "Em andamento"
+                  : "Aberto"
               : approvalAction === "reject"
                 ? "Aguardando usuario"
                 : assigneeChanged && nextAssignee && ["aberto", "reaberto"].includes(normalizeText(ticket.status))
@@ -1290,49 +1440,91 @@ export function AppDataProvider({ children }) {
           (current.assets || []).find((asset) => asset.id === nextAssetId)?.tag ||
           (current.assets || []).find((asset) => asset.id === nextAssetId)?.name ||
           String((updates.assetName ?? ticket.assetName) || "").trim();
+        const nextWatcherDetails = updates.watcherDetails !== undefined
+          ? normalizeWatcherDetails(updates.watcherDetails, current.users || [], updates.watchers || "")
+          : normalizeWatcherDetails(ticket.watcherDetails, current.users || [], ticket.watchers || "");
+        const nextWatchersLabel = updates.watchers !== undefined && !Array.isArray(updates.watcherDetails)
+          ? String(updates.watchers || "").trim()
+          : buildWatchersLabel(nextWatcherDetails);
+        const nextApprovalAmount = Number(updates.approvalAmount ?? ticket.approvalAmount) || 0;
         const approvalPayload = updates.approval && typeof updates.approval === "object" ? updates.approval : ticket.approval;
-        const resolvedApprovalState = resolveApprovalState(updates.type ?? ticket.type, approvalPayload, approvalAction);
-        const nextApproval = {
-          ...resolvedApprovalState,
-          decisionReason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? ticket.approval?.decisionReason ?? "").trim(),
-          requestedAt:
-            approvalAction === "request"
-              ? nowIso
-              : String(updates.approval?.requestedAt ?? approvalPayload?.requestedAt ?? ticket.approval?.requestedAt ?? "").trim(),
-          requestedById:
-            approvalAction === "request"
-              ? user?.id || ""
-              : String(updates.approval?.requestedById ?? approvalPayload?.requestedById ?? ticket.approval?.requestedById ?? "").trim(),
-          requestedByName:
-            approvalAction === "request"
-              ? user?.name || "Sistema"
-              : String(updates.approval?.requestedByName ?? approvalPayload?.requestedByName ?? ticket.approval?.requestedByName ?? "").trim(),
-          decidedAt:
-            approvalAction === "approve" || approvalAction === "reject"
-              ? nowIso
-              : String(updates.approval?.decidedAt ?? approvalPayload?.decidedAt ?? ticket.approval?.decidedAt ?? "").trim(),
-          decidedById:
-            approvalAction === "approve" || approvalAction === "reject"
-              ? user?.id || ""
-              : String(updates.approval?.decidedById ?? approvalPayload?.decidedById ?? ticket.approval?.decidedById ?? "").trim(),
-          decidedByName:
-            approvalAction === "approve" || approvalAction === "reject"
-              ? user?.name || "Sistema"
-              : String(updates.approval?.decidedByName ?? approvalPayload?.decidedByName ?? ticket.approval?.decidedByName ?? "").trim(),
+        const nextTicketShapeForRules = {
+          ...ticket,
+          ...updates,
+          type: updates.type ?? ticket.type,
+          category: nextCategory,
+          priority: nextPriority,
+          department: nextDepartment,
+          departmentId: nextDepartmentId,
+          location: updates.location ?? ticket.location,
+          title: updates.title ?? ticket.title,
+          description: updates.description ?? ticket.description,
+          source: updates.source ?? ticket.source,
+          approvalAmount: nextApprovalAmount,
         };
+        const approvalWorkflowTemplate = resolveApprovalWorkflow(
+          nextTicketShapeForRules,
+          current.serviceCenter?.approvalRules || [],
+          current.serviceCenter?.approverDelegations || [],
+          current.users || [],
+          String(updates.approval?.approverId || approvalPayload?.approverId || ticket.approval?.approverId || "").trim(),
+        );
+        let nextApproval =
+          normalizeText(nextTicketShapeForRules.type) !== "requisicao"
+            ? resolveApprovalState(nextTicketShapeForRules.type, approvalPayload, approvalAction)
+            : {
+                ...approvalWorkflowTemplate,
+                ...ticket.approval,
+                ...approvalPayload,
+                decisionReason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? ticket.approval?.decisionReason ?? "").trim(),
+              };
+        if (normalizeText(nextTicketShapeForRules.type) === "requisicao" && approvalAction === "request") {
+          nextApproval = {
+            ...approvalWorkflowTemplate,
+            decisionReason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? "").trim(),
+            requestedAt: nowIso,
+            requestedById: user?.id || "",
+            requestedByName: user?.name || "Sistema",
+          };
+        }
+        if (normalizeText(nextTicketShapeForRules.type) === "requisicao" && (approvalAction === "approve" || approvalAction === "reject")) {
+          nextApproval = {
+            ...progressApprovalWorkflow(
+              {
+                ...nextApproval,
+                decisionReason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? "").trim(),
+              },
+              approvalAction,
+              { id: user?.id || "", name: user?.name || "Sistema" },
+              current.users || [],
+              current.serviceCenter?.approverDelegations || [],
+            ),
+            decisionReason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? "").trim(),
+          };
+        }
+        const effectiveStatus =
+          approvalAction === "approve"
+            ? normalizeText(nextApproval.status) === "pending"
+              ? "Aguardando aprovacao"
+              : nextAssignee
+                ? "Em andamento"
+                : "Aberto"
+            : approvalAction === "reject"
+              ? "Aguardando usuario"
+              : nextStatus;
 
-        if (statusChanged && normalizeText(nextStatus) === "reaberto" && !nextReopenReason) {
+        if (statusChanged && normalizeText(effectiveStatus) === "reaberto" && !nextReopenReason) {
           return ticket;
         }
-        if (statusChanged && !isStatusTransitionAllowed(ticket.status, nextStatus)) {
+        if (statusChanged && !isStatusTransitionAllowed(ticket.status, effectiveStatus)) {
           return ticket;
         }
 
         let resolvedAt = ticket.resolvedAt || "";
-        if (normalizeText(nextStatus) === "resolvido") {
+        if (normalizeText(effectiveStatus) === "resolvido") {
           resolvedAt = resolvedAt || nowIso;
         }
-        if (normalizeText(nextStatus) === "reaberto") {
+        if (normalizeText(effectiveStatus) === "reaberto") {
           resolvedAt = "";
         }
 
@@ -1343,12 +1535,12 @@ export function AppDataProvider({ children }) {
               type: "status_change",
               actorId: user?.id,
               actorName: user?.name || "Sistema",
-              message: `Status alterado para ${nextStatus}`,
-              metadata: { from: ticket.status, to: nextStatus },
+              message: `Status alterado para ${effectiveStatus}`,
+              metadata: { from: ticket.status, to: effectiveStatus },
               createdAt: nowIso,
             }),
           );
-          if (normalizeText(nextStatus) === "resolvido") {
+          if (normalizeText(effectiveStatus) === "resolvido") {
             historyEntries.push(
               createHistoryEntry({
                 type: "resolved",
@@ -1359,7 +1551,7 @@ export function AppDataProvider({ children }) {
               }),
             );
           }
-          if (normalizeText(nextStatus) === "reaberto") {
+          if (normalizeText(effectiveStatus) === "reaberto") {
             historyEntries.push(
               createHistoryEntry({
                 type: "reopened",
@@ -1462,25 +1654,41 @@ export function AppDataProvider({ children }) {
           historyEntries.push(createHistoryEntry({ type: "approval_rejected", actorId: user?.id, actorName: user?.name || "Sistema", message: "Requisicao reprovada", createdAt: nowIso }));
         }
 
-        const nextSlaTargetMinutes = resolveTicketSlaPolicyMinutes({
+        const slaTargets = resolveTicketSlaTargets({
           type: updates.type ?? ticket.type,
           priority: nextPriority,
           category: nextCategory,
           department: nextDepartment,
-        });
+          departmentId: nextDepartmentId,
+        }, current.serviceCenter?.slaPolicies || []);
+        const nextSlaTargetMinutes = slaTargets.resolutionMinutes;
+        const nextInitialResponseTargetMinutes = slaTargets.initialResponseMinutes;
         const routedState = applyRoutingRules({
           type: updates.type ?? ticket.type,
           category: nextCategory,
           priority: nextPriority,
+          departmentId: nextDepartmentId,
           department: nextDepartment,
           queue: updates.queue ?? ticket.queue,
+          location: updates.location ?? ticket.location,
+          title: updates.title ?? ticket.title,
+          description: updates.description ?? ticket.description,
+          source: updates.source ?? ticket.source,
+          assignee: nextAssignee,
           triage: ticket.triage,
-        });
+        }, current.serviceCenter || defaultServiceCenterSettings, current.users || []);
+        const firstResponseAt =
+          ticket.firstResponseAt ||
+          (followUpsChanged && nextFollowUps.length
+            ? nextFollowUps[0].createdAt || nowIso
+            : assigneeChanged || (statusChanged && ["em andamento", "aguardando usuario", "aguardando aprovacao"].includes(normalizeText(effectiveStatus)))
+              ? nowIso
+              : "");
 
         return {
           ...ticket,
           ...updates,
-          status: nextStatus,
+          status: effectiveStatus,
           priority: nextPriority,
           urgency: nextUrgency,
           impact: nextImpact,
@@ -1488,6 +1696,9 @@ export function AppDataProvider({ children }) {
           sla: computeSlaFromMinutes(nextSlaTargetMinutes),
           slaTargetMinutes: nextSlaTargetMinutes,
           slaDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + nextSlaTargetMinutes * 60 * 1000).toISOString(),
+          initialResponseTargetMinutes: nextInitialResponseTargetMinutes,
+          initialResponseDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + nextInitialResponseTargetMinutes * 60 * 1000).toISOString(),
+          firstResponseAt,
           openedAt: ticket.openedAt,
           openedAtLabel: formatTimestampLabel(ticket.openedAt),
           dueDate: nextDueDate,
@@ -1501,11 +1712,14 @@ export function AppDataProvider({ children }) {
           department: nextDepartment,
           queue: String(routedState.queue ?? updates.queue ?? ticket.queue ?? nextDepartment).trim() || nextDepartment || "Service Desk",
           resolutionNotes: nextResolutionNotes,
+          watchers: nextWatchersLabel,
+          watcherDetails: nextWatcherDetails,
           followUps: nextFollowUps,
           subtasks: nextSubtasks,
           checklistItems: nextChecklistItems,
           reopenReason: nextReopenReason,
           reopenCategory: nextReopenCategory,
+          approvalAmount: nextApprovalAmount,
           approval: nextApproval,
           triage: routedState.triage || ticket.triage || {},
           resolvedAt,
@@ -1517,6 +1731,7 @@ export function AppDataProvider({ children }) {
           projectName: nextProjectName,
           assetId: nextAssetId,
           assetName: nextAssetName,
+          slaRuleScope: { type: updates.type ?? ticket.type, priority: nextPriority, category: nextCategory, department: nextDepartment },
           history: appendHistory(ticket, historyEntries),
         };
       }),
@@ -1819,15 +2034,83 @@ export function AppDataProvider({ children }) {
 
   const updateServiceCenterSettings = (payload = {}) => {
     if (!hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"])) return;
-    applyState((current) => ({
-      ...current,
-      serviceCenter: {
-        ...(current.serviceCenter || defaultServiceCenterSettings),
-        ...payload,
-        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.serviceCenter?.enabled),
-        updatedAt: new Date().toISOString(),
-      },
-    }));
+    applyState((current) => {
+      const currentServiceCenter = current.serviceCenter || defaultServiceCenterSettings;
+      return {
+        ...current,
+        serviceCenter: {
+          ...currentServiceCenter,
+          ...payload,
+          enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(currentServiceCenter.enabled),
+          triagePanelVisible: payload.triagePanelVisible !== undefined ? Boolean(payload.triagePanelVisible) : currentServiceCenter.triagePanelVisible !== false,
+          emailIntake:
+            payload.emailIntake !== undefined
+              ? sanitizeEmailIntakeConfig(payload.emailIntake, currentServiceCenter.emailIntake)
+              : currentServiceCenter.emailIntake,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  };
+
+  const saveServiceCenterAutomation = (payload = {}) => {
+    if (!hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"])) return null;
+    const nowIso = new Date().toISOString();
+    applyState((current) => {
+      const currentServiceCenter = current.serviceCenter || defaultServiceCenterSettings;
+      return {
+        ...current,
+        serviceCenter: {
+          ...currentServiceCenter,
+          triagePanelVisible:
+            payload.triagePanelVisible !== undefined
+              ? Boolean(payload.triagePanelVisible)
+              : currentServiceCenter.triagePanelVisible !== false,
+          routingRules:
+            payload.routingRules !== undefined
+              ? payload.routingRules.map((rule, index) =>
+                  sanitizeRoutingRulePayload(
+                    { ...rule, id: String(rule.id || `routing-${index + 1}`) },
+                    rule,
+                  ),
+                )
+              : currentServiceCenter.routingRules || [],
+          slaPolicies:
+            payload.slaPolicies !== undefined
+              ? payload.slaPolicies.map((policy, index) =>
+                  sanitizeSlaPolicyPayload(
+                    { ...policy, id: String(policy.id || `sla-${index + 1}`) },
+                    policy,
+                  ),
+                )
+              : currentServiceCenter.slaPolicies || [],
+          approvalRules:
+            payload.approvalRules !== undefined
+              ? payload.approvalRules.map((rule, index) =>
+                  sanitizeApprovalRulePayload(
+                    { ...rule, id: String(rule.id || `approval-${index + 1}`) },
+                    rule,
+                  ),
+                )
+              : currentServiceCenter.approvalRules || [],
+          approverDelegations:
+            payload.approverDelegations !== undefined
+              ? payload.approverDelegations.map((delegation, index) =>
+                  sanitizeApproverDelegationPayload(
+                    { ...delegation, id: String(delegation.id || `delegation-${index + 1}`) },
+                    delegation,
+                  ),
+                )
+              : currentServiceCenter.approverDelegations || [],
+          emailIntake:
+            payload.emailIntake !== undefined
+              ? sanitizeEmailIntakeConfig(payload.emailIntake, currentServiceCenter.emailIntake)
+              : currentServiceCenter.emailIntake,
+          updatedAt: nowIso,
+        },
+      };
+    });
+    return true;
   };
 
   const saveServiceCenterDepartmentConfig = (departmentId, payload = {}) => {
@@ -2625,6 +2908,16 @@ export function AppDataProvider({ children }) {
     return sendNotificationTestRequest(payload);
   };
 
+  const processInboundEmail = (payload = {}) => {
+    if (!hasAnyPermission(user, ["tickets_create", "tickets_admin"])) return null;
+    const parsedPayload = parseInboundEmailTicket(payload, data.users || [], data.departments || [], data.serviceCenter || defaultServiceCenterSettings);
+    return createTicket({
+      ...parsedPayload,
+      attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+      watcherDetails: normalizeWatcherDetails(payload.watcherDetails, data.users || []),
+    });
+  };
+
   const value = useMemo(
     () => ({
       summary,
@@ -2682,6 +2975,7 @@ export function AppDataProvider({ children }) {
       updateDepartment,
       deleteDepartment,
       updateServiceCenterSettings,
+      saveServiceCenterAutomation,
       saveServiceCenterDepartmentConfig,
       saveServiceCenterDepartment,
       addAsset,
@@ -2718,6 +3012,7 @@ export function AppDataProvider({ children }) {
       saveSmtpSettings,
       saveEmailServiceSettings,
       requestNotificationTest,
+      processInboundEmail,
       toLocalDatetimeInput,
     }),
     [

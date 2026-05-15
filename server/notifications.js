@@ -236,6 +236,8 @@ function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
     comentarios: resolveTicketComments(ticket),
     link_chamado: buildTicketLink(baseUrl, ticket.id),
     evento: String(eventLabel || ""),
+    aprovador_atual: String(ticket.approval?.currentApproverName || ticket.approval?.approverName || ""),
+    sla_aprovacao: String(ticket.approval?.dueAt || "").trim(),
   };
 }
 
@@ -244,6 +246,17 @@ function getRecipients(rule, state) {
     .map((userId) => (state.users || []).find((user) => user.id === userId)?.email || "")
     .filter(Boolean);
   return Array.from(new Set([...userEmails, ...parseEmails(rule?.externalEmails)]));
+}
+
+function getWatcherRecipients(ticket, eventKey) {
+  return Array.from(
+    new Set(
+      (Array.isArray(ticket?.watcherDetails) ? ticket.watcherDetails : [])
+        .filter((watcher) => Array.isArray(watcher?.eventKeys) && watcher.eventKeys.includes(eventKey))
+        .map((watcher) => String(watcher.email || "").trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function resolveEventChanges(previousTicket, nextTicket) {
@@ -276,6 +289,15 @@ function resolveEventChanges(previousTicket, nextTicket) {
   }
   if (!previousTicket.slaBreachedAt && nextTicket.slaBreachedAt) {
     changes.push({ key: "ticket_sla_breached", signature: nextTicket.slaBreachedAt });
+  }
+  if (normalizeText(previousTicket.approval?.status) !== "pending" && normalizeText(nextTicket.approval?.status) === "pending") {
+    changes.push({ key: "ticket_approval_pending", signature: `${nextTicket.id}:${nextTicket.approval?.requestedAt || nextTicket.updatedAtIso}` });
+  }
+  if (normalizeText(previousTicket.approval?.currentApproverId) !== normalizeText(nextTicket.approval?.currentApproverId) && normalizeText(nextTicket.approval?.status) === "pending") {
+    changes.push({ key: "ticket_approval_pending", signature: `${nextTicket.id}:${nextTicket.approval?.currentApproverId}:${nextTicket.approval?.dueAt || nextTicket.updatedAtIso}` });
+  }
+  if (!previousTicket.approvalOverdueAt && nextTicket.approvalOverdueAt) {
+    changes.push({ key: "ticket_approval_overdue", signature: `${nextTicket.id}:${nextTicket.approvalOverdueAt}` });
   }
 
   return changes;
@@ -408,7 +430,7 @@ export async function processTicketNotifications({ previousState, nextState, per
       const rule = rules.find((candidate) => candidate.eventKey === change.key);
       if (!rule) continue;
 
-      const recipients = getRecipients(rule, nextState);
+      const recipients = Array.from(new Set([...getRecipients(rule, nextState), ...getWatcherRecipients(nextTicket, change.key)]));
       if (!recipients.length) continue;
 
       const eventLabel = eventsMap.get(change.key)?.label || change.key;

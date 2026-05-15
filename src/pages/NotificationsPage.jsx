@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission } from "../data/permissions";
+import { exportRowsAsCsv } from "../lib/export";
 
 function buildRuleDraft(eventKey, existingRule) {
   return {
@@ -25,6 +26,7 @@ function NotificationsPage() {
     notificationEvents,
     notificationLogs,
     notificationRules,
+    processInboundEmail,
     pushToast,
     requestNotificationTest,
     saveEmailServiceSettings,
@@ -42,6 +44,11 @@ function NotificationsPage() {
     body: "Teste de envio realizado com sucesso.",
   });
   const [testing, setTesting] = useState(false);
+  const [intakeDraft, setIntakeDraft] = useState({
+    fromEmail: "",
+    subject: "",
+    body: "",
+  });
 
   const canView = hasAnyPermission(user, ["notifications_view", "notifications_manage", "users_admin"]);
   const canManage = hasAnyPermission(user, ["notifications_manage", "users_admin"]);
@@ -146,6 +153,33 @@ function NotificationsPage() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleInboundEmail = () => {
+    const createdTicket = processInboundEmail(intakeDraft);
+    if (!createdTicket?.id) {
+      pushToast("Falha ao processar e-mail", "Revise o remetente, assunto ou permissoes.", "warning");
+      return;
+    }
+    pushToast("E-mail processado", createdTicket.id);
+    setIntakeDraft({ fromEmail: "", subject: "", body: "" });
+  };
+
+  const handleExportNotifications = () => {
+    exportRowsAsCsv({
+      fileName: `ticketmind-notificacoes-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "eventKey", label: "Evento" },
+        { key: "ticketId", label: "Chamado" },
+        { key: "status", label: "Status" },
+        { key: "method", label: "Metodo" },
+        { key: "sentAt", label: "Data" },
+        { key: "recipients", label: "Destinatarios", render: (item) => item.recipients.join(", ") },
+        { key: "error", label: "Erro" },
+      ],
+      items: notificationLogs,
+    });
+    pushToast("Exportacao concluida", `${notificationLogs.length} log(s) exportado(s).`);
   };
 
   return (
@@ -429,6 +463,9 @@ function NotificationsPage() {
             <h2>Logs de envio</h2>
             <span>Falhas nao bloqueiam o sistema; ficam registradas aqui para auditoria.</span>
           </div>
+          <button className="ghost-button interactive-button" onClick={handleExportNotifications} type="button">
+            Exportar
+          </button>
         </div>
         <div className="settings-log-list">
           {notificationLogs.length ? (
@@ -453,6 +490,36 @@ function NotificationsPage() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="board-card glpi-panel">
+        <div className="glpi-toolbar">
+          <div>
+            <h2>Abertura de chamado por e-mail</h2>
+            <span>Processa assunto e corpo, identifica o solicitante pelo e-mail e abre o chamado no fluxo normal.</span>
+          </div>
+        </div>
+        <div className="glpi-form-grid">
+          <label className="field-block">
+            <span>Remetente</span>
+            <input onChange={(event) => setIntakeDraft((current) => ({ ...current, fromEmail: event.target.value }))} type="email" value={intakeDraft.fromEmail} />
+          </label>
+          <label className="field-block field-span-2">
+            <span>Assunto</span>
+            <input onChange={(event) => setIntakeDraft((current) => ({ ...current, subject: event.target.value }))} value={intakeDraft.subject} />
+          </label>
+          <label className="field-block field-span-2">
+            <span>Corpo</span>
+            <textarea onChange={(event) => setIntakeDraft((current) => ({ ...current, body: event.target.value }))} value={intakeDraft.body} />
+          </label>
+        </div>
+        {canManage ? (
+          <div className="ticket-create-actions compact-actions">
+            <button className="primary-button interactive-button" onClick={handleInboundEmail} type="button">
+              Processar e abrir chamado
+            </button>
+          </div>
+        ) : null}
       </section>
     </div>
   );

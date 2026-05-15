@@ -495,6 +495,8 @@ export const defaultNotificationEvents = [
   { key: "ticket_commented", label: "Comentarios", description: "Enviado quando ha comentario tecnico ou acompanhamento." },
   { key: "ticket_closed", label: "Fechamento", description: "Enviado quando o chamado e resolvido/fechado." },
   { key: "ticket_sla_breached", label: "SLA", description: "Enviado quando o SLA e violado." },
+  { key: "ticket_approval_pending", label: "Aprovacao pendente", description: "Enviado quando uma etapa de aprovacao e criada ou avancada." },
+  { key: "ticket_approval_overdue", label: "Aprovacao atrasada", description: "Enviado quando o SLA da aprovacao e violado." },
 ];
 
 export const defaultEmailPlaceholders = [
@@ -511,6 +513,8 @@ export const defaultEmailPlaceholders = [
   { key: "data_atualizacao", label: "Data de atualizacao" },
   { key: "comentarios", label: "Comentarios" },
   { key: "link_chamado", label: "Link do chamado" },
+  { key: "aprovador_atual", label: "Aprovador atual" },
+  { key: "sla_aprovacao", label: "SLA de aprovacao" },
 ];
 
 export const defaultSmtpSettings = {
@@ -538,5 +542,27 @@ export const defaultEmailServiceSettings = {
 export const defaultServiceCenterSettings = {
   enabled: false,
   departments: {},
+  triagePanelVisible: true,
+  routingRules: [],
+  slaPolicies: [],
+  approvalRules: [],
+  approverDelegations: [],
+  emailIntake: {
+    enabled: false,
+    inboxAddress: "",
+    defaultDepartmentId: "",
+    defaultPriority: "Media",
+    categoryHints: [
+      { keyword: "acesso", category: "Acesso", type: "Requisicao" },
+      { keyword: "senha", category: "Acesso", type: "Requisicao" },
+      { keyword: "vpn", category: "Infraestrutura", type: "Incidente" },
+      { keyword: "impressora", category: "Infraestrutura", type: "Incidente" },
+    ],
+    priorityHints: [
+      { keyword: "urgente", priority: "Alta" },
+      { keyword: "critico", priority: "Critica" },
+      { keyword: "parado", priority: "Alta" },
+    ],
+  },
   updatedAt: "",
 };

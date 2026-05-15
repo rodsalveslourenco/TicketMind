@@ -2,15 +2,33 @@ import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 function HelpdeskOperationsPage() {
   const { dailyOpenings, operationalTickets, priorityBuckets, slaAlerts, statusBuckets } = useAppData();
   const { user } = useAuth();
   const canView = hasAnyPermission(user, ["helpdesk_indicators_view", "sla_alerts_view", "tickets_admin"]);
+  const approvalQueue = operationalTickets.filter((ticket) => ticket.approvalPending);
 
   if (!canView) {
     return <Navigate replace to="/app/tickets" />;
   }
+
+  const handleExport = () => {
+    exportRowsAsCsv({
+      fileName: `ticketmind-operacoes-helpdesk-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "id", label: "Chamado" },
+        { key: "title", label: "Titulo" },
+        { key: "status", label: "Status" },
+        { key: "priority", label: "Prioridade" },
+        { key: "assignee", label: "Tecnico" },
+        { key: "slaLabel", label: "SLA resolucao" },
+        { key: "initialResponseLabel", label: "SLA 1a resposta" },
+      ],
+      items: operationalTickets,
+    });
+  };
 
   return (
     <div className="page-grid">
@@ -20,9 +38,14 @@ function HelpdeskOperationsPage() {
             <h2>Indicadores operacionais</h2>
             <span>Dados reais da fila atual, usando os chamados persistidos no sistema.</span>
           </div>
-          <Link className="ghost-button interactive-button" to="/app/tickets">
-            Ver chamados
-          </Link>
+          <div className="toolbar">
+            <Link className="ghost-button interactive-button" to="/app/tickets">
+              Ver chamados
+            </Link>
+            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+              Exportar
+            </button>
+          </div>
         </div>
 
         <div className="dashboard-kpi-strip compact-kpi-strip">
@@ -33,6 +56,10 @@ function HelpdeskOperationsPage() {
           <div className="dashboard-kpi-card dashboard-kpi-card-warning">
             <span>Alertas SLA</span>
             <strong>{slaAlerts.length}</strong>
+          </div>
+          <div className="dashboard-kpi-card">
+            <span>Aprovacoes pendentes</span>
+            <strong>{approvalQueue.length}</strong>
           </div>
         </div>
       </section>
@@ -118,6 +145,27 @@ function HelpdeskOperationsPage() {
             ))
           ) : (
             <div className="dashboard-empty-state">Nenhum alerta operacional de SLA no momento.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="board-card">
+        <div className="card-heading">
+          <div>
+            <h2>Fila de aprovacao</h2>
+            <span>Requisicoes pendentes com aprovador atual e SLA proprio.</span>
+          </div>
+        </div>
+        <div className="dashboard-alert-list">
+          {approvalQueue.length ? (
+            approvalQueue.map((ticket) => (
+              <article className={`dashboard-alert-card ${ticket.approvalOverdue ? "dashboard-alert-danger" : "dashboard-alert-warning"}`} key={`${ticket.id}-approval`}>
+                <strong>{ticket.id} | {ticket.title}</strong>
+                <span>{ticket.approval?.currentApproverName || "Sem aprovador"} | {ticket.approvalOverdue ? "Atrasado" : "Pendente"}</span>
+              </article>
+            ))
+          ) : (
+            <div className="dashboard-empty-state">Nenhuma aprovacao pendente no momento.</div>
           )}
         </div>
       </section>

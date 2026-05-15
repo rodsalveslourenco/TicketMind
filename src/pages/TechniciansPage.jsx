@@ -2,6 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 function formatAverage(minutes) {
   if (!minutes) return "0 min";
@@ -18,6 +19,22 @@ function TechniciansPage() {
     return <Navigate replace to="/app/tickets" />;
   }
 
+  const handleExport = () => {
+    exportRowsAsCsv({
+      fileName: `ticketmind-tecnicos-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "name", label: "Tecnico" },
+        { key: "assignedCount", label: "Atribuidos" },
+        { key: "resolvedCount", label: "Resolvidos" },
+        { key: "withinSlaCount", label: "Dentro SLA" },
+        { key: "outSlaCount", label: "Fora SLA" },
+        { key: "averageResolutionMinutes", label: "Media resolucao", render: (item) => formatAverage(item.averageResolutionMinutes) },
+        { key: "slaRate", label: "% SLA", render: (item) => `${item.slaRate}%` },
+      ],
+      items: technicianMetrics,
+    });
+  };
+
   return (
     <div className="page-grid">
       <section className="board-card">
@@ -26,6 +43,9 @@ function TechniciansPage() {
             <h2>Gestao de tecnicos</h2>
             <span>Performance e carga de trabalho calculadas com os chamados reais do sistema.</span>
           </div>
+          <button className="ghost-button interactive-button" onClick={handleExport} type="button">
+            Exportar
+          </button>
         </div>
 
         <div className="dashboard-performance-table">

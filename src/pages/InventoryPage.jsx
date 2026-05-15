@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 function normalizeText(value) {
   return String(value || "")
@@ -59,6 +60,19 @@ function InventoryPage() {
   }, [assets, search]);
 
   const selectedItem = inventoryRows.find((item) => item.id === selectedItemId) ?? null;
+  const handleExport = () => {
+    exportRowsAsCsv({
+      fileName: `ticketmind-inventario-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "type", label: "Tipo" },
+        { key: "manufacturer", label: "Marca" },
+        { key: "model", label: "Modelo" },
+        { key: "quantity", label: "Quantidade" },
+        { key: "serials", label: "Series", render: (item) => item.serials.join(" | ") },
+      ],
+      items: inventoryRows,
+    });
+  };
 
   return (
     <div className="users-page">

@@ -281,22 +281,24 @@ No deploy:
 - pesquisa global unificada por chamado, usuario, ativo e artigo
 - fila de triagem com acoes rapidas em linha
 - sugestao de tecnico por departamento, carga e especialidade
+- opcao de ocultar ou mostrar a fila de triagem
+- aprovacao multi-etapa por departamento e faixa de valor, com historico e aprovador atual
+- delegacao de aprovador para substituto com trilha de auditoria na etapa
+- SLA por combinacao de tipo, categoria, prioridade e departamento
+- SLA de primeira resposta separado do SLA de resolucao
+- comentarios internos por equipe com filtro de visualizacao para times internos
+- observadores com notificacao seletiva por evento
+- roteamento avancado por categoria, prioridade, localizacao, palavra-chave, origem e horario
+- intake operacional de chamado por e-mail com parsing basico de remetente, assunto e corpo
+- exportacao CSV adicional para operacoes, tecnicos, central de servicos e notificacoes
 
 ## Mapeamento de novas funcoes
 
-### Melhorias funcionais
+### Melhorias funcionais ainda pendentes ou parciais
 
-- aprovacao multi-etapa com aprovadores por departamento, alcada e valor
-- aprovacao com SLA proprio, fila de pendencias e lembretes automaticos
-- aprovacao com delegado/substituto em ausencia do aprovador principal
-- comentarios internos por equipe, sem exposicao ao solicitante
-- SLA por combinacao de tipo, categoria, prioridade e departamento
-- SLA de atendimento inicial separado do SLA de resolucao
-- roteamento automatico de triagem por categoria, prioridade e localizacao
-- roteamento por palavra-chave, origem e horario de atendimento
-- observadores com notificacao seletiva por evento
-- abertura de chamado por email com parsing basico de assunto e corpo
-- relatorios consolidados exportaveis em todos os modulos administrativos
+- lembretes automaticos recorrentes de aprovacao sem depender de atividade no sistema
+- relatorios consolidados exportaveis em todos os modulos administrativos com cobertura uniforme
+- exportacao Excel/XLSX ou PDF seguindo um padrao unico do sistema
 
 ### Melhorias para chamados
 
@@ -362,3 +364,10 @@ No deploy:
 ## Resumo executivo
 
 O TicketMind ja saiu do estado inicial descrito no README anterior. Hoje ele cobre autenticacao, autorizacao, chamados, aprovacao, notificacao, base de conhecimento, logs e cadastros administrativos com mais rigor de persistencia e API versionada. O proximo salto de maturidade esta em consolidar experiencia operacional estilo GLPI, exportacao ampla, automacoes de atendimento e backend ainda mais orientado por dominio.
+
+## Validado nesta rodada
+
+- build de producao com `npm run build`
+- restauracao do carregamento da pagina de chamados apos o commit `ed85553`
+- login admin e operacoes basicas de API em ambiente local apos a correcao de estado SQLite
+- deploy manual via API do Render para o commit `314f869`

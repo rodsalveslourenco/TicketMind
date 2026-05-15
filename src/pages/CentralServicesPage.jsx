@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import UserAutocomplete from "../components/UserAutocomplete";
 import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
+import { exportRowsAsCsv } from "../lib/export";
 
 const defaultForm = {
   code: "",
@@ -40,6 +41,7 @@ function CentralServicesPage() {
   const {
     departments,
     pushToast,
+    saveServiceCenterAutomation,
     saveServiceCenterDepartment,
     serviceCenter,
     updateServiceCenterSettings,
@@ -50,6 +52,14 @@ function CentralServicesPage() {
   const [showModal, setShowModal] = useState(false);
   const [responsibleQuery, setResponsibleQuery] = useState("");
   const [form, setForm] = useState(defaultForm);
+  const [automationDraft, setAutomationDraft] = useState({
+    triagePanelVisible: true,
+    routingRules: "[]",
+    slaPolicies: "[]",
+    approvalRules: "[]",
+    approverDelegations: "[]",
+    emailIntake: "{}",
+  });
 
   const canView = hasAnyPermission(user, ["service_center_manage", "service_center_departments_manage", "users_manage_permissions", "users_admin"]);
   const canManage = hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_manage_permissions", "users_admin"]);
@@ -98,6 +108,17 @@ function CentralServicesPage() {
     () => activeUsers.filter((candidate) => form.responsibleUserIds.includes(candidate.id)),
     [activeUsers, form.responsibleUserIds],
   );
+
+  useEffect(() => {
+    setAutomationDraft({
+      triagePanelVisible: serviceCenter?.triagePanelVisible !== false,
+      routingRules: JSON.stringify(serviceCenter?.routingRules || [], null, 2),
+      slaPolicies: JSON.stringify(serviceCenter?.slaPolicies || [], null, 2),
+      approvalRules: JSON.stringify(serviceCenter?.approvalRules || [], null, 2),
+      approverDelegations: JSON.stringify(serviceCenter?.approverDelegations || [], null, 2),
+      emailIntake: JSON.stringify(serviceCenter?.emailIntake || {}, null, 2),
+    });
+  }, [serviceCenter]);
 
   if (!canView) {
     return <Navigate replace to="/app/dashboard" />;
@@ -211,6 +232,39 @@ function CentralServicesPage() {
     resetForm();
   };
 
+  const handleSaveAutomation = () => {
+    try {
+      saveServiceCenterAutomation({
+        triagePanelVisible: automationDraft.triagePanelVisible,
+        routingRules: JSON.parse(automationDraft.routingRules || "[]"),
+        slaPolicies: JSON.parse(automationDraft.slaPolicies || "[]"),
+        approvalRules: JSON.parse(automationDraft.approvalRules || "[]"),
+        approverDelegations: JSON.parse(automationDraft.approverDelegations || "[]"),
+        emailIntake: JSON.parse(automationDraft.emailIntake || "{}"),
+      });
+      pushToast("Automacao salva", "Regras de triagem, SLA, aprovacao e intake atualizadas.");
+    } catch (error) {
+      pushToast("JSON invalido", error instanceof Error ? error.message : "Revise a configuracao.", "warning");
+    }
+  };
+
+  const handleExportCentral = () => {
+    exportRowsAsCsv({
+      fileName: `ticketmind-central-servicos-${new Date().toISOString().slice(0, 10)}.csv`,
+      columns: [
+        { key: "name", label: "Departamento" },
+        { key: "code", label: "Codigo" },
+        { key: "status", label: "Cadastro" },
+        { key: "active", label: "Na Central", render: (item) => (item.active ? "Sim" : "Nao") },
+        { key: "acceptsTickets", label: "Aceita chamados", render: (item) => (item.acceptsTickets ? "Sim" : "Nao") },
+        { key: "showInRequestPortal", label: "Portal", render: (item) => (item.showInRequestPortal ? "Sim" : "Nao") },
+        { key: "responsibleUsers", label: "Responsaveis", render: (item) => item.responsibleUsers.map((candidate) => candidate.name).join(", ") },
+      ],
+      items: departmentRows,
+    });
+    pushToast("Exportacao concluida", `${departmentRows.length} departamento(s) exportado(s).`);
+  };
+
   return (
     <div className="users-page">
       <section className="module-hero board-card">
@@ -269,6 +323,9 @@ function CentralServicesPage() {
               placeholder="Buscar por nome, codigo, status ou abertura"
               value={search}
             />
+            <button className="ghost-button interactive-button" onClick={handleExportCentral} type="button">
+              Exportar
+            </button>
             {canManage ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
                 + Novo departamento
@@ -324,6 +381,54 @@ function CentralServicesPage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="board-card glpi-panel settings-stack">
+        <div className="settings-card-head">
+          <div>
+            <h2>Automacao operacional</h2>
+            <span>Regras opcionais e retrocompativeis. Nada aqui remove cadastros existentes; apenas adiciona comportamento.</span>
+          </div>
+        </div>
+        <div className="toggle-row">
+          <label className="inline-toggle">
+            <input
+              checked={automationDraft.triagePanelVisible}
+              onChange={(event) => setAutomationDraft((current) => ({ ...current, triagePanelVisible: event.target.checked }))}
+              type="checkbox"
+            />
+            <span>Fila de triagem visivel por padrao</span>
+          </label>
+        </div>
+        <div className="glpi-form-grid">
+          <label className="field-block field-full">
+            <span>Roteamento automatico</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, routingRules: event.target.value }))} rows={10} value={automationDraft.routingRules} />
+          </label>
+          <label className="field-block field-full">
+            <span>Politicas avancadas de SLA</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, slaPolicies: event.target.value }))} rows={10} value={automationDraft.slaPolicies} />
+          </label>
+          <label className="field-block field-full">
+            <span>Regras de aprovacao multi-etapa</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, approvalRules: event.target.value }))} rows={10} value={automationDraft.approvalRules} />
+          </label>
+          <label className="field-block field-full">
+            <span>Delegacoes de aprovador</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, approverDelegations: event.target.value }))} rows={8} value={automationDraft.approverDelegations} />
+          </label>
+          <label className="field-block field-full">
+            <span>Intake de e-mail</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, emailIntake: event.target.value }))} rows={8} value={automationDraft.emailIntake} />
+          </label>
+        </div>
+        {canManage ? (
+          <div className="ticket-create-actions compact-actions">
+            <button className="primary-button interactive-button" onClick={handleSaveAutomation} type="button">
+              Salvar automacao
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {showModal ? (

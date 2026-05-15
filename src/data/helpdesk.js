@@ -133,7 +133,7 @@ export function normalizeHistory(history) {
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
-export function createFollowUpEntry({ message, actorId = "", actorName = "Sistema", createdAt, visibility = "private", kind = "follow_up" }) {
+export function createFollowUpEntry({ message, actorId = "", actorName = "Sistema", createdAt, visibility = "private", kind = "follow_up", audienceTeamIds = [] }) {
   const timestamp = createdAt || new Date().toISOString();
   return {
     id: `follow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -142,6 +142,7 @@ export function createFollowUpEntry({ message, actorId = "", actorName = "Sistem
     actorName: String(actorName || "Sistema").trim(),
     visibility: normalizeCommentVisibility(visibility),
     kind: String(kind || "follow_up").trim() || "follow_up",
+    audienceTeamIds: Array.isArray(audienceTeamIds) ? audienceTeamIds.filter(Boolean) : [],
     createdAt: timestamp,
     createdAtLabel: formatTimestampLabel(timestamp),
   };
@@ -158,6 +159,7 @@ export function normalizeFollowUps(followUps) {
         actorName: String(item?.actorName || "Sistema").trim(),
         visibility: normalizeCommentVisibility(item?.visibility),
         kind: String(item?.kind || "follow_up").trim() || "follow_up",
+        audienceTeamIds: Array.isArray(item?.audienceTeamIds) ? item.audienceTeamIds.filter(Boolean) : [],
         createdAt: timestamp,
         createdAtLabel: formatTimestampLabel(timestamp),
       };
@@ -278,8 +280,17 @@ function normalizeApproval(ticket) {
   return {
     required: Boolean(approval.required),
     status: String(approval.status || "not_required").trim() || "not_required",
+    ruleId: String(approval.ruleId || "").trim(),
+    ruleName: String(approval.ruleName || "").trim(),
     approverId: String(approval.approverId || "").trim(),
     approverName: String(approval.approverName || "").trim(),
+    currentApproverId: String(approval.currentApproverId || approval.approverId || "").trim(),
+    currentApproverName: String(approval.currentApproverName || approval.approverName || "").trim(),
+    currentStepIndex: Number.isFinite(Number(approval.currentStepIndex)) ? Number(approval.currentStepIndex) : 0,
+    slaMinutes: Number(approval.slaMinutes) || 0,
+    dueAt: String(approval.dueAt || "").trim(),
+    amount: Number(approval.amount) || 0,
+    steps: Array.isArray(approval.steps) ? approval.steps : [],
     requestedAt: String(approval.requestedAt || "").trim(),
     decidedAt: String(approval.decidedAt || "").trim(),
     requestedById: String(approval.requestedById || "").trim(),
@@ -306,6 +317,14 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
   const subtasks = normalizeTicketSubtasks(ticket.subtasks);
   const checklistItems = normalizeTicketChecklist(ticket.checklistItems);
   const approval = normalizeApproval(ticket);
+  const approvalOverdueAt =
+    normalizeText(approval.status) === "pending" &&
+    approval.dueAt &&
+    !ticket.approvalOverdueAt &&
+    new Date(nowIso).getTime() > new Date(approval.dueAt).getTime()
+      ? nowIso
+      : String(ticket.approvalOverdueAt || "").trim();
+  const watcherDetails = Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails : [];
   const isResolved = normalizeText(status) === "resolvido";
   let resolvedAt = ticket.resolvedAt || "";
   if (isResolved && !resolvedAt) {
@@ -351,9 +370,18 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     attachments: Array.isArray(ticket.attachments) ? ticket.attachments : [],
     history: nextHistory,
     approval,
+    approvalAmount: Number(ticket.approvalAmount) || 0,
+    watcherDetails,
+    approvalOverdueAt,
     triage: ticket?.triage && typeof ticket.triage === "object" ? ticket.triage : {},
     slaTargetMinutes,
     slaDeadlineAt,
+    initialResponseTargetMinutes: Number(ticket.initialResponseTargetMinutes) || Math.max(15, Math.round(slaTargetMinutes * 0.25)),
+    initialResponseDeadlineAt:
+      String(ticket.initialResponseDeadlineAt || "").trim() ||
+      new Date(new Date(openedAt).getTime() + Math.max(15, Math.round(slaTargetMinutes * 0.25)) * 60 * 1000).toISOString(),
+    firstResponseAt: String(ticket.firstResponseAt || "").trim(),
+    firstResponseAtLabel: ticket.firstResponseAt ? formatTimestampLabel(ticket.firstResponseAt) : "",
     slaBreachedAt,
     resolvedAt,
     resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
@@ -374,12 +402,20 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
 export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   const now = new Date(nowIso).getTime();
   const deadline = new Date(ticket.slaDeadlineAt).getTime();
+  const firstResponseDeadline = new Date(ticket.initialResponseDeadlineAt || ticket.slaDeadlineAt).getTime();
   const remainingMinutes = Math.round((deadline - now) / 60000);
+  const initialResponseRemainingMinutes = Math.round((firstResponseDeadline - now) / 60000);
   const isResolved = normalizeText(ticket.status) === "resolvido";
   const isOverdue = !isResolved && remainingMinutes < 0;
+  const initialResponseOverdue = !ticket.firstResponseAt && !isResolved && initialResponseRemainingMinutes < 0;
   const dueSoon = !isResolved && remainingMinutes >= 0 && remainingMinutes <= 60;
   const unassigned = isTicketUnassigned(ticket);
   const criticalWaitingTechnician = normalizeText(ticket.priority) === "critica" && unassigned && isOpenTicketStatus(ticket.status);
+  const approvalDueAt = ticket.approval?.dueAt ? new Date(ticket.approval.dueAt).getTime() : null;
+  const approvalPending = normalizeText(ticket.approval?.status) === "pending";
+  const approvalRemainingMinutes = approvalDueAt ? Math.round((approvalDueAt - now) / 60000) : null;
+  const approvalDueSoon = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes >= 0 && approvalRemainingMinutes <= 60;
+  const approvalOverdue = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes < 0;
   const slaLabel = isResolved
     ? ticket.resolvedAt
       ? `Resolvido em ${ticket.resolvedAtLabel}`
@@ -400,6 +436,17 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
     dueSoon,
     unassigned,
     criticalWaitingTechnician,
+    initialResponseRemainingMinutes,
+    initialResponseOverdue,
+    initialResponseLabel: ticket.firstResponseAt
+      ? `1a resposta em ${ticket.firstResponseAtLabel}`
+      : initialResponseOverdue
+        ? `1a resposta vencida ha ${formatDurationLabel(Math.abs(initialResponseRemainingMinutes))}`
+        : `1a resposta em ${formatDurationLabel(initialResponseRemainingMinutes)}`,
+    approvalPending,
+    approvalRemainingMinutes,
+    approvalDueSoon,
+    approvalOverdue,
     resolutionMinutes,
   };
 }
