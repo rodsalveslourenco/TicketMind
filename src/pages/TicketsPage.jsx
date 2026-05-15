@@ -480,13 +480,6 @@ function TicketsPage() {
       ),
     [users],
   );
-  const triageTickets = useMemo(
-    () =>
-      filteredTickets
-        .filter((ticket) => normalizeText(ticket.status) === "aberto" || ticket.unassigned || ticket.criticalWaitingTechnician)
-        .slice(0, 6),
-    [filteredTickets],
-  );
   const suggestedAssignees = useMemo(() => {
     if (!detailTicket) return [];
     const openStatuses = new Set(["aberto", "em andamento", "aguardando usuario", "aguardando aprovacao", "reaberto"]);
@@ -656,6 +649,13 @@ function TicketsPage() {
 
     return currentTickets;
   }, [advancedFilters, priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
+  const triageTickets = useMemo(
+    () =>
+      filteredTickets
+        .filter((ticket) => normalizeText(ticket.status) === "aberto" || ticket.unassigned || ticket.criticalWaitingTechnician)
+        .slice(0, 6),
+    [filteredTickets],
+  );
 
   const departmentIndicators = useMemo(() => {
     const grouped = filteredTickets.reduce((accumulator, ticket) => {

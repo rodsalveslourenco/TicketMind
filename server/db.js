@@ -612,6 +612,17 @@ function isPostgresEnabled() {
   return Boolean(databaseUrl);
 }
 
+function sqliteTableHasColumn(db, tableName, columnName) {
+  const table = String(tableName || "").trim();
+  const column = String(columnName || "").trim().toLowerCase();
+  if (!table || !column) return false;
+  const result = db.exec(`PRAGMA table_info(${table})`);
+  if (!result.length) return false;
+  const nameIndex = result[0].columns.indexOf("name");
+  if (nameIndex === -1) return false;
+  return (result[0].values || []).some((row) => String(row[nameIndex] || "").trim().toLowerCase() === column);
+}
+
 async function getSqliteDb() {
   if (!sqlitePromise) {
     sqlitePromise = (async () => {
@@ -745,7 +756,10 @@ async function getSqliteDb() {
           metadata TEXT NOT NULL
         );
       `);
-      db.run("ALTER TABLE departments ADD COLUMN color TEXT NOT NULL DEFAULT ''");
+      if (!sqliteTableHasColumn(db, "departments", "color")) {
+        db.run("ALTER TABLE departments ADD COLUMN color TEXT NOT NULL DEFAULT ''");
+      }
+      return db;
     })().catch((error) => {
       sqlitePromise = null;
       throw error;
