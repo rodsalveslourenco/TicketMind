@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission, normalizeText } from "../data/permissions";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 function createEmptyPermissions(permissionCatalog = []) {
   return Array.from(
@@ -137,13 +137,15 @@ function PermissionProfilesPage() {
     pushToast("Perfil duplicado", duplicatedProfile?.name || profile.name);
   };
 
-  const handleExport = () => {
+  const handleExport = (format = "csv") => {
     if (!orderedProfiles.length) {
       pushToast("Sem dados", "Nao ha perfis para exportar.", "warning");
       return;
     }
-    exportRowsAsCsv({
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-perfis-permissao-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de perfis de permissao",
       columns: [
         { key: "name", label: "Perfil" },
         { key: "description", label: "Descricao" },
@@ -153,7 +155,7 @@ function PermissionProfilesPage() {
       ],
       items: orderedProfiles,
     });
-    pushToast("Exportacao concluida", `${orderedProfiles.length} perfil(is) exportado(s).`);
+    pushToast("Exportacao concluida", `${orderedProfiles.length} perfil(is) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -193,8 +195,14 @@ function PermissionProfilesPage() {
               placeholder="Buscar por nome, descricao ou status"
               value={search}
             />
-            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
-              Exportar
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+              PDF
             </button>
             <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
               + Novo perfil

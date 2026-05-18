@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission } from "../data/permissions";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const emptyForm = {
   name: "",
@@ -81,6 +82,27 @@ function EmailLayoutsPage() {
     pushToast("Layout removido", layout.name);
   };
 
+  const handleExport = (format = "csv") => {
+    if (!orderedLayouts.length) {
+      pushToast("Sem dados", "Nao ha layouts para exportar.", "warning");
+      return;
+    }
+    exportRowsWithFormat({
+      format,
+      fileName: `ticketmind-layouts-email-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de layouts de e-mail",
+      columns: [
+        { key: "name", label: "Layout" },
+        { key: "eventKey", label: "Evento" },
+        { key: "status", label: "Status" },
+        { key: "subject", label: "Assunto" },
+        { key: "body", label: "Corpo" },
+      ],
+      items: orderedLayouts,
+    });
+    pushToast("Exportacao concluida", `${orderedLayouts.length} layout(s) preparados em ${getExportFormatLabel(format)}.`);
+  };
+
   return (
     <div className="settings-page">
       <section className="module-hero board-card">
@@ -110,11 +132,22 @@ function EmailLayoutsPage() {
             <h2>Templates</h2>
             <span>Associe o assunto e o corpo do e-mail a cada evento configuravel.</span>
           </div>
-          {canManage ? (
-            <button className="primary-button interactive-button" onClick={openCreate} type="button">
-              + Novo layout
+          <div className="toolbar">
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
             </button>
-          ) : null}
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+              PDF
+            </button>
+            {canManage ? (
+              <button className="primary-button interactive-button" onClick={openCreate} type="button">
+                + Novo layout
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="settings-stack">

@@ -1,6 +1,11 @@
 import nodemailer from "nodemailer";
 import { decryptSecret, encryptSecret } from "./security.js";
 
+const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
+  5 * 60 * 1000,
+  Number(process.env.APPROVAL_REMINDER_INTERVAL_MS) || 60 * 60 * 1000,
+);
+
 function safeDecryptSecret(value) {
   try {
     return decryptSecret(value || "");
@@ -259,6 +264,35 @@ function getWatcherRecipients(ticket, eventKey) {
   );
 }
 
+function getApprovalReminderRecipients(ticket, rule, state) {
+  const currentApproverId = String(ticket?.approval?.currentApproverId || ticket?.approval?.approverId || "").trim();
+  const currentApprover = currentApproverId ? (state.users || []).find((user) => user.id === currentApproverId) || null : null;
+  const currentApproverEmail = String(currentApprover?.email || "").trim().toLowerCase();
+  return Array.from(
+    new Set([
+      currentApproverEmail,
+      ...getRecipients(rule, state),
+      ...getWatcherRecipients(ticket, "ticket_approval_reminder"),
+    ].filter(Boolean)),
+  );
+}
+
+function buildApprovalReminderChange(ticket, existingLogKeys, now = new Date()) {
+  if (normalizeText(ticket?.approval?.status) !== "pending") return null;
+  const requestedAt = new Date(ticket?.approval?.requestedAt || ticket?.updatedAtIso || ticket?.updatedAt || ticket?.openedAt || now.toISOString());
+  if (Number.isNaN(requestedAt.getTime())) return null;
+  const elapsedMs = now.getTime() - requestedAt.getTime();
+  if (elapsedMs < APPROVAL_REMINDER_INTERVAL_MS) return null;
+  const reminderBucket = Math.floor(elapsedMs / APPROVAL_REMINDER_INTERVAL_MS);
+  const dedupeKey = `ticket_approval_reminder:${ticket.id}:${ticket?.approval?.currentApproverId || ticket?.approval?.approverId || "sem-aprovador"}:${reminderBucket}`;
+  if (existingLogKeys.has(dedupeKey)) return null;
+  return {
+    key: "ticket_approval_reminder",
+    signature: dedupeKey,
+    dedupeKey,
+  };
+}
+
 function resolveEventChanges(previousTicket, nextTicket) {
   const changes = [];
   const previousFollowUpsSignature = JSON.stringify(previousTicket?.followUps || []);
@@ -489,6 +523,82 @@ export async function processTicketNotifications({ previousState, nextState, per
   if (persistState && JSON.stringify(nextLogs) !== JSON.stringify(nextState.notificationLogs || [])) {
     await persistState({
       ...nextState,
+      notificationLogs: nextLogs.slice(0, 200),
+    });
+  }
+}
+
+export async function processRecurringApprovalReminders({ state, persistState, baseUrl, now = new Date() }) {
+  const activeRules = Array.isArray(state.notificationRules) ? state.notificationRules.filter((rule) => rule.active) : [];
+  const approvalReminderRule = activeRules.find((rule) => rule.eventKey === "ticket_approval_reminder") || null;
+  const eventsMap = new Map((state.notificationEvents || []).map((event) => [event.key, event]));
+  const layoutsMap = new Map((state.emailLayouts || []).map((layout) => [layout.id, layout]));
+  const existingLogKeys = new Set((state.notificationLogs || []).map((log) => log.dedupeKey).filter(Boolean));
+  const nextLogs = [...(state.notificationLogs || [])];
+  let changed = false;
+
+  for (const ticket of Array.isArray(state.tickets) ? state.tickets : []) {
+    const reminderChange = buildApprovalReminderChange(ticket, existingLogKeys, now);
+    if (!reminderChange) continue;
+
+    const recipients = getApprovalReminderRecipients(ticket, approvalReminderRule, state);
+    if (!recipients.length) continue;
+
+    const eventLabel = eventsMap.get(reminderChange.key)?.label || "Lembrete de aprovacao";
+    const layout =
+      (approvalReminderRule?.layoutId ? layoutsMap.get(approvalReminderRule.layoutId) : null) ||
+      (state.emailLayouts || []).find(
+        (candidate) => candidate.eventKey === reminderChange.key && normalizeText(candidate.status) === "ativo",
+      ) ||
+      null;
+    const placeholders = buildPlaceholders(state, ticket, eventLabel, baseUrl);
+    const subject = compileTemplate(layout?.subject || `[TicketMind] ${eventLabel} - {{numero_chamado}}`, placeholders);
+    const body = compileTemplate(
+      layout?.body ||
+        "Existe uma aprovacao pendente aguardando sua decisao.\nChamado: {{numero_chamado}}\nTitulo: {{titulo}}\nSolicitante: {{solicitante}}\nAprovador atual: {{aprovador_atual}}\nSLA da aprovacao: {{sla_aprovacao}}\nLink: {{link_chamado}}",
+      placeholders,
+    );
+
+    try {
+      const method = await deliverEmail(state, {
+        to: recipients,
+        subject,
+        text: body,
+        html: `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>`,
+      });
+      nextLogs.unshift(
+        buildNotificationLogEntry({
+          eventKey: reminderChange.key,
+          ticketId: ticket.id,
+          recipients,
+          status: "Enviado",
+          dedupeKey: reminderChange.dedupeKey,
+          subject,
+          method,
+        }),
+      );
+    } catch (error) {
+      nextLogs.unshift(
+        buildNotificationLogEntry({
+          eventKey: reminderChange.key,
+          ticketId: ticket.id,
+          recipients,
+          status: "Falha",
+          error: error instanceof Error ? error.message : "Falha ao enviar email.",
+          dedupeKey: reminderChange.dedupeKey,
+          subject,
+          method: "Falha",
+        }),
+      );
+    }
+
+    existingLogKeys.add(reminderChange.dedupeKey);
+    changed = true;
+  }
+
+  if (changed && persistState) {
+    await persistState({
+      ...state,
       notificationLogs: nextLogs.slice(0, 200),
     });
   }

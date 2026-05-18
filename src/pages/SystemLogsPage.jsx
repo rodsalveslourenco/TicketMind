@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission, isTechnologyDepartment } from "../data/permissions";
 import { requestJson } from "../lib/api";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const eventTypeOptions = [
   "erro",
@@ -273,6 +274,30 @@ function SystemLogsPage() {
     setPagination((current) => ({ ...current, page: 1 }));
   };
 
+  const handleExport = (format = "csv") => {
+    if (!logs.length) {
+      pushToast("Sem dados", "Nao ha logs no recorte atual para exportar.", "warning");
+      return;
+    }
+    exportRowsWithFormat({
+      format,
+      fileName: `ticketmind-auditoria-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de auditoria e acessos",
+      columns: [
+        { key: "occurredAt", label: "Ocorrido em" },
+        { key: "userName", label: "Usuario" },
+        { key: "userDepartment", label: "Departamento" },
+        { key: "module", label: "Modulo", render: (item) => formatModuleLabel(item.module) },
+        { key: "eventType", label: "Evento", render: (item) => formatEventLabel(item.eventType) },
+        { key: "status", label: "Status", render: (item) => formatStatusLabel(item.status) },
+        { key: "description", label: "Descricao" },
+        { key: "metadata", label: "Resumo tecnico", render: (item) => summarizeMetadata(item.metadata) },
+      ],
+      items: logs,
+    });
+    pushToast("Exportacao concluida", `${logs.length} log(s) preparados em ${getExportFormatLabel(format)}.`);
+  };
+
   return (
     <div className="ticket-page system-logs-page">
       <section className="module-hero board-card">
@@ -394,6 +419,15 @@ function SystemLogsPage() {
             <span>{loading ? "Carregando registros..." : `${logs.length} ocorrencias nesta pagina`}</span>
           </div>
           <div className="toolbar">
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+              PDF
+            </button>
             <label className="system-logs-page-size">
               <span>Itens por pagina</span>
               <select

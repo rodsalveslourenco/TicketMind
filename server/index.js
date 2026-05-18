@@ -6,6 +6,7 @@ import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserB
 import {
   mergeIncomingState,
   prepareStateForClient,
+  processRecurringApprovalReminders,
   processTicketNotifications,
   sendNotificationTest,
 } from "./notifications.js";
@@ -35,6 +36,8 @@ const distPath = path.resolve(__dirname, "..", "dist");
 const stateService = createStateService({ stateRepository });
 const ticketService = createTicketService({ stateService });
 const collectionService = createCollectionService({ stateService });
+const approvalReminderPollMs = Math.max(60 * 1000, Number(process.env.APPROVAL_REMINDER_POLL_MS) || 5 * 60 * 1000);
+let approvalReminderTimer = null;
 
 app.use(express.json({ limit: "15mb" }));
 
@@ -618,3 +621,24 @@ app.get("*", (request, response) => {
 app.listen(port, () => {
   console.log(`TicketMind server listening on port ${port}`);
 });
+
+async function runApprovalReminderCycle() {
+  try {
+    const state = await readState();
+    await processRecurringApprovalReminders({
+      state,
+      persistState: writeState,
+      baseUrl: process.env.APP_PUBLIC_URL || "",
+    });
+  } catch (error) {
+    console.error("approval reminder cycle failed", error);
+  }
+}
+
+if (!approvalReminderTimer) {
+  approvalReminderTimer = setInterval(runApprovalReminderCycle, approvalReminderPollMs);
+  if (typeof approvalReminderTimer.unref === "function") {
+    approvalReminderTimer.unref();
+  }
+  void runApprovalReminderCycle();
+}

@@ -1803,20 +1803,26 @@ function TicketsPage() {
       {showCreateForm ? (
         <div className="ticket-modal-backdrop" onClick={handleCloseCreateModal} role="presentation">
           <div className="ticket-modal board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-            <form className="ticket-create-form glpi-ticket-form" onSubmit={handleCreateSubmit}>
+            <form className="ticket-create-form glpi-ticket-form ticket-create-form-simplified" onSubmit={handleCreateSubmit}>
               <div className="ticket-modal-header">
                 <div className="form-section-header">
                   <strong>Abertura de chamado</strong>
+                  <span className="modal-subtitle">Preencha o essencial primeiro. Os demais dados ficam logo abaixo em blocos opcionais.</span>
                 </div>
                 <button className="ghost-button interactive-button" onClick={handleCloseCreateModal} type="button">
                   Fechar
                 </button>
               </div>
 
-              <div className="glpi-form-grid">
-                <label className="field-block field-span-2">
+              <div className="ticket-create-compact-note">
+                <strong>{createTypeProfile.category}</strong>
+                <span>{createTypeProfile.helper}</span>
+              </div>
+
+              <div className="glpi-form-grid ticket-create-grid-simplified">
+                <label className="field-block field-full">
                   <span>Titulo</span>
-                  <input onChange={updateCreateField("title")} value={createForm.title} />
+                  <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitacao em uma linha" value={createForm.title} />
                 </label>
                 <label className="field-block">
                   <span>Tipo</span>
@@ -1826,13 +1832,18 @@ function TicketsPage() {
                     <option>Problema</option>
                   </select>
                 </label>
-                <div className="field-block">
-                  <span>Modelo do formulario</span>
-                  <div className="requester-stamp">
-                    <strong>{createTypeProfile.category} | Prioridade sugerida {createTypeProfile.priority}</strong>
-                    <small>{createTypeProfile.helper} Campos foco: {createTypeProfile.suggestedFields.join(", ")}.</small>
-                  </div>
-                </div>
+                <label className="field-block">
+                  <span>Categoria</span>
+                  <input onChange={updateCreateField("category")} value={createForm.category} />
+                </label>
+                <label className="field-block">
+                  <span>Prioridade</span>
+                  <select onChange={updateCreateField("priority")} value={createForm.priority}>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
                 {serviceCenterEnabled ? (
                   <label className="field-block field-full">
                     <span>Departamento de destino</span>
@@ -1859,7 +1870,7 @@ function TicketsPage() {
                 ) : null}
                 <div className="field-block">
                   <span>Solicitante</span>
-                  <div className="requester-stamp">
+                  <div className="requester-stamp requester-stamp-compact">
                     <strong>{user?.name || "Usuario nao identificado"}</strong>
                     <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
                   </div>
@@ -1868,9 +1879,9 @@ function TicketsPage() {
                   <span>Localizacao</span>
                   <input onChange={updateCreateField("location")} value={createForm.location} />
                 </label>
-                <label className="field-block">
-                  <span>Categoria</span>
-                  <input onChange={updateCreateField("category")} value={createForm.category} />
+                <label className="field-block field-full">
+                  <span>Descricao</span>
+                  <textarea onChange={updateCreateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." value={createForm.description} />
                 </label>
                 {getDynamicCategoryValidation({ ...createForm, requesterEmail: user?.email || "" }) ? (
                   <div className="field-block field-full">
@@ -1879,8 +1890,12 @@ function TicketsPage() {
                     </div>
                   </div>
                 ) : null}
-                {normalizeText(createForm.type) === "requisicao" ? (
-                  <>
+              </div>
+
+              {normalizeText(createForm.type) === "requisicao" ? (
+                <details className="ticket-create-section" open>
+                  <summary>Fluxo de aprovacao</summary>
+                  <div className="glpi-form-grid ticket-create-grid-simplified">
                     <label className="field-block">
                       <span>Valor / alcada da requisicao</span>
                       <input min="0" onChange={updateCreateField("approvalAmount")} step="0.01" type="number" value={createForm.approvalAmount || ""} />
@@ -1896,59 +1911,57 @@ function TicketsPage() {
                         ))}
                       </select>
                     </label>
-                  </>
-                ) : null}
-                <label className="field-block">
-                  <span>Projeto vinculado</span>
-                  <select onChange={updateCreateField("projectId")} value={createForm.projectId || ""}>
-                    <option value="">Nao vincular</option>
-                    {activeProjectOptions.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Ativo vinculado</span>
-                  <select onChange={updateCreateField("assetId")} value={createForm.assetId || ""}>
-                    <option value="">Nao vincular</option>
-                    {activeAssetOptions.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.tag || asset.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Prioridade</span>
-                  <select onChange={updateCreateField("priority")} value={createForm.priority}>
-                    {PRIORITY_LEVELS.map((priority) => (
-                      <option key={priority}>{priority}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Urgencia</span>
-                  <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
-                    {PRIORITY_LEVELS.map((priority) => (
-                      <option key={priority}>{priority}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Impacto</span>
-                  <select onChange={updateCreateField("impact")} value={createForm.impact}>
-                    {PRIORITY_LEVELS.map((priority) => (
-                      <option key={priority}>{priority}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Pesquisar artigo</span>
-                  <input onChange={(event) => setCreateKnowledgeQuery(event.target.value)} placeholder="Pesquisar solucao existente" value={createKnowledgeQuery} />
-                </label>
-                <div className="field-block field-span-2" ref={watcherBoxRef}>
+                  </div>
+                </details>
+              ) : null}
+
+              <details className="ticket-create-section">
+                <summary>Classificacao avancada</summary>
+                <div className="glpi-form-grid ticket-create-grid-simplified">
+                  <label className="field-block">
+                    <span>Urgencia</span>
+                    <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
+                      {PRIORITY_LEVELS.map((priority) => (
+                        <option key={priority}>{priority}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Impacto</span>
+                    <select onChange={updateCreateField("impact")} value={createForm.impact}>
+                      {PRIORITY_LEVELS.map((priority) => (
+                        <option key={priority}>{priority}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Projeto vinculado</span>
+                    <select onChange={updateCreateField("projectId")} value={createForm.projectId || ""}>
+                      <option value="">Nao vincular</option>
+                      {activeProjectOptions.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Ativo vinculado</span>
+                    <select onChange={updateCreateField("assetId")} value={createForm.assetId || ""}>
+                      <option value="">Nao vincular</option>
+                      {activeAssetOptions.map((asset) => (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.tag || asset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+
+              <details className="ticket-create-section">
+                <summary>Observadores e notificacoes</summary>
+                <div className="field-block field-full" ref={watcherBoxRef}>
                   <span>Observadores</span>
                   <div className="watcher-picker">
                     <div className="watcher-chip-list">
@@ -1995,73 +2008,79 @@ function TicketsPage() {
                     </div>
                   ) : null}
                 </div>
-                <label className="field-block field-full">
-                  <span>Descricao</span>
-                  <textarea onChange={updateCreateField("description")} value={createForm.description} />
-                </label>
-              </div>
+              </details>
 
-              {createArticleSuggestions.length ? (
-                <div className="ticket-suggestion-panel">
-                  <div className="ticket-inline-panel-head">
-                    <strong>Sugestoes automaticas da base</strong>
-                    <span>Artigos relacionados a titulo, categoria e descricao do novo chamado.</span>
-                  </div>
-                  <div className="ticket-rows">
-                  {createArticleSuggestions.map((article) => (
-                    <button
-                      className="ticket-row-card interactive-button"
-                      key={article.id}
-                      onClick={() =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          knowledgeArticleIds: [...new Set([...(current.knowledgeArticleIds || []), article.id])],
-                        }))
-                      }
-                      type="button"
-                    >
-                      <div className="ticket-row-main">
-                        <div className="ticket-row-title">
-                          <strong>{article.title}</strong>
-                          <h3>{article.category}</h3>
-                        </div>
-                        <div className="ticket-row-badges">
-                          <span className="badge status-badge-resolvido">Ativo</span>
-                        </div>
-                      </div>
-                      <div className="ticket-row-meta">
-                        <span>{article.solutionApplied}</span>
-                      </div>
-                    </button>
-                  ))}
-                  </div>
+              <details className="ticket-create-section">
+                <summary>Base de conhecimento e anexos</summary>
+                <div className="glpi-form-grid ticket-create-grid-simplified">
+                  <label className="field-block field-full">
+                    <span>Pesquisar artigo</span>
+                    <input onChange={(event) => setCreateKnowledgeQuery(event.target.value)} placeholder="Pesquisar solucao existente" value={createKnowledgeQuery} />
+                  </label>
                 </div>
-              ) : null}
 
-              {createForm.knowledgeArticleIds.length ? (
-                <div className="ticket-row-meta">
-                  <span>{createForm.knowledgeArticleIds.length} artigo(s) vinculado(s) ao novo chamado</span>
-                </div>
-              ) : null}
-
-              <div className="attachment-toolbar glpi-subbar">
-                <button className="ghost-button interactive-button" onClick={() => createInputRef.current?.click()} type="button">
-                  Anexar arquivos
-                </button>
-                <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
-                <span>{createForm.attachments.length} arquivo(s) selecionado(s)</span>
-              </div>
-
-              {createForm.attachments.length ? (
-                <div className="attachment-list">
-                  {createForm.attachments.map((attachment) => (
-                    <div className="attachment-item" key={attachment.id}>
-                      <strong>{attachment.name}</strong>
-                      <span>{formatBytes(attachment.size)}</span>
+                {createArticleSuggestions.length ? (
+                  <div className="ticket-suggestion-panel">
+                    <div className="ticket-inline-panel-head">
+                      <strong>Sugestoes automaticas da base</strong>
+                      <span>Artigos relacionados a titulo, categoria e descricao do novo chamado.</span>
                     </div>
-                  ))}
+                    <div className="ticket-rows">
+                    {createArticleSuggestions.map((article) => (
+                      <button
+                        className="ticket-row-card interactive-button"
+                        key={article.id}
+                        onClick={() =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            knowledgeArticleIds: [...new Set([...(current.knowledgeArticleIds || []), article.id])],
+                          }))
+                        }
+                        type="button"
+                      >
+                        <div className="ticket-row-main">
+                          <div className="ticket-row-title">
+                            <strong>{article.title}</strong>
+                            <h3>{article.category}</h3>
+                          </div>
+                          <div className="ticket-row-badges">
+                            <span className="badge status-badge-resolvido">Ativo</span>
+                          </div>
+                        </div>
+                        <div className="ticket-row-meta">
+                          <span>{article.solutionApplied}</span>
+                        </div>
+                      </button>
+                    ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {createForm.knowledgeArticleIds.length ? (
+                  <div className="ticket-row-meta">
+                    <span>{createForm.knowledgeArticleIds.length} artigo(s) vinculado(s) ao novo chamado</span>
+                  </div>
+                ) : null}
+
+                <div className="attachment-toolbar glpi-subbar">
+                  <button className="ghost-button interactive-button" onClick={() => createInputRef.current?.click()} type="button">
+                    Anexar arquivos
+                  </button>
+                  <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
+                  <span>{createForm.attachments.length} arquivo(s) selecionado(s)</span>
                 </div>
-              ) : null}
+
+                {createForm.attachments.length ? (
+                  <div className="attachment-list">
+                    {createForm.attachments.map((attachment) => (
+                      <div className="attachment-item" key={attachment.id}>
+                        <strong>{attachment.name}</strong>
+                        <span>{formatBytes(attachment.size)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </details>
 
               <div className="ticket-create-actions">
                 <button className="primary-button interactive-button" type="submit">

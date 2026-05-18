@@ -8,6 +8,7 @@ export const DEFAULT_WATCHER_EVENT_KEYS = [
   "ticket_sla_breached",
   "ticket_approval_pending",
   "ticket_approval_overdue",
+  "ticket_approval_reminder",
 ];
 
 export function normalizeWatcherEventKeys(value) {

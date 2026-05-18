@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission, normalizeText } from "../data/permissions";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 import { useUiPreferences } from "../ui/UiPreferencesContext";
 
 function getInitials(name) {
@@ -255,13 +255,15 @@ function UsersPage() {
     });
   };
 
-  const handleExport = () => {
+  const handleExport = (format = "csv") => {
     if (!orderedUsers.length) {
       pushToast("Sem dados", "Nao ha usuarios para exportar.", "warning");
       return;
     }
-    exportRowsAsCsv({
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-usuarios-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de usuarios",
       columns: [
         { key: "name", label: "Usuario" },
         { key: "email", label: "Email" },
@@ -272,7 +274,7 @@ function UsersPage() {
       ],
       items: orderedUsers,
     });
-    pushToast("Exportacao concluida", `${orderedUsers.length} usuario(s) exportado(s).`);
+    pushToast("Exportacao concluida", `${orderedUsers.length} usuario(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   const openCreateModal = () => {
@@ -485,8 +487,14 @@ function UsersPage() {
             <button className="ghost-button interactive-button" onClick={() => setShowGridConfig((current) => !current)} type="button">
               Configurar grade
             </button>
-            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
-              Exportar
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+              PDF
             </button>
             {canCreateUsers ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">

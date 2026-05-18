@@ -332,6 +332,7 @@ Observacao operacional:
 - opcao de ocultar ou mostrar a fila de triagem
 - aprovacao multi-etapa por departamento e faixa de valor, com historico e aprovador atual
 - delegacao de aprovador para substituto com trilha de auditoria na etapa
+- lembretes automaticos recorrentes de aprovacao sem depender de atividade no sistema
 - SLA por combinacao de tipo, categoria, prioridade e departamento
 - SLA de primeira resposta separado do SLA de resolucao
 - comentarios internos por equipe com filtro de visualizacao para times internos
@@ -339,14 +340,12 @@ Observacao operacional:
 - roteamento avancado por categoria, prioridade, localizacao, palavra-chave, origem e horario
 - intake operacional de chamado por e-mail com parsing basico de remetente, assunto e corpo
 - exportacao CSV adicional para operacoes, tecnicos, central de servicos e notificacoes
+- relatorios consolidados exportaveis em todos os modulos administrativos com cobertura uniforme
+- exportacao Excel/XLS ou PDF seguindo um padrao unico do sistema
 
 ## Mapeamento de novas funcoes
 
 ### Melhorias funcionais ainda pendentes ou parciais
-
-- lembretes automaticos recorrentes de aprovacao sem depender de atividade no sistema
-- relatorios consolidados exportaveis em todos os modulos administrativos com cobertura uniforme
-- exportacao Excel/XLSX ou PDF seguindo um padrao unico do sistema
 
 ### Melhorias para chamados
 

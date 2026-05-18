@@ -815,6 +815,72 @@ textarea:focus {
   color: var(--muted);
 }
 
+.requester-stamp-compact {
+  min-height: 0;
+  padding: 0.6rem 0.75rem;
+}
+
+.ticket-create-form-simplified {
+  gap: 0.85rem;
+}
+
+.ticket-create-compact-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  align-items: center;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7fafc;
+}
+
+.ticket-create-compact-note strong {
+  color: #0f172a;
+}
+
+.ticket-create-compact-note span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.ticket-create-grid-simplified {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ticket-create-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-alt);
+  padding: 0.85rem;
+}
+
+.ticket-create-section[open] {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.ticket-create-section summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #1f2937;
+  list-style: none;
+}
+
+.ticket-create-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.ticket-create-section summary::after {
+  content: "+";
+  float: right;
+  color: var(--muted);
+}
+
+.ticket-create-section[open] summary::after {
+  content: "−";
+}
+
 .field-full {
   grid-column: 1 / -1;
 }

@@ -5,7 +5,7 @@ import UserAutocomplete from "../components/UserAutocomplete";
 import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const defaultForm = {
   code: "",
@@ -248,9 +248,11 @@ function CentralServicesPage() {
     }
   };
 
-  const handleExportCentral = () => {
-    exportRowsAsCsv({
+  const handleExportCentral = (format = "csv") => {
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-central-servicos-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio da central de servicos",
       columns: [
         { key: "name", label: "Departamento" },
         { key: "code", label: "Codigo" },
@@ -262,7 +264,7 @@ function CentralServicesPage() {
       ],
       items: departmentRows,
     });
-    pushToast("Exportacao concluida", `${departmentRows.length} departamento(s) exportado(s).`);
+    pushToast("Exportacao concluida", `${departmentRows.length} departamento(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -323,8 +325,14 @@ function CentralServicesPage() {
               placeholder="Buscar por nome, codigo, status ou abertura"
               value={search}
             />
-            <button className="ghost-button interactive-button" onClick={handleExportCentral} type="button">
-              Exportar
+            <button className="ghost-button interactive-button" onClick={() => handleExportCentral("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExportCentral("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExportCentral("pdf")} type="button">
+              PDF
             </button>
             {canManage ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const defaultForm = {
   name: "",
@@ -41,13 +41,15 @@ function ApiConfigPage() {
     setEditingId(null);
   };
 
-  const handleExport = () => {
+  const handleExport = (format = "csv") => {
     if (!orderedConfigs.length) {
       pushToast("Sem dados", "Nao ha integracoes para exportar.", "warning");
       return;
     }
-    exportRowsAsCsv({
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-integracoes-api-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de integracoes de API",
       columns: [
         { key: "name", label: "Nome" },
         { key: "baseUrl", label: "Base URL" },
@@ -59,7 +61,7 @@ function ApiConfigPage() {
       ],
       items: orderedConfigs,
     });
-    pushToast("Exportacao concluida", `${orderedConfigs.length} integracao(oes) exportada(s).`);
+    pushToast("Exportacao concluida", `${orderedConfigs.length} integracao(oes) preparadas em ${getExportFormatLabel(format)}.`);
   };
 
   const handleSubmit = (event) => {
@@ -180,8 +182,14 @@ function ApiConfigPage() {
               <h2>Integrações registradas</h2>
             </div>
             <div className="toolbar">
-              <button className="ghost-button interactive-button" onClick={handleExport} type="button">
-                Exportar
+              <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+                CSV
+              </button>
+              <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+                Excel
+              </button>
+              <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+                PDF
               </button>
             </div>
           </div>

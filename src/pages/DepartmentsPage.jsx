@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const defaultForm = {
   code: "",
@@ -137,13 +137,15 @@ function DepartmentsPage() {
     pushToast("Departamento removido", department.name);
   };
 
-  const handleExport = () => {
+  const handleExport = (format = "csv") => {
     if (!orderedDepartments.length) {
       pushToast("Sem dados", "Nao ha departamentos para exportar.", "warning");
       return;
     }
-    exportRowsAsCsv({
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-departamentos-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de departamentos",
       columns: [
         { key: "code", label: "Codigo" },
         { key: "name", label: "Departamento" },
@@ -154,7 +156,7 @@ function DepartmentsPage() {
       ],
       items: orderedDepartments,
     });
-    pushToast("Exportacao concluida", `${orderedDepartments.length} departamento(s) exportado(s).`);
+    pushToast("Exportacao concluida", `${orderedDepartments.length} departamento(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -193,8 +195,14 @@ function DepartmentsPage() {
               placeholder="Buscar por codigo, nome ou status"
               value={search}
             />
-            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
-              Exportar
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+              PDF
             </button>
             {canCreateDepartments ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">

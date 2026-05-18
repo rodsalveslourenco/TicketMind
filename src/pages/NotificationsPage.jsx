@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
 import { hasAnyPermission } from "../data/permissions";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 function buildRuleDraft(eventKey, existingRule) {
   return {
@@ -165,9 +165,11 @@ function NotificationsPage() {
     setIntakeDraft({ fromEmail: "", subject: "", body: "" });
   };
 
-  const handleExportNotifications = () => {
-    exportRowsAsCsv({
+  const handleExportNotifications = (format = "csv") => {
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-notificacoes-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de notificacoes",
       columns: [
         { key: "eventKey", label: "Evento" },
         { key: "ticketId", label: "Chamado" },
@@ -179,7 +181,7 @@ function NotificationsPage() {
       ],
       items: notificationLogs,
     });
-    pushToast("Exportacao concluida", `${notificationLogs.length} log(s) exportado(s).`);
+    pushToast("Exportacao concluida", `${notificationLogs.length} log(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -463,9 +465,17 @@ function NotificationsPage() {
             <h2>Logs de envio</h2>
             <span>Falhas nao bloqueiam o sistema; ficam registradas aqui para auditoria.</span>
           </div>
-          <button className="ghost-button interactive-button" onClick={handleExportNotifications} type="button">
-            Exportar
-          </button>
+          <div className="toolbar">
+            <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("pdf")} type="button">
+              PDF
+            </button>
+          </div>
         </div>
         <div className="settings-log-list">
           {notificationLogs.length ? (

@@ -497,6 +497,7 @@ export const defaultNotificationEvents = [
   { key: "ticket_sla_breached", label: "SLA", description: "Enviado quando o SLA e violado." },
   { key: "ticket_approval_pending", label: "Aprovacao pendente", description: "Enviado quando uma etapa de aprovacao e criada ou avancada." },
   { key: "ticket_approval_overdue", label: "Aprovacao atrasada", description: "Enviado quando o SLA da aprovacao e violado." },
+  { key: "ticket_approval_reminder", label: "Lembrete recorrente de aprovacao", description: "Enviado periodicamente enquanto a aprovacao estiver pendente, mesmo sem nova atividade no chamado." },
 ];
 
 export const defaultEmailPlaceholders = [

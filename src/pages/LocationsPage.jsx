@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const defaultForm = {
   code: "",
@@ -147,13 +147,15 @@ function LocationsPage() {
     pushToast("Localizacao removida", location.name);
   };
 
-  const handleExport = () => {
+  const handleExport = (format = "csv") => {
     if (!orderedLocations.length) {
       pushToast("Sem dados", "Nao ha localizacoes para exportar.", "warning");
       return;
     }
-    exportRowsAsCsv({
+    exportRowsWithFormat({
+      format,
       fileName: `ticketmind-localizacoes-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: "Relatorio de localizacoes",
       columns: [
         { key: "code", label: "Codigo" },
         { key: "name", label: "Localizacao" },
@@ -164,7 +166,7 @@ function LocationsPage() {
       ],
       items: orderedLocations,
     });
-    pushToast("Exportacao concluida", `${orderedLocations.length} localizacao(oes) exportada(s).`);
+    pushToast("Exportacao concluida", `${orderedLocations.length} localizacao(oes) preparadas em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -208,8 +210,14 @@ function LocationsPage() {
               placeholder="Buscar por codigo, nome, departamento ou status"
               value={search}
             />
-            <button className="ghost-button interactive-button" onClick={handleExport} type="button">
-              Exportar
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("pdf")} type="button">
+              PDF
             </button>
             {canCreateLocations ? (
               <button className="primary-button interactive-button" onClick={openCreateModal} type="button">
