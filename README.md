@@ -349,6 +349,14 @@ Observacao operacional:
 - motivo de pausa e motivo de espera obrigatorios em status especificos
 - aprovacoes visiveis na timeline do chamado com decisor, data e justificativa
 - historico de decisao de aprovacao separado do historico tecnico
+- relatorio por tecnico, departamento, categoria, prioridade e origem
+- relatorio de produtividade com tempo medio de resposta e resolucao
+- relatorio de aprovacoes pendentes, aprovadas e reprovadas
+- relatorio de reincidencia por solicitante, ativo ou categoria
+- relatorio de backlog por faixa de SLA
+- dashboard com comparativo por periodo
+- exportacao CSV e Excel com layout operacional
+- agenda executiva com projetos, chamados criticos e acoes pendentes
 
 ## Mapeamento de novas funcoes
 
@@ -370,15 +378,6 @@ Observacao operacional:
 - filtros persistidos por modulo administrativo
 
 ### Melhorias para relatorios e gestao
-
-- relatorio por tecnico, departamento, categoria, prioridade e origem
-- relatorio de produtividade com tempo medio de resposta e resolucao
-- relatorio de aprovacoes pendentes, aprovadas e reprovadas
-- relatorio de reincidencia por solicitante, ativo ou categoria
-- relatorio de backlog por faixa de SLA
-- dashboard com comparativo por periodo
-- exportacao CSV e Excel com layout operacional
-- agenda executiva com projetos, chamados criticos e acoes pendentes
 
 ### Melhorias de experiencia
 

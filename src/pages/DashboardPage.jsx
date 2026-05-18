@@ -29,6 +29,12 @@ function parseTicketDate(ticket) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function formatDelta(currentValue, previousValue) {
+  const delta = Number(currentValue || 0) - Number(previousValue || 0);
+  if (delta === 0) return "estavel";
+  return `${delta > 0 ? "+" : ""}${delta}`;
+}
+
 function getPriorityTone(priority) {
   const normalized = normalizeText(priority);
   if (normalized === "critica") return "critica";
@@ -49,7 +55,7 @@ function getDashboardStorageKey(userId = "") {
 
 function DashboardPage() {
   const { user } = useAuth();
-  const { departments, knowledgeArticles, summary, tickets } = useAppData();
+  const { departments, knowledgeArticles, operationalReports, summary, tickets } = useAppData();
   const [periodFilter, setPeriodFilter] = useState("90");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
@@ -417,6 +423,37 @@ function DashboardPage() {
     return [...articles, ...notes].slice(0, 5);
   }, [filteredTickets, knowledgeArticles]);
 
+  const periodComparison = useMemo(() => {
+    const periodDays = periodFilter === "custom" || periodFilter === "all" ? 30 : Number(periodFilter) || 30;
+    const endDate = customEndDate ? new Date(`${customEndDate}T23:59:59.999`) : new Date();
+    const currentStart = customStartDate && periodFilter === "custom"
+      ? new Date(`${customStartDate}T00:00:00`)
+      : new Date(endDate.getTime() - periodDays * 86400000);
+    const previousStart = new Date(currentStart.getTime() - periodDays * 86400000);
+    const previousEnd = new Date(currentStart.getTime() - 1);
+
+    const byRange = (start, end) =>
+      tickets.filter((ticket) => {
+        const openedAt = parseTicketDate(ticket);
+        return openedAt && openedAt >= start && openedAt <= end;
+      });
+
+    const currentTickets = byRange(currentStart, endDate);
+    const previousTickets = byRange(previousStart, previousEnd);
+    return {
+      current: {
+        total: currentTickets.length,
+        resolved: currentTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length,
+        critical: currentTickets.filter((ticket) => normalizeText(ticket.priority) === "critica").length,
+      },
+      previous: {
+        total: previousTickets.length,
+        resolved: previousTickets.filter((ticket) => normalizeText(ticket.status) === "resolvido").length,
+        critical: previousTickets.filter((ticket) => normalizeText(ticket.priority) === "critica").length,
+      },
+    };
+  }, [customEndDate, customStartDate, periodFilter, tickets]);
+
   const widgets = [
     { id: "overview", title: "Visao geral dos chamados", category: "Visao geral dos chamados" },
     { id: "department", title: "Chamados por departamento", category: "Chamados por departamento" },
@@ -429,6 +466,8 @@ function DashboardPage() {
     { id: "technicianIndicators", title: "Indicadores por tecnico", category: "Performance dos tecnicos" },
     { id: "actions", title: "Chamados que exigem acao", category: "Visao geral dos chamados" },
     { id: "knowledge", title: "Base de conhecimento", category: "Base de conhecimento" },
+    { id: "comparison", title: "Comparativo por periodo", category: "Visao geral dos chamados" },
+    { id: "executiveAgenda", title: "Agenda executiva", category: "Visao geral dos chamados" },
   ];
 
   const visibleWidgets = widgets.filter((widget) => !hiddenWidgets.includes(widget.id));
@@ -848,6 +887,88 @@ function DashboardPage() {
             ) : (
               <div className="dashboard-empty-state">Nenhuma solucao aplicada foi registrada no recorte atual.</div>
             )}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "comparison") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Comparativo por periodo</h2>
+              <span>Leitura entre periodo atual e janela imediatamente anterior.</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-performance-table">
+            <div className="dashboard-performance-head">
+              <span>Indicador</span>
+              <span>Atual</span>
+              <span>Anterior</span>
+              <span>Delta</span>
+            </div>
+            {[
+              { label: "Chamados", current: periodComparison.current.total, previous: periodComparison.previous.total },
+              { label: "Resolvidos", current: periodComparison.current.resolved, previous: periodComparison.previous.resolved },
+              { label: "Criticos", current: periodComparison.current.critical, previous: periodComparison.previous.critical },
+            ].map((item) => (
+              <div className="dashboard-performance-row" key={`comparison-${item.label}`}>
+                <strong>{item.label}</strong>
+                <span>{item.current}</span>
+                <span>{item.previous}</span>
+                <span>{formatDelta(item.current, item.previous)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "executiveAgenda") {
+      return (
+        <section className="board-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Agenda executiva</h2>
+              <span>Projetos, chamados criticos e pendencias operacionais prioritarias.</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="split-grid split-grid-wide">
+            <div className="dashboard-performance-table">
+              <div className="dashboard-performance-head">
+                <span>Projetos</span>
+                <span>Status</span>
+                <span>Prazo</span>
+              </div>
+              {operationalReports.executiveAgenda.projectAgenda.length ? operationalReports.executiveAgenda.projectAgenda.map((project) => (
+                <div className="dashboard-performance-row" key={`dashboard-project-${project.id}`}>
+                  <strong>{project.name}</strong>
+                  <span>{project.status}</span>
+                  <span>{project.deadlineDays < 0 ? `${Math.abs(project.deadlineDays)} dia(s) em atraso` : `${project.deadlineDays} dia(s)`}</span>
+                </div>
+              )) : <div className="dashboard-empty-state">Nenhum projeto critico no horizonte imediato.</div>}
+            </div>
+            <div className="dashboard-performance-table">
+              <div className="dashboard-performance-head">
+                <span>Acoes</span>
+                <span>Tipo</span>
+                <span>Responsavel</span>
+              </div>
+              {[...operationalReports.executiveAgenda.pendingActions.slice(0, 3), ...operationalReports.executiveAgenda.pendingApprovals.slice(0, 3)].map((ticket) => (
+                <div className="dashboard-performance-row" key={`dashboard-agenda-${ticket.id}`}>
+                  <strong>{ticket.id}</strong>
+                  <span>{ticket.approvalPending ? "Aprovacao" : "Backlog"}</span>
+                  <span>{ticket.assignee || ticket.approval?.currentApproverName || "Sem responsavel"}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       );

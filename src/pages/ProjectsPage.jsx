@@ -3,7 +3,7 @@ import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 const defaultForm = {
   name: "",
@@ -81,7 +81,7 @@ function computePhaseDistribution(phases) {
 
 function ProjectsPage() {
   const { user } = useAuth();
-  const { addProject, deleteProject, projects, pushToast, updateProject, users } = useAppData();
+  const { addProject, deleteProject, operationalReports, projects, pushToast, updateProject, users } = useAppData();
   const [form, setForm] = useState(defaultForm);
   const [phaseForm, setPhaseForm] = useState(defaultPhaseForm);
   const [editingPhaseId, setEditingPhaseId] = useState(null);
@@ -232,13 +232,15 @@ function ProjectsPage() {
     resetForm();
   };
 
-  const handleExport = () => {
+  const handleExport = (format = "csv") => {
     if (!orderedProjects.length) {
       pushToast("Sem dados", "Nao ha projetos para exportar.", "warning");
       return;
     }
-    exportRowsAsCsv({
-      fileName: `ticketmind-projetos-${new Date().toISOString().slice(0, 10)}.csv`,
+    exportRowsWithFormat({
+      format,
+      fileName: `ticketmind-projetos-${new Date().toISOString().slice(0, 10)}`,
+      title: "Carteira de projetos",
       columns: [
         { key: "name", label: "Projeto" },
         { key: "status", label: "Status" },
@@ -250,7 +252,7 @@ function ProjectsPage() {
       ],
       items: orderedProjects,
     });
-    pushToast("Exportacao concluida", `${orderedProjects.length} projeto(s) exportado(s).`);
+    pushToast("Exportacao concluida", `${orderedProjects.length} projeto(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -309,8 +311,11 @@ function ProjectsPage() {
                 placeholder="Buscar por projeto, patrocinador, responsável ou resumo"
                 value={search}
               />
-              <button className="ghost-button compact-button interactive-button" onClick={handleExport} type="button">
-                Exportar
+              <button className="ghost-button compact-button interactive-button" onClick={() => handleExport("csv")} type="button">
+                CSV
+              </button>
+              <button className="ghost-button compact-button interactive-button" onClick={() => handleExport("excel")} type="button">
+                Excel
               </button>
               {canCreateProject ? (
                 <button className="primary-button compact-button interactive-button" onClick={openCreateModal} type="button">
@@ -403,6 +408,45 @@ function ProjectsPage() {
               </div>
             )}
           </div>
+      </section>
+
+      <section className="board-card glpi-panel">
+        <div className="glpi-toolbar projects-toolbar">
+          <div>
+            <h2>Agenda executiva</h2>
+            <span>Projetos com prazo curto, chamados criticos e acoes pendentes no mesmo recorte.</span>
+          </div>
+        </div>
+        <div className="split-grid split-grid-wide">
+          <div className="dashboard-performance-table">
+            <div className="dashboard-performance-head">
+              <span>Projetos</span>
+              <span>Status</span>
+              <span>Prazo</span>
+            </div>
+            {operationalReports.executiveAgenda.projectAgenda.length ? operationalReports.executiveAgenda.projectAgenda.map((project) => (
+              <div className="dashboard-performance-row" key={`agenda-project-${project.id}`}>
+                <strong>{project.name}</strong>
+                <span>{project.status}</span>
+                <span>{project.deadlineDays < 0 ? `${Math.abs(project.deadlineDays)} dia(s) em atraso` : `${project.deadlineDays} dia(s)`}</span>
+              </div>
+            )) : <div className="dashboard-empty-state">Nenhum projeto com prazo curto no momento.</div>}
+          </div>
+          <div className="dashboard-performance-table">
+            <div className="dashboard-performance-head">
+              <span>Chamados criticos</span>
+              <span>Responsavel</span>
+              <span>Status</span>
+            </div>
+            {operationalReports.executiveAgenda.criticalTickets.length ? operationalReports.executiveAgenda.criticalTickets.map((ticket) => (
+              <div className="dashboard-performance-row" key={`agenda-ticket-${ticket.id}`}>
+                <strong>{ticket.id}</strong>
+                <span>{ticket.assignee || "Sem responsavel"}</span>
+                <span>{ticket.status}</span>
+              </div>
+            )) : <div className="dashboard-empty-state">Nenhum chamado critico aberto.</div>}
+          </div>
+        </div>
       </section>
 
       {showProjectModal ? (

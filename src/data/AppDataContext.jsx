@@ -995,6 +995,142 @@ function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter 
   });
 }
 
+function computeAverageResponseMinutes(tickets = []) {
+  const withResponse = tickets.filter((ticket) => ticket.firstResponseAt && ticket.openedAt);
+  if (!withResponse.length) return 0;
+  const total = withResponse.reduce((sum, ticket) => {
+    const opened = new Date(ticket.openedAt).getTime();
+    const responded = new Date(ticket.firstResponseAt).getTime();
+    if (!Number.isFinite(opened) || !Number.isFinite(responded) || responded < opened) return sum;
+    return sum + Math.round((responded - opened) / 60000);
+  }, 0);
+  return Math.round(total / Math.max(withResponse.length, 1));
+}
+
+function computeAverageResolutionMinutes(tickets = []) {
+  const resolved = tickets.filter((ticket) => Number.isFinite(Number(ticket.resolutionMinutes)));
+  if (!resolved.length) return 0;
+  const total = resolved.reduce((sum, ticket) => sum + (Number(ticket.resolutionMinutes) || 0), 0);
+  return Math.round(total / Math.max(resolved.length, 1));
+}
+
+function buildOperationalReportRows(tickets = [], field, fallbackLabel) {
+  const groups = tickets.reduce((accumulator, ticket) => {
+    const label = String(ticket?.[field] || fallbackLabel).trim() || fallbackLabel;
+    if (!accumulator[label]) {
+      accumulator[label] = {
+        label,
+        total: 0,
+        open: 0,
+        resolved: 0,
+        overdue: 0,
+        critical: 0,
+      };
+    }
+    accumulator[label].total += 1;
+    if (isOpenTicketStatus(ticket.status)) accumulator[label].open += 1;
+    if (normalizeText(ticket.status) === "resolvido") accumulator[label].resolved += 1;
+    if (ticket.isOverdue || ticket.slaBreachedAt) accumulator[label].overdue += 1;
+    if (normalizeText(ticket.priority) === "critica") accumulator[label].critical += 1;
+    return accumulator;
+  }, {});
+
+  return Object.values(groups).sort((left, right) => right.total - left.total);
+}
+
+function buildApprovalReport(tickets = []) {
+  const approvalTickets = tickets.filter((ticket) => ticket.approval?.required);
+  return {
+    summary: {
+      pending: approvalTickets.filter((ticket) => normalizeText(ticket.approval?.status) === "pending").length,
+      approved: approvalTickets.filter((ticket) => normalizeText(ticket.approval?.status) === "approved").length,
+      rejected: approvalTickets.filter((ticket) => normalizeText(ticket.approval?.status) === "rejected").length,
+    },
+    rows: approvalTickets
+      .map((ticket) => ({
+        id: ticket.id,
+        title: ticket.title,
+        requester: ticket.requester,
+        approver: ticket.approval?.currentApproverName || ticket.approval?.decidedByName || ticket.approval?.approverName || "Nao definido",
+        status: ticket.approval?.status || "not_required",
+        decisionReason: ticket.approval?.decisionReason || "",
+        dueAt: ticket.approval?.dueAt || "",
+        dueLabel: ticket.approval?.dueAt ? formatTimestampLabel(ticket.approval.dueAt) : "-",
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  };
+}
+
+function buildRecurrenceReport(tickets = []) {
+  const recurrentTickets = tickets.filter((ticket) => (ticket.history || []).filter((entry) => normalizeText(entry.type) === "reopened").length > 0);
+  const byField = (field, fallbackLabel, valueSelector = null) =>
+    Object.values(
+      recurrentTickets.reduce((accumulator, ticket) => {
+        const baseValue = typeof valueSelector === "function" ? valueSelector(ticket) : ticket?.[field];
+        const label = String(baseValue || fallbackLabel).trim() || fallbackLabel;
+        const reopenCount = (ticket.history || []).filter((entry) => normalizeText(entry.type) === "reopened").length;
+        if (!accumulator[label]) {
+          accumulator[label] = { label, tickets: 0, recurrences: 0 };
+        }
+        accumulator[label].tickets += 1;
+        accumulator[label].recurrences += reopenCount;
+        return accumulator;
+      }, {}),
+    ).sort((left, right) => right.recurrences - left.recurrences);
+
+  return {
+    byRequester: byField("requester", "Sem solicitante"),
+    byAsset: byField("assetName", "Sem ativo", (ticket) => ticket.assetName || ticket.assetId || ""),
+    byCategory: byField("category", "Sem categoria"),
+  };
+}
+
+function buildBacklogBySla(tickets = []) {
+  const openTickets = tickets.filter((ticket) => isOpenTicketStatus(ticket.status));
+  return [
+    { label: "Critico sem tecnico", value: openTickets.filter((ticket) => ticket.criticalWaitingTechnician).length },
+    { label: "Vencido", value: openTickets.filter((ticket) => ticket.isOverdue).length },
+    { label: "Vence em 1h", value: openTickets.filter((ticket) => ticket.dueSoon).length },
+    { label: "Sem responsavel", value: openTickets.filter((ticket) => ticket.unassigned).length },
+    { label: "Aguardando aprovacao", value: openTickets.filter((ticket) => ticket.approvalPending).length },
+    { label: "Dentro do prazo", value: openTickets.filter((ticket) => !ticket.isOverdue && !ticket.dueSoon).length },
+  ];
+}
+
+function buildExecutiveAgenda({ tickets = [], projects = [] }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const criticalTickets = tickets
+    .filter((ticket) => isOpenTicketStatus(ticket.status) && normalizeText(ticket.priority) === "critica")
+    .slice(0, 6);
+  const pendingApprovals = tickets
+    .filter((ticket) => normalizeText(ticket.approval?.status) === "pending")
+    .slice(0, 6);
+  const pendingActions = tickets
+    .filter((ticket) => isOpenTicketStatus(ticket.status) && (ticket.unassigned || ticket.isOverdue || ticket.dueSoon))
+    .slice(0, 6);
+  const projectAgenda = projects
+    .filter((project) => normalizeText(project.status) !== "concluido" && project.dueDate)
+    .map((project) => {
+      const dueDate = new Date(`${project.dueDate}T00:00:00`);
+      const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
+      return {
+        ...project,
+        deadlineDays: diffDays,
+      };
+    })
+    .filter((project) => project.deadlineDays <= 15)
+    .sort((left, right) => left.deadlineDays - right.deadlineDays)
+    .slice(0, 6);
+
+  return {
+    criticalTickets,
+    pendingApprovals,
+    pendingActions,
+    projectAgenda,
+  };
+}
+
 const TICKET_STATUS_TRANSITIONS = {
   Aberto: ["Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido"],
   "Em andamento": ["Em espera", "Pausado", "Aguardando usuario", "Resolvido", "Reaberto"],
@@ -1174,6 +1310,8 @@ export function AppDataProvider({ children }) {
     const slaCompliance = visibleTickets.length
       ? Number((((visibleTickets.length - breachedTickets) / visibleTickets.length) * 100).toFixed(1))
       : 100;
+    const firstResponseMinutes = computeAverageResponseMinutes(visibleTickets);
+    const averageResolutionMinutes = computeAverageResolutionMinutes(visibleTickets);
 
     return {
       openTickets,
@@ -1183,7 +1321,8 @@ export function AppDataProvider({ children }) {
       activeAssets,
       activeProjects,
       activeApis,
-      firstResponseMinutes: 11,
+      firstResponseMinutes,
+      averageResolutionMinutes,
       csat: 4.7,
       slaCompliance,
       backlogTrend: openTickets > 12 ? -8 : -3,
@@ -1197,6 +1336,25 @@ export function AppDataProvider({ children }) {
   const technicianMetrics = useMemo(
     () => buildTechnicianMetrics(allTickets, data.users || [], data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
     [allTickets, data.departments, data.serviceCenter, data.users],
+  );
+  const operationalReports = useMemo(
+    () => ({
+      byTechnician: buildOperationalReportRows(visibleTickets, "assignee", "Sem responsavel"),
+      byDepartment: buildOperationalReportRows(visibleTickets, "department", "Sem departamento"),
+      byCategory: buildOperationalReportRows(visibleTickets, "category", "Sem categoria"),
+      byPriority: buildOperationalReportRows(visibleTickets, "priority", "Sem prioridade"),
+      bySource: buildOperationalReportRows(visibleTickets, "source", "Sem origem"),
+      productivity: {
+        averageFirstResponseMinutes: computeAverageResponseMinutes(visibleTickets),
+        averageResolutionMinutes: computeAverageResolutionMinutes(visibleTickets),
+        technicians: technicianMetrics,
+      },
+      approvals: buildApprovalReport(visibleTickets),
+      recurrence: buildRecurrenceReport(visibleTickets),
+      backlogBySla: buildBacklogBySla(visibleTickets),
+      executiveAgenda: buildExecutiveAgenda({ tickets: visibleTickets, projects: data.projects || [] }),
+    }),
+    [data.projects, technicianMetrics, visibleTickets],
   );
 
   const slaAlerts = useMemo(
@@ -3088,6 +3246,7 @@ export function AppDataProvider({ children }) {
       knowledgeArticles,
       apiConfigs: data.apiConfigs || [],
       reports: data.reports,
+      operationalReports,
       statusBuckets,
       priorityBuckets,
       dailyOpenings,

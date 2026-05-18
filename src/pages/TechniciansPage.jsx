@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { exportRowsAsCsv } from "../lib/export";
+import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
 
 function formatAverage(minutes) {
   if (!minutes) return "0 min";
@@ -11,7 +11,7 @@ function formatAverage(minutes) {
 }
 
 function TechniciansPage() {
-  const { technicianMetrics } = useAppData();
+  const { operationalReports, technicianMetrics, pushToast } = useAppData();
   const { user } = useAuth();
   const canView = hasAnyPermission(user, ["technicians_performance_view", "technicians_workload_view", "tickets_admin"]);
 
@@ -19,9 +19,11 @@ function TechniciansPage() {
     return <Navigate replace to="/app/tickets" />;
   }
 
-  const handleExport = () => {
-    exportRowsAsCsv({
-      fileName: `ticketmind-tecnicos-${new Date().toISOString().slice(0, 10)}.csv`,
+  const handleExport = (format = "csv") => {
+    exportRowsWithFormat({
+      format,
+      fileName: `ticketmind-tecnicos-${new Date().toISOString().slice(0, 10)}`,
+      title: "Relatorio de tecnicos",
       columns: [
         { key: "name", label: "Tecnico" },
         { key: "assignedCount", label: "Atribuidos" },
@@ -33,6 +35,7 @@ function TechniciansPage() {
       ],
       items: technicianMetrics,
     });
+    pushToast("Exportacao concluida", `${technicianMetrics.length} tecnico(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
   return (
@@ -43,9 +46,25 @@ function TechniciansPage() {
             <h2>Gestao de tecnicos</h2>
             <span>Performance e carga de trabalho calculadas com os chamados reais do sistema.</span>
           </div>
-          <button className="ghost-button interactive-button" onClick={handleExport} type="button">
-            Exportar
-          </button>
+          <div className="toolbar">
+            <button className="ghost-button interactive-button" onClick={() => handleExport("csv")} type="button">
+              CSV
+            </button>
+            <button className="ghost-button interactive-button" onClick={() => handleExport("excel")} type="button">
+              Excel
+            </button>
+          </div>
+        </div>
+
+        <div className="dashboard-kpi-strip compact-kpi-strip">
+          <div className="dashboard-kpi-card">
+            <span>1a resposta media</span>
+            <strong>{formatAverage(operationalReports.productivity.averageFirstResponseMinutes)}</strong>
+          </div>
+          <div className="dashboard-kpi-card">
+            <span>Resolucao media</span>
+            <strong>{formatAverage(operationalReports.productivity.averageResolutionMinutes)}</strong>
+          </div>
         </div>
 
         <div className="dashboard-performance-table">
