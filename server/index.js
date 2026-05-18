@@ -1,6 +1,7 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHistoryEntry, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
 import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
 import {
@@ -38,6 +39,7 @@ const ticketService = createTicketService({ stateService });
 const collectionService = createCollectionService({ stateService });
 const approvalReminderPollMs = Math.max(60 * 1000, Number(process.env.APPROVAL_REMINDER_POLL_MS) || 5 * 60 * 1000);
 let approvalReminderTimer = null;
+let escalationTimer = null;
 
 app.use(express.json({ limit: "15mb" }));
 
@@ -622,6 +624,127 @@ app.listen(port, () => {
   console.log(`TicketMind server listening on port ${port}`);
 });
 
+function appendEscalationWatchers(watcherDetails = [], users = []) {
+  const registry = new Map((Array.isArray(watcherDetails) ? watcherDetails : []).map((watcher) => [String(watcher.userId || watcher.email || watcher.name || "").trim(), watcher]));
+  for (const candidate of users) {
+    const userId = String(candidate?.id || "").trim();
+    if (!userId || registry.has(userId)) continue;
+    registry.set(userId, {
+      id: `watcher-escalation-${userId}`,
+      userId,
+      name: candidate.name || candidate.email || "Responsavel",
+      email: String(candidate.email || "").trim().toLowerCase(),
+      eventKeys: ["ticket_status_changed", "ticket_assignment_changed", "ticket_sla_breached", "ticket_commented"],
+    });
+  }
+  return Array.from(registry.values());
+}
+
+function resolveEscalationTargets(state = {}, ticket = {}) {
+  const departmentId = String(ticket.departmentId || "").trim();
+  const departmentConfig = state.serviceCenter?.departments?.[departmentId] || {};
+  const responsibleIds = Array.isArray(departmentConfig.responsibleUserIds) ? departmentConfig.responsibleUserIds : [];
+  return (state.users || []).filter((candidate) => responsibleIds.includes(candidate.id) && normalizeText(candidate.status || "Ativo") === "ativo");
+}
+
+function buildEscalationChange(ticket, state = {}, nowIso = new Date().toISOString()) {
+  const rules = state.serviceCenter?.escalationRules || {};
+  if (rules.enabled === false || !isOpenTicketStatus(ticket.status)) return null;
+
+  const escalation = ticket.escalation && typeof ticket.escalation === "object" ? ticket.escalation : {};
+  const maxLevel = Math.max(1, Number(rules.maxEscalationLevel) || 3);
+  const currentLevel = Number(escalation.level) || 0;
+  if (currentLevel >= maxLevel) return null;
+
+  const openedAtTime = new Date(ticket.openedAt || ticket.updatedAtIso || nowIso).getTime();
+  const nowTime = new Date(nowIso).getTime();
+  const unassignedMinutes = Math.max(5, Number(rules.unassignedMinutes) || 60);
+  const hasAssignee = Boolean(String(ticket.assignee || "").trim());
+  const unassignedKey = `unassigned:${ticket.id}`;
+  if (rules.unassignedEnabled !== false && !hasAssignee && nowTime - openedAtTime >= unassignedMinutes * 60 * 1000 && escalation.lastTriggerKey !== unassignedKey) {
+    return { reason: "unassigned", key: unassignedKey };
+  }
+
+  const overdueKey = `overdue:${ticket.slaBreachedAt || ticket.slaDeadlineAt || ticket.id}`;
+  const isOverdue = ticket.slaDeadlineAt && nowTime > new Date(ticket.slaDeadlineAt).getTime();
+  if (rules.overdueEnabled !== false && isOverdue && escalation.lastTriggerKey !== overdueKey) {
+    return { reason: "overdue", key: overdueKey };
+  }
+
+  return null;
+}
+
+async function runEscalationCycle() {
+  try {
+    const state = await readState();
+    const nowIso = new Date().toISOString();
+    let changed = false;
+    const nextTickets = (state.tickets || []).map((ticket) => {
+      const change = buildEscalationChange(ticket, state, nowIso);
+      if (!change) return ticket;
+
+      const targets = resolveEscalationTargets(state, ticket);
+      const escalation = ticket.escalation && typeof ticket.escalation === "object" ? ticket.escalation : {};
+      const nextLevel = Math.min((Number(escalation.level) || 0) + 1, Math.max(1, Number(state.serviceCenter?.escalationRules?.maxEscalationLevel) || 3));
+      const nextAssignee =
+        change.reason === "unassigned" && !String(ticket.assignee || "").trim()
+          ? String(targets[0]?.name || ticket.assignee || "").trim()
+          : String(ticket.assignee || "").trim();
+      const message =
+        change.reason === "unassigned"
+          ? `Chamado escalonado automaticamente por falta de responsavel`
+          : `Chamado escalonado automaticamente por vencimento de SLA`;
+
+      changed = true;
+      return {
+        ...ticket,
+        assignee: nextAssignee,
+        watcherDetails: appendEscalationWatchers(ticket.watcherDetails, targets),
+        escalation: {
+          ...escalation,
+          level: nextLevel,
+          lastReason: change.reason,
+          lastEscalatedAt: nowIso,
+          lastTriggerKey: change.key,
+          targetUserIds: targets.map((candidate) => candidate.id),
+        },
+        triage: {
+          ...(ticket.triage && typeof ticket.triage === "object" ? ticket.triage : {}),
+          escalationLevel: nextLevel,
+          escalatedAt: nowIso,
+          escalationReason: change.reason,
+        },
+        updatedAtIso: nowIso,
+        updatedAt: nowIso,
+        history: [
+          createHistoryEntry({
+            type: "escalation",
+            actorName: "Sistema",
+            message,
+            metadata: {
+              reason: change.reason,
+              escalationLevel: nextLevel,
+              assignedTo: nextAssignee,
+              notifiedUsers: targets.map((candidate) => candidate.name),
+            },
+            createdAt: nowIso,
+          }),
+          ...(Array.isArray(ticket.history) ? ticket.history : []),
+        ],
+      };
+    });
+
+    if (changed) {
+      await writeState({
+        ...state,
+        tickets: nextTickets,
+      });
+    }
+  } catch (error) {
+    console.error("ticket escalation cycle failed", error);
+  }
+}
+
 async function runApprovalReminderCycle() {
   try {
     const state = await readState();
@@ -641,4 +764,12 @@ if (!approvalReminderTimer) {
     approvalReminderTimer.unref();
   }
   void runApprovalReminderCycle();
+}
+
+if (!escalationTimer) {
+  escalationTimer = setInterval(runEscalationCycle, approvalReminderPollMs);
+  if (typeof escalationTimer.unref === "function") {
+    escalationTimer.unref();
+  }
+  void runEscalationCycle();
 }

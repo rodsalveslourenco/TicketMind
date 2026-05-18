@@ -58,6 +58,9 @@ function CentralServicesPage() {
     slaPolicies: "[]",
     approvalRules: "[]",
     approverDelegations: "[]",
+    escalationRules: "{}",
+    ticketStatusProfiles: "{}",
+    statusReasonRules: "{}",
     emailIntake: "{}",
   });
 
@@ -116,6 +119,9 @@ function CentralServicesPage() {
       slaPolicies: JSON.stringify(serviceCenter?.slaPolicies || [], null, 2),
       approvalRules: JSON.stringify(serviceCenter?.approvalRules || [], null, 2),
       approverDelegations: JSON.stringify(serviceCenter?.approverDelegations || [], null, 2),
+      escalationRules: JSON.stringify(serviceCenter?.escalationRules || {}, null, 2),
+      ticketStatusProfiles: JSON.stringify(serviceCenter?.ticketStatusProfiles || {}, null, 2),
+      statusReasonRules: JSON.stringify(serviceCenter?.statusReasonRules || {}, null, 2),
       emailIntake: JSON.stringify(serviceCenter?.emailIntake || {}, null, 2),
     });
   }, [serviceCenter]);
@@ -240,6 +246,9 @@ function CentralServicesPage() {
         slaPolicies: JSON.parse(automationDraft.slaPolicies || "[]"),
         approvalRules: JSON.parse(automationDraft.approvalRules || "[]"),
         approverDelegations: JSON.parse(automationDraft.approverDelegations || "[]"),
+        escalationRules: JSON.parse(automationDraft.escalationRules || "{}"),
+        ticketStatusProfiles: JSON.parse(automationDraft.ticketStatusProfiles || "{}"),
+        statusReasonRules: JSON.parse(automationDraft.statusReasonRules || "{}"),
         emailIntake: JSON.parse(automationDraft.emailIntake || "{}"),
       });
       pushToast("Automacao salva", "Regras de triagem, SLA, aprovacao e intake atualizadas.");
@@ -424,6 +433,18 @@ function CentralServicesPage() {
           <label className="field-block field-full">
             <span>Delegacoes de aprovador</span>
             <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, approverDelegations: event.target.value }))} rows={8} value={automationDraft.approverDelegations} />
+          </label>
+          <label className="field-block field-full">
+            <span>Escalonamento automatico</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, escalationRules: event.target.value }))} rows={8} value={automationDraft.escalationRules} />
+          </label>
+          <label className="field-block field-full">
+            <span>Status por tipo de processo</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, ticketStatusProfiles: event.target.value }))} rows={8} value={automationDraft.ticketStatusProfiles} />
+          </label>
+          <label className="field-block field-full">
+            <span>Motivos obrigatorios por status</span>
+            <textarea onChange={(event) => setAutomationDraft((current) => ({ ...current, statusReasonRules: event.target.value }))} rows={8} value={automationDraft.statusReasonRules} />
           </label>
           <label className="field-block field-full">
             <span>Intake de e-mail</span>

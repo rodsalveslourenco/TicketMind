@@ -4,7 +4,15 @@ import UserAutocomplete from "../components/UserAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/departments";
 import { hasAnyPermission } from "../data/permissions";
-import { PRIORITY_LEVELS, TICKET_STATUSES, createFollowUpEntry, normalizeText } from "../data/helpdesk";
+import {
+  PRIORITY_LEVELS,
+  TICKET_STATUSES,
+  createFollowUpEntry,
+  getTicketStatusOptionsForType,
+  normalizeText,
+  statusRequiresPauseReason,
+  statusRequiresWaitingReason,
+} from "../data/helpdesk";
 import { useAppData } from "../data/AppDataContext";
 import { downloadCsv } from "../lib/export";
 import { useUiPreferences } from "../ui/UiPreferencesContext";
@@ -28,6 +36,7 @@ const defaultCreateForm = {
   description: "",
   attachments: [],
   knowledgeArticleIds: [],
+  parentTicketId: "",
 };
 
 const priorityLegend = [
@@ -176,6 +185,8 @@ function getStatusBadgeClass(status) {
   const normalized = normalizeText(status);
   if (normalized === "aberto") return "status-badge-aberto";
   if (normalized === "em andamento") return "status-badge-andamento";
+  if (normalized === "em espera") return "status-badge-aguardando";
+  if (normalized === "pausado") return "badge-neutral";
   if (normalized === "aguardando usuario") return "status-badge-aguardando";
   if (normalized === "reaberto") return "status-badge-reaberto";
   if (normalized === "resolvido") return "status-badge-resolvido";
@@ -255,7 +266,6 @@ function TicketsPage() {
     searchTickets,
     serviceCenter,
     tickets,
-    getAllowedTicketStatuses,
     updateTicket,
     users,
   } = useAppData();
@@ -287,6 +297,7 @@ function TicketsPage() {
   const [watcherQuery, setWatcherQuery] = useState("");
   const [createKnowledgeQuery, setCreateKnowledgeQuery] = useState("");
   const [detailTicketId, setDetailTicketId] = useState(null);
+  const [previewTicketId, setPreviewTicketId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
   const [followUpVisibility, setFollowUpVisibility] = useState("public");
   const [selectedResponseTemplateId, setSelectedResponseTemplateId] = useState("");
@@ -301,6 +312,7 @@ function TicketsPage() {
   const [timelineFilter, setTimelineFilter] = useState("all");
   const [subtaskDraft, setSubtaskDraft] = useState("");
   const [showTriagePanel, setShowTriagePanel] = useState(() => Boolean(getModulePreference("tickets", "showTriagePanel", true)));
+  const [analystPreviewMode, setAnalystPreviewMode] = useState(() => Boolean(getModulePreference("tickets", "analystPreviewMode", true)));
   const [visibleColumns, setVisibleColumns] = useState(
     () => getModulePreference("tickets", "visibleColumns", TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key)),
   );
@@ -321,6 +333,7 @@ function TicketsPage() {
   const canRequestApproval = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canDecideApproval = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
   const canSeeAllTickets = Boolean(canViewAllTickets);
+  const canUseAnalystPreview = hasAnyPermission(user, ["tickets_edit", "tickets_assign", "tickets_change_status", "tickets_admin"]);
   const serviceCenterEnabled = Boolean(serviceCenter?.enabled);
 
   const requestableDepartments = useMemo(
@@ -393,10 +406,22 @@ function TicketsPage() {
   const createTypeProfile = useMemo(() => getTypeProfile(createForm.type), [createForm.type]);
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
+  const previewTicket = tickets.find((ticket) => ticket.id === previewTicketId) ?? null;
   const isDetailResolved = normalizeText(detailTicket?.status) === "resolvido";
   const isDetailReopened = normalizeText(detailTicket?.status) === "reaberto";
   const detailTypeProfile = useMemo(() => getTypeProfile(detailForm?.type), [detailForm?.type]);
-  const allowedDetailStatuses = detailTicket ? getAllowedTicketStatuses(detailTicket) : TICKET_STATUSES;
+  const detailStatusOptions = useMemo(
+    () => getTicketStatusOptionsForType(detailForm?.type || detailTicket?.type || "Incidente", serviceCenter || {}),
+    [detailForm?.type, detailTicket?.type, serviceCenter],
+  );
+  const parentTicketOptions = useMemo(
+    () => tickets.filter((ticket) => ticket.id !== detailTicket?.id && normalizeText(ticket.status) !== "resolvido"),
+    [detailTicket?.id, tickets],
+  );
+  const childTickets = useMemo(
+    () => tickets.filter((ticket) => String(ticket.parentTicketId || "").trim() === String(detailTicket?.id || "").trim()),
+    [detailTicket?.id, tickets],
+  );
   const visibleFollowUps = (detailTicket?.followUps || []).filter((followUp) => {
     if (followUp.visibility === "public") return true;
     if (!canViewPrivateFollowUps) return false;
@@ -436,7 +461,26 @@ function TicketsPage() {
       createdAtLabel: entry.createdAtLabel || "",
     }));
 
-    return [...followUpEntries, ...historyEntries].sort((left, right) => {
+    const approvalEntries = (detailTicket.approval?.history || []).map((entry) => ({
+      id: `approval-${entry.id}`,
+      source: "approval",
+      tone: normalizeText(entry.action) === "rejected" ? "status-badge-reaberto" : "status-badge-resolvido",
+      title:
+        normalizeText(entry.action) === "requested"
+          ? `Aprovacao solicitada${entry.reason ? `: ${entry.reason}` : ""}`
+          : normalizeText(entry.action) === "approved"
+            ? `Aprovacao aprovada${entry.reason ? `: ${entry.reason}` : ""}`
+            : normalizeText(entry.action) === "rejected"
+              ? `Aprovacao reprovada${entry.reason ? `: ${entry.reason}` : ""}`
+              : `Atualizacao de aprovacao${entry.reason ? `: ${entry.reason}` : ""}`,
+      actorName: entry.actorName || entry.approverName || "Sistema",
+      visibility: "approval",
+      type: `approval_${entry.action || "updated"}`,
+      createdAt: entry.createdAt || "",
+      createdAtLabel: entry.createdAtLabel || "",
+    }));
+
+    return [...followUpEntries, ...approvalEntries, ...historyEntries].sort((left, right) => {
       const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
       const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
       return rightTime - leftTime;
@@ -446,7 +490,7 @@ function TicketsPage() {
     if (timelineFilter === "comments") return detailTimeline.filter((entry) => entry.source === "followUp");
     if (timelineFilter === "audit") return detailTimeline.filter((entry) => entry.source === "history");
     if (timelineFilter === "approval") {
-      return detailTimeline.filter((entry) => String(entry.type || "").startsWith("approval_") || normalizeText(entry.title).includes("aprov"));
+      return detailTimeline.filter((entry) => entry.source === "approval" || String(entry.type || "").startsWith("approval_") || normalizeText(entry.title).includes("aprov"));
     }
     return detailTimeline;
   }, [detailTimeline, timelineFilter]);
@@ -546,6 +590,10 @@ function TicketsPage() {
   }, [setModulePreference, showTriagePanel]);
 
   useEffect(() => {
+    setModulePreference("tickets", "analystPreviewMode", analystPreviewMode);
+  }, [analystPreviewMode, setModulePreference]);
+
+  useEffect(() => {
     const nextVisibleColumns = getModulePreference(
       "tickets",
       "visibleColumns",
@@ -553,6 +601,7 @@ function TicketsPage() {
     );
     setVisibleColumns(Array.isArray(nextVisibleColumns) && nextVisibleColumns.length ? nextVisibleColumns : TICKET_GRID_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key));
     setShowTriagePanel(Boolean(getModulePreference("tickets", "showTriagePanel", true)));
+    setAnalystPreviewMode(Boolean(getModulePreference("tickets", "analystPreviewMode", true)));
   }, [getModulePreference, user?.id]);
 
   useEffect(() => {
@@ -797,6 +846,8 @@ function TicketsPage() {
       source: detailTicket.source,
       category: detailTicket.category,
       location: detailTicket.location || "",
+      pauseReason: detailTicket.pauseReason || "",
+      waitingReason: detailTicket.waitingReason || "",
       reopenReason: detailTicket.reopenReason || "",
       reopenCategory: detailTicket.reopenCategory || "",
       priority: detailTicket.priority,
@@ -812,6 +863,7 @@ function TicketsPage() {
       projectName: detailTicket.projectName || "",
       assetId: detailTicket.assetId || "",
       assetName: detailTicket.assetName || "",
+      parentTicketId: detailTicket.parentTicketId || "",
       subtasks: detailTicket.subtasks || [],
       checklistItems: detailTicket.checklistItems || buildChecklistTemplate(detailTicket.type),
     });
@@ -937,6 +989,19 @@ function TicketsPage() {
     setShowCreateForm(true);
   };
 
+  const handleOpenTicketPreview = (ticketId) => {
+    if (canUseAnalystPreview && analystPreviewMode) {
+      setPreviewTicketId(ticketId);
+      return;
+    }
+    setDetailTicketId(ticketId);
+  };
+
+  const handleOpenTicketDetail = (ticketId) => {
+    setPreviewTicketId(ticketId);
+    setDetailTicketId(ticketId);
+  };
+
   const handleCloseCreateModal = () => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("new");
@@ -1011,6 +1076,7 @@ function TicketsPage() {
         activeAssetOptions.find((asset) => asset.id === createForm.assetId)?.name ||
         "",
       assignee: "",
+      parentTicketId: String(createForm.parentTicketId || "").trim(),
     });
 
     if (!createdTicket) {
@@ -1032,6 +1098,18 @@ function TicketsPage() {
     }
     if (normalizeText(detailForm.status) === "reaberto" && !String(detailForm.reopenReason || "").trim()) {
       pushToast("Motivo obrigatorio", "Informe o motivo da reabertura antes de salvar o chamado.", "warning");
+      return;
+    }
+    if (statusRequiresPauseReason(detailForm.status, serviceCenter || {}) && !String(detailForm.pauseReason || "").trim()) {
+      pushToast("Motivo obrigatorio", "Informe o motivo da pausa antes de salvar o chamado.", "warning");
+      return;
+    }
+    if (statusRequiresWaitingReason(detailForm.status, serviceCenter || {}) && !String(detailForm.waitingReason || "").trim()) {
+      pushToast("Motivo obrigatorio", "Informe o motivo de espera antes de salvar o chamado.", "warning");
+      return;
+    }
+    if (String(detailForm.parentTicketId || "").trim() === String(detailTicket.id || "").trim()) {
+      pushToast("Vinculo invalido", "Um chamado nao pode ser pai dele mesmo.", "warning");
       return;
     }
 
@@ -1409,6 +1487,7 @@ function TicketsPage() {
       requesterEmail: String(detailForm.requesterEmail || "") !== String(detailTicket.requesterEmail || ""),
       source: String(detailForm.source || "") !== String(detailTicket.source || ""),
       category: String(detailForm.category || "") !== String(detailTicket.category || ""),
+      parentTicketId: String(detailForm.parentTicketId || "") !== String(detailTicket.parentTicketId || ""),
       location: String(detailForm.location || "") !== String(detailTicket.location || ""),
       priority: String(detailForm.priority || "") !== String(detailTicket.priority || ""),
       urgency: String(detailForm.urgency || "") !== String(detailTicket.urgency || detailTicket.priority || ""),
@@ -1423,6 +1502,8 @@ function TicketsPage() {
       checklistItems: JSON.stringify(detailForm.checklistItems || []) !== JSON.stringify(detailTicket.checklistItems || []),
       description: String(detailForm.description || "") !== String(detailTicket.description || ""),
       resolutionNotes: String(detailForm.resolutionNotes || "") !== String(detailTicket.resolutionNotes || ""),
+      pauseReason: String(detailForm.pauseReason || "") !== String(detailTicket.pauseReason || ""),
+      waitingReason: String(detailForm.waitingReason || "") !== String(detailTicket.waitingReason || ""),
       reopenReason: String(detailForm.reopenReason || "") !== String(detailTicket.reopenReason || ""),
       reopenCategory: String(detailForm.reopenCategory || "") !== String(detailTicket.reopenCategory || ""),
     };
@@ -1465,6 +1546,11 @@ function TicketsPage() {
             <button className="ghost-button interactive-button" onClick={() => setShowTriagePanel((current) => !current)} type="button">
               {showTriagePanel ? "Ocultar triagem" : "Mostrar triagem"}
             </button>
+            {canUseAnalystPreview ? (
+              <button className="ghost-button interactive-button" onClick={() => setAnalystPreviewMode((current) => !current)} type="button">
+                {analystPreviewMode ? "Preview lateral ligado" : "Preview lateral desligado"}
+              </button>
+            ) : null}
             <button className="ghost-button interactive-button" onClick={handleExportTickets} type="button">
               Exportar
             </button>
@@ -1500,7 +1586,7 @@ function TicketsPage() {
                 <strong>Chamados</strong>
                 {globalSearchResults.tickets.length ? (
                   globalSearchResults.tickets.map((ticket) => (
-                    <button className="ticket-global-search-item interactive-button" key={ticket.id} onClick={() => setDetailTicketId(ticket.id)} type="button">
+                  <button className="ticket-global-search-item interactive-button" key={ticket.id} onClick={() => handleOpenTicketDetail(ticket.id)} type="button">
                       <span>{ticket.id}</span>
                       <strong>{ticket.title}</strong>
                     </button>
@@ -1561,7 +1647,7 @@ function TicketsPage() {
             <div className="ticket-triage-list">
               {triageTickets.map((ticket) => (
                 <article className="ticket-triage-item" key={ticket.id}>
-                  <button className="ticket-triage-copy interactive-button" onClick={() => setDetailTicketId(ticket.id)} type="button">
+                  <button className="ticket-triage-copy interactive-button" onClick={() => handleOpenTicketPreview(ticket.id)} type="button">
                     <span>{ticket.id} | {ticket.department || ticket.queue || "Sem departamento"}</span>
                     <strong>{ticket.title}</strong>
                   </button>
@@ -1722,15 +1808,16 @@ function TicketsPage() {
             </div>
           </div>
         ) : null}
-        <div className="ticket-rows ticket-rows-wide ticket-list-compact">
+        <div className={`ticket-list-shell${analystPreviewMode && canUseAnalystPreview ? " has-analyst-preview" : ""}`}>
+          <div className="ticket-rows ticket-rows-wide ticket-list-compact">
           {filteredTickets.length ? (
             filteredTickets.map((ticket) => (
               <article
-                className={`ticket-row-card ticket-row-compact ${getPriorityRowClass(ticket.priority)}${detailTicketId === ticket.id ? " is-selected" : ""}`}
+                className={`ticket-row-card ticket-row-compact ${getPriorityRowClass(ticket.priority)}${(detailTicketId === ticket.id || previewTicketId === ticket.id) ? " is-selected" : ""}`}
                 key={ticket.id}
                 style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.06 })}
               >
-                <button className="ticket-row-open interactive-button" onClick={() => setDetailTicketId(ticket.id)} type="button">
+                <button className="ticket-row-open interactive-button" onClick={() => handleOpenTicketPreview(ticket.id)} type="button">
                   <div className="ticket-row-main ticket-row-main-compact">
                     <div className="ticket-row-title ticket-row-title-compact">
                       <h3>
@@ -1759,6 +1846,8 @@ function TicketsPage() {
                     {visibleColumns.includes("category") ? <span>{ticket.category || "Geral"}</span> : null}
                     {visibleColumns.includes("urgency") ? <span>Urgencia {ticket.urgency || ticket.priority}</span> : null}
                     {visibleColumns.includes("source") ? <span>{ticket.source || "Portal"}</span> : null}
+                    {ticket.parentTicketId ? <span>Pai {ticket.parentTicketId}</span> : null}
+                    {ticket.childTicketIds?.length ? <span>{ticket.childTicketIds.length} filho(s)</span> : null}
                   </div>
                 </button>
                 <div className="compact-row-actions ticket-inline-actions">
@@ -1796,6 +1885,53 @@ function TicketsPage() {
               </div>
             </div>
           )}
+          </div>
+          {analystPreviewMode && canUseAnalystPreview && previewTicket ? (
+            <aside className="ticket-analyst-preview board-card">
+              <div className="ticket-inline-panel-head">
+                <div>
+                  <strong>{previewTicket.id}</strong>
+                  <span>{previewTicket.department || previewTicket.queue || "Sem departamento"} | {previewTicket.openedAtLabel || "-"}</span>
+                </div>
+                <button className="ghost-button compact-button interactive-button" onClick={() => handleOpenTicketDetail(previewTicket.id)} type="button">
+                  Abrir atendimento
+                </button>
+              </div>
+              <div className="ticket-row-badges">
+                <span className={`badge ${getPriorityBadgeClass(previewTicket.priority)}`}>{previewTicket.priority}</span>
+                <span className={`badge ${getStatusBadgeClass(previewTicket.status)}`}>{previewTicket.status}</span>
+                {previewTicket.escalation?.level ? <span className="badge badge-neutral">Escalonado N{previewTicket.escalation.level}</span> : null}
+              </div>
+              <div className="ticket-analyst-preview-body">
+                <strong>{previewTicket.title}</strong>
+                <p>{previewTicket.description || "Sem descricao detalhada."}</p>
+                <div className="ticket-row-meta">
+                  <span>Solicitante: {previewTicket.requester}</span>
+                  <span>Responsavel: {previewTicket.assignee || "Sem responsavel"}</span>
+                  <span>SLA: {previewTicket.slaLabel}</span>
+                  {previewTicket.parentTicketId ? <span>Pai: {previewTicket.parentTicketId}</span> : null}
+                  {previewTicket.childTicketIds?.length ? <span>Filhos: {previewTicket.childTicketIds.join(", ")}</span> : null}
+                </div>
+                {previewTicket.approval?.required ? (
+                  <div className="settings-placeholder-panel">
+                    <strong>Aprovacao</strong>
+                    <span>{previewTicket.approval.currentApproverName || previewTicket.approval.approverName || "Nao definido"} | {previewTicket.approval.status}</span>
+                  </div>
+                ) : null}
+                {previewTicket.followUps?.length ? (
+                  <div className="sheet-list">
+                    {previewTicket.followUps.slice(0, 3).map((followUp) => (
+                      <div className="ticket-preview-followup" key={followUp.id}>
+                        <strong>{followUp.actorName}</strong>
+                        <span>{followUp.message}</span>
+                        <small>{followUp.createdAtLabel}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </aside>
+          ) : null}
         </div>
 
       </section>
@@ -1954,6 +2090,20 @@ function TicketsPage() {
                           {asset.tag || asset.name}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Chamado pai</span>
+                    <select onChange={updateCreateField("parentTicketId")} value={createForm.parentTicketId || ""}>
+                      <option value="">Sem relacionamento</option>
+                      {tickets
+                        .filter((ticket) => normalizeText(ticket.status) !== "resolvido")
+                        .slice(0, 80)
+                        .map((ticket) => (
+                          <option key={ticket.id} value={ticket.id}>
+                            {ticket.id} | {ticket.title}
+                          </option>
+                        ))}
                     </select>
                   </label>
                 </div>
@@ -2203,6 +2353,8 @@ function TicketsPage() {
                   <span>Departamento: {detailDepartment?.name || detailForm.department || detailForm.queue || "-"}</span>
                   <span>Projeto: {detailForm.projectName || "Nao vinculado"}</span>
                   <span>Ativo: {detailForm.assetName || "Nao vinculado"}</span>
+                  {detailForm.parentTicketId ? <span>Pai: {detailForm.parentTicketId}</span> : null}
+                  {childTickets.length ? <span>Filhos: {childTickets.map((ticket) => ticket.id).join(", ")}</span> : null}
                   {normalizeText(detailForm.type) === "requisicao" ? <span>Aprovador: {detailTicket.approval?.approverName || detailForm.approvalApproverName || "Nao definido"}</span> : null}
                 </div>
               </section>
@@ -2231,7 +2383,7 @@ function TicketsPage() {
                 <label className={`field-block${detailDirtyFields.status ? " is-dirty" : ""}`}>
                   <span>Status</span>
                   <select disabled={!canChangeStatus} onChange={updateDetailField("status")} value={detailForm.status}>
-                    {allowedDetailStatuses.map((status) => (
+                    {detailStatusOptions.map((status) => (
                       <option key={status}>{status}</option>
                     ))}
                   </select>
@@ -2290,6 +2442,17 @@ function TicketsPage() {
                 <label className={`field-block${detailDirtyFields.category ? " is-dirty" : ""}`}>
                   <span>Categoria</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("category")} value={detailForm.category || ""} />
+                </label>
+                <label className={`field-block${detailDirtyFields.parentTicketId ? " is-dirty" : ""}`}>
+                  <span>Chamado pai</span>
+                  <select disabled={!canEditTicket} onChange={updateDetailField("parentTicketId")} value={detailForm.parentTicketId || ""}>
+                    <option value="">Sem relacionamento</option>
+                    {parentTicketOptions.map((ticket) => (
+                      <option key={ticket.id} value={ticket.id}>
+                        {ticket.id} | {ticket.title}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 {getDynamicCategoryValidation(detailForm) ? (
                   <div className="field-block field-full">
@@ -2472,6 +2635,18 @@ function TicketsPage() {
                 <span>Solucao tecnica</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
+              {statusRequiresPauseReason(detailForm.status, serviceCenter || {}) ? (
+                <label className={`field-block field-full${detailDirtyFields.pauseReason ? " is-dirty" : ""}`}>
+                  <span>Motivo da pausa</span>
+                  <textarea disabled={!canEditTicket} onChange={updateDetailField("pauseReason")} value={detailForm.pauseReason || ""} />
+                </label>
+              ) : null}
+              {statusRequiresWaitingReason(detailForm.status, serviceCenter || {}) ? (
+                <label className={`field-block field-full${detailDirtyFields.waitingReason ? " is-dirty" : ""}`}>
+                  <span>Motivo de espera</span>
+                  <textarea disabled={!canEditTicket} onChange={updateDetailField("waitingReason")} value={detailForm.waitingReason || ""} />
+                </label>
+              ) : null}
 
               <section className="ticket-inline-panel">
                 <div className="ticket-inline-panel-head">
@@ -2591,6 +2766,33 @@ function TicketsPage() {
                         Reprovar
                       </button>
                     ) : null}
+                  </div>
+                  <div className="ticket-rows">
+                    {(detailTicket.approval?.history || []).length ? (
+                      detailTicket.approval.history.map((entry) => (
+                        <article className="ticket-row-card" key={entry.id}>
+                          <div className="ticket-row-main">
+                            <div className="ticket-row-title">
+                              <strong>{entry.actorName || entry.approverName || "Sistema"}</strong>
+                              <h3>{entry.reason || "Sem justificativa informada."}</h3>
+                            </div>
+                            <div className="ticket-row-badges">
+                              <span className={`badge ${normalizeText(entry.action) === "rejected" ? "status-badge-reaberto" : "status-badge-resolvido"}`}>{entry.action}</span>
+                              {entry.stepName ? <span className="badge badge-neutral">{entry.stepName}</span> : null}
+                            </div>
+                          </div>
+                          <div className="ticket-row-meta">
+                            <span>{entry.createdAtLabel}</span>
+                            <span>historico de aprovacao</span>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="empty-state">
+                        <strong>Sem decisoes registradas.</strong>
+                        <span>As solicitacoes, aprovacoes e reprovacoes passam a aparecer separadas do historico tecnico.</span>
+                      </div>
+                    )}
                   </div>
                 </section>
               ) : null}
@@ -2896,7 +3098,7 @@ function TicketsPage() {
                         </div>
                         <div className="ticket-row-meta">
                           <span>{entry.createdAtLabel}</span>
-                          <span>{entry.source === "followUp" ? "acompanhamento" : "auditoria"}</span>
+                          <span>{entry.source === "followUp" ? "acompanhamento" : entry.source === "approval" ? "aprovacao" : "auditoria"}</span>
                         </div>
                       </article>
                     ))}

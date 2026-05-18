@@ -1,3 +1,5 @@
+import { DEFAULT_STATUS_REASON_RULES, DEFAULT_TICKET_STATUS_PROFILES } from "./helpdesk.js";
+
 export const defaultPermissionCatalog = [
   {
     module: "dashboard",
@@ -548,6 +550,15 @@ export const defaultServiceCenterSettings = {
   slaPolicies: [],
   approvalRules: [],
   approverDelegations: [],
+  escalationRules: {
+    enabled: true,
+    unassignedEnabled: true,
+    overdueEnabled: true,
+    unassignedMinutes: 60,
+    maxEscalationLevel: 3,
+  },
+  ticketStatusProfiles: DEFAULT_TICKET_STATUS_PROFILES,
+  statusReasonRules: DEFAULT_STATUS_REASON_RULES,
   emailIntake: {
     enabled: false,
     inboxAddress: "",

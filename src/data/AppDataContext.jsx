@@ -29,10 +29,12 @@ import {
   buildKnowledgeSearchText,
   buildTicketSearchText,
   computePriorityFromMatrix,
+  createApprovalHistoryEntry,
   createFollowUpEntry,
   createHistoryEntry,
   formatDateLabel,
   formatTimestampLabel,
+  getTicketStatusOptionsForType,
   getSlaPolicyMinutes,
   isOpenTicketStatus,
   normalizeKnowledgeArticle,
@@ -44,6 +46,8 @@ import {
   normalizeTicketStatus,
   prepareTickets,
   sanitizeKnowledgeArticlePayload,
+  statusRequiresPauseReason,
+  statusRequiresWaitingReason,
   syncHelpdeskState,
   toLocalDatetimeInput,
 } from "./helpdesk";
@@ -234,6 +238,44 @@ function sanitizeApproverDelegationPayload(payload = {}, currentDelegation = {})
   };
 }
 
+function sanitizeEscalationRules(payload = {}, currentRules = {}) {
+  return {
+    enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(currentRules.enabled ?? defaultServiceCenterSettings.escalationRules.enabled),
+    unassignedEnabled:
+      payload.unassignedEnabled !== undefined ? Boolean(payload.unassignedEnabled) : Boolean(currentRules.unassignedEnabled ?? defaultServiceCenterSettings.escalationRules.unassignedEnabled),
+    overdueEnabled:
+      payload.overdueEnabled !== undefined ? Boolean(payload.overdueEnabled) : Boolean(currentRules.overdueEnabled ?? defaultServiceCenterSettings.escalationRules.overdueEnabled),
+    unassignedMinutes: Math.max(5, Number(payload.unassignedMinutes ?? currentRules.unassignedMinutes ?? defaultServiceCenterSettings.escalationRules.unassignedMinutes) || defaultServiceCenterSettings.escalationRules.unassignedMinutes),
+    maxEscalationLevel: Math.max(1, Number(payload.maxEscalationLevel ?? currentRules.maxEscalationLevel ?? defaultServiceCenterSettings.escalationRules.maxEscalationLevel) || defaultServiceCenterSettings.escalationRules.maxEscalationLevel),
+  };
+}
+
+function sanitizeTicketStatusProfiles(payload = {}, currentProfiles = {}) {
+  const fallbackProfiles = currentProfiles && typeof currentProfiles === "object" ? currentProfiles : defaultServiceCenterSettings.ticketStatusProfiles;
+  return Object.entries(defaultServiceCenterSettings.ticketStatusProfiles).reduce((accumulator, [type, defaultStatuses]) => {
+    const nextStatuses = Array.isArray(payload?.[type]) ? payload[type] : fallbackProfiles?.[type];
+    const sanitizedStatuses = (Array.isArray(nextStatuses) ? nextStatuses : defaultStatuses)
+      .map((status) => String(status || "").trim())
+      .filter(Boolean);
+    return {
+      ...accumulator,
+      [type]: sanitizedStatuses.length ? sanitizedStatuses : defaultStatuses,
+    };
+  }, {});
+}
+
+function sanitizeStatusReasonRules(payload = {}, currentRules = {}) {
+  const fallbackRules = currentRules && typeof currentRules === "object" ? currentRules : defaultServiceCenterSettings.statusReasonRules;
+  return {
+    pauseStatuses: (Array.isArray(payload?.pauseStatuses) ? payload.pauseStatuses : fallbackRules?.pauseStatuses || defaultServiceCenterSettings.statusReasonRules.pauseStatuses)
+      .map((status) => String(status || "").trim())
+      .filter(Boolean),
+    waitingStatuses: (Array.isArray(payload?.waitingStatuses) ? payload.waitingStatuses : fallbackRules?.waitingStatuses || defaultServiceCenterSettings.statusReasonRules.waitingStatuses)
+      .map((status) => String(status || "").trim())
+      .filter(Boolean),
+  };
+}
+
 function sanitizeEmailIntakeConfig(payload = {}, currentConfig = {}) {
   const nextConfig = payload && typeof payload === "object" ? payload : {};
   return {
@@ -298,6 +340,9 @@ function hydrateServiceCenter(storedConfig, departments = []) {
     approverDelegations: (Array.isArray(rawConfig.approverDelegations) ? rawConfig.approverDelegations : [])
       .map((delegation) => sanitizeApproverDelegationPayload(delegation, delegation))
       .filter((delegation) => delegation.approverUserId && delegation.delegateUserId),
+    escalationRules: sanitizeEscalationRules(rawConfig.escalationRules, defaultServiceCenterSettings.escalationRules),
+    ticketStatusProfiles: sanitizeTicketStatusProfiles(rawConfig.ticketStatusProfiles, defaultServiceCenterSettings.ticketStatusProfiles),
+    statusReasonRules: sanitizeStatusReasonRules(rawConfig.statusReasonRules, defaultServiceCenterSettings.statusReasonRules),
     emailIntake: sanitizeEmailIntakeConfig(rawConfig.emailIntake, defaultServiceCenterSettings.emailIntake),
     updatedAt: String(rawConfig.updatedAt || "").trim(),
   };
@@ -951,28 +996,32 @@ function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter 
 }
 
 const TICKET_STATUS_TRANSITIONS = {
-  Aberto: ["Em andamento", "Aguardando usuario", "Aguardando aprovacao", "Resolvido"],
-  "Em andamento": ["Aguardando usuario", "Resolvido", "Reaberto"],
-  "Aguardando usuario": ["Em andamento", "Resolvido", "Reaberto"],
-  "Aguardando aprovacao": ["Aberto", "Em andamento", "Aguardando usuario", "Resolvido"],
+  Aberto: ["Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido"],
+  "Em andamento": ["Em espera", "Pausado", "Aguardando usuario", "Resolvido", "Reaberto"],
+  "Em espera": ["Em andamento", "Pausado", "Aguardando usuario", "Resolvido", "Reaberto"],
+  Pausado: ["Em andamento", "Em espera", "Aguardando usuario", "Resolvido", "Reaberto"],
+  "Aguardando usuario": ["Em andamento", "Em espera", "Resolvido", "Reaberto"],
+  "Aguardando aprovacao": ["Aberto", "Em andamento", "Em espera", "Aguardando usuario", "Resolvido"],
   Resolvido: ["Reaberto"],
-  Reaberto: ["Em andamento", "Aguardando usuario", "Resolvido"],
+  Reaberto: ["Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Resolvido"],
 };
 
 function resolveTicketSlaPolicyMinutes(ticketLike = {}, serviceCenter = defaultServiceCenterSettings) {
   return resolveTicketSlaTargets(ticketLike, serviceCenter?.slaPolicies || []).resolutionMinutes;
 }
 
-function getAllowedTicketStatusesForTicket(ticket) {
-  const currentStatus = normalizeTicketStatus(ticket?.status || "Aberto");
-  return [currentStatus, ...(TICKET_STATUS_TRANSITIONS[currentStatus] || [])].filter(
+function getAllowedTicketStatusesForTicket(ticket, serviceCenter = defaultServiceCenterSettings) {
+  const statusOptions = getTicketStatusOptionsForType(ticket?.type || "Incidente", serviceCenter);
+  const currentStatus = normalizeTicketStatus(ticket?.status || "Aberto", statusOptions);
+  const configuredStatuses = statusOptions.length ? statusOptions : [currentStatus, ...(TICKET_STATUS_TRANSITIONS[currentStatus] || [])];
+  return [currentStatus, ...configuredStatuses].filter(
     (status, index, list) => list.findIndex((candidate) => normalizeText(candidate) === normalizeText(status)) === index,
   );
 }
 
-function isStatusTransitionAllowed(currentStatus, nextStatus) {
+function isStatusTransitionAllowed(currentStatus, nextStatus, ticket = {}, serviceCenter = defaultServiceCenterSettings) {
   if (normalizeText(currentStatus) === normalizeText(nextStatus)) return true;
-  return getAllowedTicketStatusesForTicket({ status: currentStatus }).some((status) => normalizeText(status) === normalizeText(nextStatus));
+  return getAllowedTicketStatusesForTicket({ ...ticket, status: currentStatus }, serviceCenter).some((status) => normalizeText(status) === normalizeText(nextStatus));
 }
 
 function resolveApprovalState(type, approval = null, action = "") {
@@ -1239,6 +1288,17 @@ export function AppDataProvider({ children }) {
             requestedAt: nowIso,
             requestedById: user?.id || "",
             requestedByName: user?.name || "Sistema",
+            history: [
+              createApprovalHistoryEntry({
+                action: "requested",
+                actorId: user?.id || "",
+                actorName: user?.name || "Sistema",
+                reason: String(payload.approval?.decisionReason || "").trim(),
+                stepName: approvalBase.steps?.[0]?.name || "Etapa 1",
+                approverName: approvalBase.currentApproverName || payload.approvalApproverName || "",
+                createdAt: nowIso,
+              }),
+            ],
           }
         : resolveApprovalState(routedPayload.type, payload.approval);
       const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
@@ -1329,6 +1389,11 @@ export function AppDataProvider({ children }) {
         assetId: String(payload.assetId || "").trim(),
         assetName: String(payload.assetName || "").trim(),
         reopenCategory: String(payload.reopenCategory || "").trim(),
+        pauseReason: String(payload.pauseReason || "").trim(),
+        waitingReason: String(payload.waitingReason || "").trim(),
+        parentTicketId: String(payload.parentTicketId || "").trim(),
+        childTicketIds: [],
+        parentTicketTitle: "",
         slaRuleScope,
       };
 
@@ -1430,6 +1495,8 @@ export function AppDataProvider({ children }) {
           : ticket.knowledgeArticleIds || [];
         const nextReopenReason = String((updates.reopenReason ?? ticket.reopenReason) || "").trim();
         const nextReopenCategory = String((updates.reopenCategory ?? ticket.reopenCategory) || "").trim();
+        const nextPauseReason = String((updates.pauseReason ?? ticket.pauseReason) || "").trim();
+        const nextWaitingReason = String((updates.waitingReason ?? ticket.waitingReason) || "").trim();
         const nextCategory = String((updates.category ?? ticket.category) || "").trim();
         const nextProjectId = String(updates.projectId ?? ticket.projectId ?? "").trim();
         const nextProjectName =
@@ -1447,6 +1514,7 @@ export function AppDataProvider({ children }) {
           ? String(updates.watchers || "").trim()
           : buildWatchersLabel(nextWatcherDetails);
         const nextApprovalAmount = Number(updates.approvalAmount ?? ticket.approvalAmount) || 0;
+        const nextParentTicketId = String(updates.parentTicketId ?? ticket.parentTicketId ?? "").trim();
         const approvalPayload = updates.approval && typeof updates.approval === "object" ? updates.approval : ticket.approval;
         const nextTicketShapeForRules = {
           ...ticket,
@@ -1485,6 +1553,18 @@ export function AppDataProvider({ children }) {
             requestedAt: nowIso,
             requestedById: user?.id || "",
             requestedByName: user?.name || "Sistema",
+            history: [
+              createApprovalHistoryEntry({
+                action: "requested",
+                actorId: user?.id || "",
+                actorName: user?.name || "Sistema",
+                reason: String(updates.approval?.decisionReason ?? approvalPayload?.decisionReason ?? "").trim(),
+                stepName: approvalWorkflowTemplate.steps?.[0]?.name || "Etapa 1",
+                approverName: approvalWorkflowTemplate.currentApproverName || "",
+                createdAt: nowIso,
+              }),
+              ...(Array.isArray(ticket.approval?.history) ? ticket.approval.history : []),
+            ],
           };
         }
         if (normalizeText(nextTicketShapeForRules.type) === "requisicao" && (approvalAction === "approve" || approvalAction === "reject")) {
@@ -1516,7 +1596,16 @@ export function AppDataProvider({ children }) {
         if (statusChanged && normalizeText(effectiveStatus) === "reaberto" && !nextReopenReason) {
           return ticket;
         }
-        if (statusChanged && !isStatusTransitionAllowed(ticket.status, effectiveStatus)) {
+        if (statusChanged && !isStatusTransitionAllowed(ticket.status, effectiveStatus, nextTicketShapeForRules, current.serviceCenter || defaultServiceCenterSettings)) {
+          return ticket;
+        }
+        if (nextParentTicketId && nextParentTicketId === ticket.id) {
+          return ticket;
+        }
+        if (statusRequiresPauseReason(effectiveStatus, current.serviceCenter || defaultServiceCenterSettings) && !nextPauseReason) {
+          return ticket;
+        }
+        if (statusRequiresWaitingReason(effectiveStatus, current.serviceCenter || defaultServiceCenterSettings) && !nextWaitingReason) {
           return ticket;
         }
 
@@ -1559,6 +1648,28 @@ export function AppDataProvider({ children }) {
                 actorName: user?.name || "Sistema",
                 message: nextReopenReason ? `Chamado reaberto: ${nextReopenReason}` : "Chamado reaberto",
                 metadata: { reopenCategory: nextReopenCategory || "" },
+                createdAt: nowIso,
+              }),
+            );
+          }
+          if (statusRequiresPauseReason(effectiveStatus, current.serviceCenter || defaultServiceCenterSettings) && nextPauseReason) {
+            historyEntries.push(
+              createHistoryEntry({
+                type: "pause_reason",
+                actorId: user?.id,
+                actorName: user?.name || "Sistema",
+                message: `Motivo de pausa registrado: ${nextPauseReason}`,
+                createdAt: nowIso,
+              }),
+            );
+          }
+          if (statusRequiresWaitingReason(effectiveStatus, current.serviceCenter || defaultServiceCenterSettings) && nextWaitingReason) {
+            historyEntries.push(
+              createHistoryEntry({
+                type: "waiting_reason",
+                actorId: user?.id,
+                actorName: user?.name || "Sistema",
+                message: `Motivo de espera registrado: ${nextWaitingReason}`,
                 createdAt: nowIso,
               }),
             );
@@ -1719,8 +1830,11 @@ export function AppDataProvider({ children }) {
           checklistItems: nextChecklistItems,
           reopenReason: nextReopenReason,
           reopenCategory: nextReopenCategory,
+          pauseReason: nextPauseReason,
+          waitingReason: nextWaitingReason,
           approvalAmount: nextApprovalAmount,
           approval: nextApproval,
+          parentTicketId: nextParentTicketId,
           triage: routedState.triage || ticket.triage || {},
           resolvedAt,
           resolvedAtLabel: resolvedAt ? formatTimestampLabel(resolvedAt) : "",
@@ -2043,6 +2157,18 @@ export function AppDataProvider({ children }) {
           ...payload,
           enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(currentServiceCenter.enabled),
           triagePanelVisible: payload.triagePanelVisible !== undefined ? Boolean(payload.triagePanelVisible) : currentServiceCenter.triagePanelVisible !== false,
+          escalationRules:
+            payload.escalationRules !== undefined
+              ? sanitizeEscalationRules(payload.escalationRules, currentServiceCenter.escalationRules)
+              : currentServiceCenter.escalationRules,
+          ticketStatusProfiles:
+            payload.ticketStatusProfiles !== undefined
+              ? sanitizeTicketStatusProfiles(payload.ticketStatusProfiles, currentServiceCenter.ticketStatusProfiles)
+              : currentServiceCenter.ticketStatusProfiles,
+          statusReasonRules:
+            payload.statusReasonRules !== undefined
+              ? sanitizeStatusReasonRules(payload.statusReasonRules, currentServiceCenter.statusReasonRules)
+              : currentServiceCenter.statusReasonRules,
           emailIntake:
             payload.emailIntake !== undefined
               ? sanitizeEmailIntakeConfig(payload.emailIntake, currentServiceCenter.emailIntake)
@@ -2102,6 +2228,18 @@ export function AppDataProvider({ children }) {
                   ),
                 )
               : currentServiceCenter.approverDelegations || [],
+          escalationRules:
+            payload.escalationRules !== undefined
+              ? sanitizeEscalationRules(payload.escalationRules, currentServiceCenter.escalationRules)
+              : currentServiceCenter.escalationRules,
+          ticketStatusProfiles:
+            payload.ticketStatusProfiles !== undefined
+              ? sanitizeTicketStatusProfiles(payload.ticketStatusProfiles, currentServiceCenter.ticketStatusProfiles)
+              : currentServiceCenter.ticketStatusProfiles,
+          statusReasonRules:
+            payload.statusReasonRules !== undefined
+              ? sanitizeStatusReasonRules(payload.statusReasonRules, currentServiceCenter.statusReasonRules)
+              : currentServiceCenter.statusReasonRules,
           emailIntake:
             payload.emailIntake !== undefined
               ? sanitizeEmailIntakeConfig(payload.emailIntake, currentServiceCenter.emailIntake)
@@ -2940,7 +3078,7 @@ export function AppDataProvider({ children }) {
       tickets: visibleTickets,
       allTickets,
       operationalTickets,
-      getAllowedTicketStatuses: getAllowedTicketStatusesForTicket,
+      getAllowedTicketStatuses: (ticket) => getAllowedTicketStatusesForTicket(ticket, data.serviceCenter || defaultServiceCenterSettings),
       canViewAllTickets: canViewGlobalTickets,
       canViewDepartmentTickets,
       assets: data.assets || [],

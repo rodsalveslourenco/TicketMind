@@ -1,4 +1,15 @@
-export const TICKET_STATUSES = ["Aberto", "Em andamento", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
+export const TICKET_STATUSES = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
+
+export const DEFAULT_TICKET_STATUS_PROFILES = {
+  incidente: ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Resolvido", "Reaberto"],
+  requisicao: ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"],
+  problema: ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Resolvido", "Reaberto"],
+};
+
+export const DEFAULT_STATUS_REASON_RULES = {
+  pauseStatuses: ["Pausado"],
+  waitingStatuses: ["Em espera", "Aguardando usuario"],
+};
 
 export const PRIORITY_LEVELS = ["Baixa", "Media", "Alta", "Critica"];
 
@@ -13,7 +24,7 @@ const SLA_POLICY_MINUTES = {
   baixa: 480,
 };
 
-const OPEN_STATUS_SET = new Set(["aberto", "em andamento", "aguardando usuario", "aguardando aprovacao", "reaberto"]);
+const OPEN_STATUS_SET = new Set(["aberto", "em andamento", "em espera", "pausado", "aguardando usuario", "aguardando aprovacao", "reaberto"]);
 
 export function normalizeText(value) {
   return String(value || "")
@@ -23,10 +34,62 @@ export function normalizeText(value) {
     .trim();
 }
 
-export function normalizeTicketStatus(status) {
+export function getTicketStatusProfiles(serviceCenter = {}) {
+  const profiles = serviceCenter?.ticketStatusProfiles;
+  if (!profiles || typeof profiles !== "object") return DEFAULT_TICKET_STATUS_PROFILES;
+
+  return Object.entries(DEFAULT_TICKET_STATUS_PROFILES).reduce((accumulator, [type, fallbackStatuses]) => {
+    const candidateStatuses = Array.isArray(profiles[type]) ? profiles[type] : fallbackStatuses;
+    const normalizedStatuses = candidateStatuses
+      .map((status) => String(status || "").trim())
+      .filter(Boolean);
+    return {
+      ...accumulator,
+      [type]: normalizedStatuses.length ? normalizedStatuses : fallbackStatuses,
+    };
+  }, {});
+}
+
+export function getTicketStatusOptionsForType(type, serviceCenter = {}) {
+  const profiles = getTicketStatusProfiles(serviceCenter);
+  return profiles[normalizeText(type)] || DEFAULT_TICKET_STATUS_PROFILES.incidente;
+}
+
+export function getStatusReasonRules(serviceCenter = {}) {
+  const customRules = serviceCenter?.statusReasonRules;
+  return {
+    pauseStatuses: Array.isArray(customRules?.pauseStatuses) && customRules.pauseStatuses.length ? customRules.pauseStatuses : DEFAULT_STATUS_REASON_RULES.pauseStatuses,
+    waitingStatuses: Array.isArray(customRules?.waitingStatuses) && customRules.waitingStatuses.length ? customRules.waitingStatuses : DEFAULT_STATUS_REASON_RULES.waitingStatuses,
+  };
+}
+
+function findMatchingStatusLabel(status, statusOptions = []) {
+  const normalizedStatus = normalizeText(status);
+  return statusOptions.find((candidate) => normalizeText(candidate) === normalizedStatus) || "";
+}
+
+export function statusRequiresPauseReason(status, serviceCenter = {}) {
+  const { pauseStatuses } = getStatusReasonRules(serviceCenter);
+  return pauseStatuses.some((candidate) => normalizeText(candidate) === normalizeText(status));
+}
+
+export function statusRequiresWaitingReason(status, serviceCenter = {}) {
+  const { waitingStatuses } = getStatusReasonRules(serviceCenter);
+  return waitingStatuses.some((candidate) => normalizeText(candidate) === normalizeText(status));
+}
+
+export function normalizeTicketStatus(status, statusOptions = TICKET_STATUSES) {
+  const matchedStatus = findMatchingStatusLabel(status, statusOptions);
+  if (matchedStatus) return matchedStatus;
   const normalized = normalizeText(status);
   if (normalized === "em atendimento" || normalized === "em andamento" || normalized === "analise") {
     return "Em andamento";
+  }
+  if (normalized === "em espera" || normalized === "aguardando terceiro") {
+    return "Em espera";
+  }
+  if (normalized === "pausado" || normalized === "pausa") {
+    return "Pausado";
   }
   if (normalized === "aguardando aprovacao") {
     return "Aguardando aprovacao";
@@ -146,6 +209,51 @@ export function createFollowUpEntry({ message, actorId = "", actorName = "Sistem
     createdAt: timestamp,
     createdAtLabel: formatTimestampLabel(timestamp),
   };
+}
+
+export function createApprovalHistoryEntry({
+  action,
+  actorId = "",
+  actorName = "Sistema",
+  reason = "",
+  stepName = "",
+  approverName = "",
+  metadata = {},
+  createdAt,
+}) {
+  const timestamp = createdAt || new Date().toISOString();
+  return {
+    id: `approval-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    action: String(action || "updated").trim(),
+    actorId: String(actorId || "").trim(),
+    actorName: String(actorName || "Sistema").trim(),
+    reason: String(reason || "").trim(),
+    stepName: String(stepName || "").trim(),
+    approverName: String(approverName || actorName || "Sistema").trim(),
+    metadata: metadata && typeof metadata === "object" ? metadata : {},
+    createdAt: timestamp,
+    createdAtLabel: formatTimestampLabel(timestamp),
+  };
+}
+
+function normalizeApprovalHistory(history) {
+  return (Array.isArray(history) ? history : [])
+    .map((entry) => {
+      const timestamp = entry?.createdAt || new Date().toISOString();
+      return {
+        id: entry?.id || `approval-${Math.random().toString(36).slice(2, 8)}`,
+        action: String(entry?.action || "updated").trim(),
+        actorId: String(entry?.actorId || "").trim(),
+        actorName: String(entry?.actorName || "Sistema").trim(),
+        reason: String(entry?.reason || "").trim(),
+        stepName: String(entry?.stepName || "").trim(),
+        approverName: String(entry?.approverName || entry?.actorName || "Sistema").trim(),
+        metadata: entry?.metadata && typeof entry.metadata === "object" ? entry.metadata : {},
+        createdAt: timestamp,
+        createdAtLabel: formatTimestampLabel(timestamp),
+      };
+    })
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
 export function normalizeFollowUps(followUps) {
@@ -298,13 +406,14 @@ function normalizeApproval(ticket) {
     decidedById: String(approval.decidedById || "").trim(),
     decidedByName: String(approval.decidedByName || "").trim(),
     decisionReason: String(approval.decisionReason || "").trim(),
-    history: Array.isArray(approval.history) ? approval.history : [],
+    history: normalizeApprovalHistory(approval.history),
   };
 }
 
-export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString()) {
+export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(), serviceCenter = {}) {
   const openedAt = ticket.openedAt || nowIso;
-  const status = normalizeTicketStatus(ticket.status);
+  const statusOptions = getTicketStatusOptionsForType(ticket.type, serviceCenter);
+  const status = normalizeTicketStatus(ticket.status, statusOptions);
   const priority =
     ticket.priority && String(ticket.priority).trim()
       ? normalizePriorityLabel(ticket.priority)
@@ -374,6 +483,7 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     watcherDetails,
     approvalOverdueAt,
     triage: ticket?.triage && typeof ticket.triage === "object" ? ticket.triage : {},
+    escalation: ticket?.escalation && typeof ticket.escalation === "object" ? ticket.escalation : {},
     slaTargetMinutes,
     slaDeadlineAt,
     initialResponseTargetMinutes: Number(ticket.initialResponseTargetMinutes) || Math.max(15, Math.round(slaTargetMinutes * 0.25)),
@@ -391,6 +501,11 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     assetId: String(ticket.assetId || "").trim(),
     assetName: String(ticket.assetName || "").trim(),
     reopenCategory: String(ticket.reopenCategory || "").trim(),
+    pauseReason: String(ticket.pauseReason || "").trim(),
+    waitingReason: String(ticket.waitingReason || "").trim(),
+    parentTicketId: String(ticket.parentTicketId || "").trim(),
+    childTicketIds: Array.isArray(ticket.childTicketIds) ? ticket.childTicketIds.filter(Boolean) : [],
+    parentTicketTitle: String(ticket.parentTicketTitle || "").trim(),
   };
 
   return {
@@ -453,10 +568,24 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
 
 export function syncHelpdeskState(state, users) {
   const nowIso = new Date().toISOString();
+  const serviceCenter = state?.serviceCenter || {};
+  const syncedTickets = (Array.isArray(state.tickets) ? state.tickets : []).map((ticket) => syncTicketRecord(ticket, users, nowIso, serviceCenter));
+  const ticketsMap = new Map(syncedTickets.map((ticket) => [ticket.id, ticket]));
+  const childIdsByParent = syncedTickets.reduce((accumulator, ticket) => {
+    if (!ticket.parentTicketId) return accumulator;
+    return {
+      ...accumulator,
+      [ticket.parentTicketId]: [...(accumulator[ticket.parentTicketId] || []), ticket.id],
+    };
+  }, {});
   return {
     ...state,
     knowledgeArticles: (Array.isArray(state.knowledgeArticles) ? state.knowledgeArticles : []).map(normalizeKnowledgeArticle),
-    tickets: (Array.isArray(state.tickets) ? state.tickets : []).map((ticket) => syncTicketRecord(ticket, users, nowIso)),
+    tickets: syncedTickets.map((ticket) => ({
+      ...ticket,
+      childTicketIds: childIdsByParent[ticket.id] || [],
+      parentTicketTitle: ticket.parentTicketId ? ticketsMap.get(ticket.parentTicketId)?.title || "" : "",
+    })),
   };
 }
 

@@ -1,4 +1,4 @@
-import { getSlaPolicyMinutes, normalizeText } from "./helpdesk.js";
+import { createApprovalHistoryEntry, getSlaPolicyMinutes, normalizeText } from "./helpdesk.js";
 
 export const DEFAULT_WATCHER_EVENT_KEYS = [
   "ticket_status_changed",
@@ -265,9 +265,24 @@ export function progressApprovalWorkflow(currentApproval = {}, action = "", acto
   const currentSteps = (Array.isArray(currentApproval.steps) ? currentApproval.steps : []).map((step, index) =>
     mapApprovalStep(step, users, delegations, nowIso, index),
   );
+  const currentHistory = Array.isArray(currentApproval.history) ? currentApproval.history : [];
   const currentStepIndex = Number(currentApproval.currentStepIndex);
   const activeIndex = Number.isInteger(currentStepIndex) && currentStepIndex >= 0 ? currentStepIndex : 0;
   if (!currentSteps[activeIndex]) return currentApproval;
+  const activeStep = currentSteps[activeIndex];
+  const nextHistoryEntry = createApprovalHistoryEntry({
+    action: normalizedAction === "approve" ? "approved" : normalizedAction === "reject" ? "rejected" : normalizedAction || "updated",
+    actorId: String(actor.id || "").trim(),
+    actorName: String(actor.name || "Sistema").trim(),
+    reason: String(currentApproval.decisionReason || "").trim(),
+    stepName: String(activeStep.name || `Etapa ${activeIndex + 1}`).trim(),
+    approverName: String(activeStep.approverName || actor.name || "Sistema").trim(),
+    metadata: {
+      stepId: String(activeStep.id || "").trim(),
+      fromStatus: String(currentApproval.status || "").trim(),
+    },
+    createdAt: nowIso,
+  });
 
   const nextSteps = currentSteps.map((step, index) =>
     index === activeIndex
@@ -293,6 +308,7 @@ export function progressApprovalWorkflow(currentApproval = {}, action = "", acto
       decidedById: String(actor.id || "").trim(),
       decidedByName: String(actor.name || "Sistema").trim(),
       steps: nextSteps,
+      history: [nextHistoryEntry, ...currentHistory],
     };
   }
 
@@ -309,6 +325,7 @@ export function progressApprovalWorkflow(currentApproval = {}, action = "", acto
       decidedByName: String(actor.name || "Sistema").trim(),
       steps: nextSteps,
       dueAt: "",
+      history: [nextHistoryEntry, ...currentHistory],
     };
   }
 
@@ -322,6 +339,7 @@ export function progressApprovalWorkflow(currentApproval = {}, action = "", acto
     currentApproverName: String(nextCurrentStep.approverName || "").trim(),
     steps: nextSteps,
     dueAt: new Date(Date.now() + slaMinutes * 60 * 1000).toISOString(),
+    history: [nextHistoryEntry, ...currentHistory],
   };
 }
 

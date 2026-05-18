@@ -342,13 +342,6 @@ Observacao operacional:
 - exportacao CSV adicional para operacoes, tecnicos, central de servicos e notificacoes
 - relatorios consolidados exportaveis em todos os modulos administrativos com cobertura uniforme
 - exportacao Excel/XLS ou PDF seguindo um padrao unico do sistema
-
-## Mapeamento de novas funcoes
-
-### Melhorias funcionais ainda pendentes ou parciais
-
-### Melhorias para chamados
-
 - modo analista com preview lateral do chamado sem trocar de pagina
 - escalonamento automatico de chamados vencidos ou sem responsavel
 - relacao entre chamado pai e filhos para incidentes maiores
@@ -356,6 +349,12 @@ Observacao operacional:
 - motivo de pausa e motivo de espera obrigatorios em status especificos
 - aprovacoes visiveis na timeline do chamado com decisor, data e justificativa
 - historico de decisao de aprovacao separado do historico tecnico
+
+## Mapeamento de novas funcoes
+
+### Melhorias funcionais ainda pendentes ou parciais
+
+### Melhorias para chamados
 
 ### Melhorias para inventario e cadastros
 
