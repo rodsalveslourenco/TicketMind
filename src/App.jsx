@@ -6,6 +6,7 @@ import { useAppData } from "./data/AppDataContext";
 import { getUserHomePath } from "./data/permissions";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import TicketsPage from "./pages/TicketsPage";
 import UsersPage from "./pages/UsersPage";
 import AssetsPage from "./pages/AssetsPage";
@@ -36,6 +37,7 @@ function App() {
         element={isAuthenticated ? <Navigate replace to={homePath} /> : <LoginPage />}
         path="/login"
       />
+      <Route element={<ResetPasswordPage />} path="/reset-password" />
       <Route
         element={
           <ProtectedRoute>

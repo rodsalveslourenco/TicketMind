@@ -119,6 +119,48 @@ export function AuthProvider({ children }) {
     setSession(null);
   };
 
+  const changePassword = async ({ currentPassword, newPassword }) => {
+    const payload = await requestJson("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    const nextSession = {
+      userId: payload?.user?.id,
+      user: payload?.user ?? null,
+      expiresAt: payload?.expiresAt || session?.expiresAt || "",
+      issuedAt: new Date().toISOString(),
+    };
+
+    persistSession(nextSession);
+    setSession(nextSession);
+    return payload;
+  };
+
+  const requestPasswordRecovery = async (email) =>
+    requestJson("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+
+  const resetPassword = async ({ token, newPassword }) => {
+    const payload = await requestJson("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
+    });
+
+    const nextSession = {
+      userId: payload?.user?.id,
+      user: payload?.user ?? null,
+      expiresAt: payload?.expiresAt || "",
+      issuedAt: new Date().toISOString(),
+    };
+
+    persistSession(nextSession);
+    setSession(nextSession);
+    return payload;
+  };
+
   const setSessionUser = (nextUser) => {
     if (!nextUser?.id) return;
     setSession((current) => {
@@ -137,6 +179,9 @@ export function AuthProvider({ children }) {
       isAuthenticated: Boolean(session),
       login,
       logout,
+      changePassword,
+      requestPasswordRecovery,
+      resetPassword,
       setSessionUser,
     }),
     [loading, session],

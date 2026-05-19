@@ -445,6 +445,46 @@ export async function sendNotificationTest(payload = {}, persistedState = {}) {
   });
 }
 
+export async function sendPasswordRecoveryEmail(
+  {
+    recipientEmail = "",
+    recipientName = "",
+    resetUrl = "",
+  } = {},
+  persistedState = {},
+) {
+  const email = String(recipientEmail || "").trim().toLowerCase();
+  const link = String(resetUrl || "").trim();
+  if (!email || !link) {
+    throw new Error("Dados insuficientes para enviar a recuperacao de senha.");
+  }
+
+  const safeName = String(recipientName || "").trim() || "usuario";
+  await deliverEmail(persistedState, {
+    to: [email],
+    subject: "Recuperacao de senha TicketMind",
+    text: [
+      `Ola, ${safeName}.`,
+      "",
+      "Recebemos uma solicitacao para redefinir sua senha no TicketMind.",
+      `Acesse o link para continuar: ${link}`,
+      "",
+      "Se voce nao solicitou esta alteracao, ignore esta mensagem.",
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
+        <h2 style="margin-bottom:12px">Recuperacao de senha</h2>
+        <p>Ola, ${safeName}.</p>
+        <p>Recebemos uma solicitacao para redefinir sua senha no TicketMind.</p>
+        <p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px">Redefinir senha</a></p>
+        <p>Se o botao nao abrir, use este link:</p>
+        <p><a href="${link}">${link}</a></p>
+        <p>Se voce nao solicitou esta alteracao, ignore esta mensagem.</p>
+      </div>
+    `,
+  });
+}
+
 export async function processTicketNotifications({ previousState, nextState, persistState, baseUrl }) {
   const rules = Array.isArray(nextState.notificationRules) ? nextState.notificationRules.filter((rule) => rule.active) : [];
   if (!rules.length) return;

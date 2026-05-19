@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 const SESSION_COOKIE_NAME = "ticketmind_session";
 const SESSION_DURATION_MS = Math.max(5 * 60 * 1000, Number(process.env.SESSION_TTL_MS) || 12 * 60 * 60 * 1000);
+const PASSWORD_RESET_DURATION_MS = Math.max(10 * 60 * 1000, Number(process.env.PASSWORD_RESET_TTL_MS) || 30 * 60 * 1000);
 const PASSWORD_PREFIX = "scrypt";
 const SCRYPT_KEY_LENGTH = 64;
 
@@ -109,11 +110,20 @@ export function getPasswordFingerprint(passwordValue) {
 
 export function createSessionToken(user) {
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
+  return createSignedToken(
+    {
+      sub: String(user?.id || "").trim(),
+      pwd: getPasswordFingerprint(user?.password || ""),
+    },
+    expiresAt,
+  );
+}
+
+function createSignedToken(payloadData, expiresAt) {
   const header = base64UrlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = base64UrlEncode(
     JSON.stringify({
-      sub: String(user?.id || "").trim(),
-      pwd: getPasswordFingerprint(user?.password || ""),
+      ...payloadData,
       exp: expiresAt,
     }),
   );
@@ -122,7 +132,20 @@ export function createSessionToken(user) {
   return { token: `${body}.${signature}`, expiresAt };
 }
 
-export function verifySessionToken(token) {
+export function createPasswordResetToken(user) {
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_DURATION_MS).toISOString();
+  return createSignedToken(
+    {
+      sub: String(user?.id || "").trim(),
+      pwd: getPasswordFingerprint(user?.password || ""),
+      email: String(user?.email || "").trim().toLowerCase(),
+      purpose: "password_reset",
+    },
+    expiresAt,
+  );
+}
+
+function verifySignedToken(token) {
   const normalizedToken = String(token || "").trim();
   if (!normalizedToken) return null;
 
@@ -140,11 +163,25 @@ export function verifySessionToken(token) {
     return {
       userId: String(parsed.sub || "").trim(),
       passwordFingerprint: String(parsed.pwd || "").trim(),
+      email: String(parsed.email || "").trim().toLowerCase(),
+      purpose: String(parsed.purpose || "").trim(),
       expiresAt: expiresAt.toISOString(),
     };
   } catch {
     return null;
   }
+}
+
+export function verifySessionToken(token) {
+  const parsed = verifySignedToken(token);
+  if (!parsed || parsed.purpose) return null;
+  return parsed;
+}
+
+export function verifyPasswordResetToken(token) {
+  const parsed = verifySignedToken(token);
+  if (!parsed || parsed.purpose !== "password_reset") return null;
+  return parsed;
 }
 
 function parseCookies(rawCookieHeader) {

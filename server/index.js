@@ -9,16 +9,19 @@ import {
   prepareStateForClient,
   processRecurringApprovalReminders,
   processTicketNotifications,
+  sendPasswordRecoveryEmail,
   sendNotificationTest,
 } from "./notifications.js";
 import {
   clearSessionCookie,
   createSessionCookie,
+  createPasswordResetToken,
   createSessionToken,
   getPasswordFingerprint,
   getSessionTokenFromRequest,
   hashPassword,
   needsPasswordUpgrade,
+  verifyPasswordResetToken,
   verifyPassword,
   verifySessionToken,
 } from "./security.js";
@@ -76,6 +79,31 @@ function toIsoDateOrEmpty(value, { endOfDay = false } = {}) {
 
 function normalizeValue(value) {
   return JSON.stringify(value ?? null);
+}
+
+function validateNextPassword(password) {
+  const normalizedPassword = String(password || "");
+  if (normalizedPassword.length < 8) {
+    return "A nova senha precisa ter pelo menos 8 caracteres.";
+  }
+  if (!/[a-z]/i.test(normalizedPassword) || !/\d/.test(normalizedPassword)) {
+    return "A nova senha precisa combinar letras e numeros.";
+  }
+  return "";
+}
+
+function buildPublicAppUrl(request, pathName = "") {
+  const configuredBaseUrl = String(process.env.APP_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+  const normalizedPath = String(pathName || "").trim();
+  if (configuredBaseUrl) {
+    return normalizedPath ? `${configuredBaseUrl}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}` : configuredBaseUrl;
+  }
+
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || request.protocol || "http";
+  const host = String(request.headers["x-forwarded-host"] || request.headers.host || "").split(",")[0].trim();
+  if (!host) return "";
+  return `${protocol}://${host}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
 }
 
 function mapById(items = []) {
@@ -162,10 +190,12 @@ function isAllowedCriticalChange(user, change) {
     case "user_permissions":
     case "permission_profiles_manage":
     case "navigation_manage":
+      return hasAnyPermission(user, ["users_manage_permissions", "users_admin"]);
     case "email_layouts_manage":
+      return hasAnyPermission(user, ["email_layouts_manage", "users_manage_permissions", "users_admin"]);
     case "email_service_manage":
     case "notification_rules_manage":
-      return hasAnyPermission(user, ["users_manage_permissions", "users_admin"]);
+      return hasAnyPermission(user, ["notifications_manage", "service_center_manage", "users_manage_permissions", "users_admin"]);
     case "user_delete":
       return hasAnyPermission(user, ["users_delete", "users_admin"]);
     case "departments_manage":
@@ -174,7 +204,7 @@ function isAllowedCriticalChange(user, change) {
       return hasAnyPermission(user, ["service_center_departments_manage", "service_center_manage", "users_admin"]);
     case "service_center_manage":
     case "smtp_manage":
-      return hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"]);
+      return hasAnyPermission(user, ["notifications_manage", "service_center_manage", "users_manage_permissions", "users_admin"]);
     case "api_configs_manage":
       return hasAnyPermission(user, ["api_rest_configure_integrations", "api_rest_admin", "users_admin"]);
     default:
@@ -510,6 +540,170 @@ async function handleSessionRequest(request, response) {
 app.get("/api/auth/session", handleAsync(handleSessionRequest));
 app.get("/api/auth/session/:userId", handleAsync(handleSessionRequest));
 
+app.post("/api/auth/change-password", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+
+  const currentPassword = String(request.body?.currentPassword || "");
+  const nextPassword = String(request.body?.newPassword || "");
+
+  if (!currentPassword || !nextPassword) {
+    response.status(400).json({ error: "Informe a senha atual e a nova senha." });
+    return;
+  }
+
+  if (!verifyPassword(currentPassword, auth.requestUser.password || "")) {
+    response.status(400).json({ error: "A senha atual nao confere." });
+    return;
+  }
+
+  if (verifyPassword(nextPassword, auth.requestUser.password || "")) {
+    response.status(400).json({ error: "A nova senha precisa ser diferente da senha atual." });
+    return;
+  }
+
+  const passwordValidationError = validateNextPassword(nextPassword);
+  if (passwordValidationError) {
+    response.status(400).json({ error: passwordValidationError });
+    return;
+  }
+
+  const nextPasswordHash = hashPassword(nextPassword);
+  await updateUserPassword(auth.requestUser.id, nextPasswordHash);
+  const persistedUser = await readUserById(auth.requestUser.id);
+  if (!persistedUser) {
+    response.status(500).json({ error: "Nao foi possivel atualizar a senha." });
+    return;
+  }
+
+  const { token, expiresAt } = createSessionToken(persistedUser);
+  response.setHeader("Set-Cookie", createSessionCookie(token, expiresAt));
+
+  await insertSystemLog(
+    createSystemLog({
+      ...buildActorFromUser(persistedUser),
+      module: "autenticacao",
+      eventType: "configuracao",
+      description: `Senha alterada pelo proprio usuario ${persistedUser.name}.`,
+      origin: getRequestOrigin(request),
+      status: "sucesso",
+      metadata: { action: "self_password_change" },
+    }),
+  );
+
+  response.json({ user: sanitizeSessionUser(persistedUser), expiresAt });
+}));
+
+app.post("/api/auth/forgot-password", handleAsync(async (request, response) => {
+  const normalizedEmail = String(request.body?.email || "").trim().toLowerCase();
+  if (!normalizedEmail) {
+    response.status(400).json({ error: "Informe o e-mail para recuperar a senha." });
+    return;
+  }
+
+  const state = await readState();
+  const account = (state.users || []).find((candidate) => String(candidate.email || "").trim().toLowerCase() === normalizedEmail) || null;
+  const resetUrlBase = buildPublicAppUrl(request, "/reset-password");
+
+  if (!resetUrlBase) {
+    response.status(400).json({ error: "Nao foi possivel montar o link de recuperacao desta instalacao." });
+    return;
+  }
+
+  if (!account || !isActiveUser(account)) {
+    response.json({ ok: true, message: "Se o e-mail existir e estiver ativo, enviaremos o link de recuperacao." });
+    return;
+  }
+
+  const { token } = createPasswordResetToken(account);
+  const resetUrl = `${resetUrlBase}?token=${encodeURIComponent(token)}`;
+
+  try {
+    await sendPasswordRecoveryEmail(
+      {
+        recipientEmail: account.email,
+        recipientName: account.name,
+        resetUrl,
+      },
+      state,
+    );
+    await insertSystemLog(
+      createSystemLog({
+        ...buildActorFromUser(account),
+        module: "autenticacao",
+        eventType: "configuracao",
+        description: `Link de recuperacao de senha enviado para ${account.email}.`,
+        origin: getRequestOrigin(request),
+        status: "sucesso",
+        metadata: { action: "password_recovery_request" },
+      }),
+    );
+    response.json({ ok: true, message: "Se o e-mail existir e estiver ativo, enviaremos o link de recuperacao." });
+  } catch (error) {
+    response.status(400).json({
+      error: error instanceof Error ? error.message : "Falha ao enviar a recuperacao de senha.",
+    });
+  }
+}));
+
+app.post("/api/auth/reset-password", handleAsync(async (request, response) => {
+  const resetToken = String(request.body?.token || "").trim();
+  const nextPassword = String(request.body?.newPassword || "");
+  const parsedToken = verifyPasswordResetToken(resetToken);
+
+  if (!parsedToken?.userId) {
+    response.status(400).json({ error: "O link de recuperacao expirou ou e invalido." });
+    return;
+  }
+
+  const account = await readUserById(parsedToken.userId);
+  if (!account || !isActiveUser(account)) {
+    response.status(400).json({ error: "A conta vinculada a este link nao esta mais disponivel." });
+    return;
+  }
+
+  if (parsedToken.passwordFingerprint !== getPasswordFingerprint(account.password || "")) {
+    response.status(400).json({ error: "Este link de recuperacao ja nao e mais valido." });
+    return;
+  }
+
+  const passwordValidationError = validateNextPassword(nextPassword);
+  if (passwordValidationError) {
+    response.status(400).json({ error: passwordValidationError });
+    return;
+  }
+
+  if (verifyPassword(nextPassword, account.password || "")) {
+    response.status(400).json({ error: "Escolha uma senha diferente da anterior." });
+    return;
+  }
+
+  const nextPasswordHash = hashPassword(nextPassword);
+  await updateUserPassword(account.id, nextPasswordHash);
+  const persistedUser = await readUserById(account.id);
+  if (!persistedUser) {
+    response.status(500).json({ error: "Nao foi possivel concluir a redefinicao da senha." });
+    return;
+  }
+
+  const { token, expiresAt } = createSessionToken(persistedUser);
+  response.setHeader("Set-Cookie", createSessionCookie(token, expiresAt));
+
+  await insertSystemLog(
+    createSystemLog({
+      ...buildActorFromUser(persistedUser),
+      module: "autenticacao",
+      eventType: "configuracao",
+      description: `Senha redefinida por recuperacao para ${persistedUser.name}.`,
+      origin: getRequestOrigin(request),
+      status: "alerta",
+      metadata: { action: "password_recovery_reset" },
+    }),
+  );
+
+  response.json({ user: sanitizeSessionUser(persistedUser), expiresAt });
+}));
+
 app.use(
   "/api/v1",
   createV1Router({
@@ -541,7 +735,7 @@ app.put("/api/state", handleAsync(async (request, response) => {
 app.post("/api/notifications/test", handleAsync(async (request, response) => {
   const auth = await requireAuthenticatedUser(request, response);
   if (!auth) return;
-  if (!hasAnyPermission(auth.requestUser, ["users_manage_permissions", "users_admin", "service_center_manage"])) {
+  if (!hasAnyPermission(auth.requestUser, ["notifications_manage", "users_manage_permissions", "users_admin", "service_center_manage"])) {
     response.status(403).json({ error: "Voce nao possui permissao para testar notificacoes." });
     return;
   }

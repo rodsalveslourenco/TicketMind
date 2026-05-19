@@ -574,6 +574,7 @@ function hydratePermissionCatalog(storedCatalog) {
 }
 
 function hydrateNavigationSections(storedSections) {
+  const legacySectionKeys = new Set(["technicians", "settings"]);
   const dedupeNavigationItems = (items = []) => {
     const seenRoutes = new Set();
     const seenModuleLabels = new Set();
@@ -615,7 +616,7 @@ function hydrateNavigationSections(storedSections) {
         icon: String(item.icon || "dashboard").trim(),
       })),
     }))
-    .filter((section) => section.key && section.items.length);
+    .filter((section) => section.key && section.items.length && !legacySectionKeys.has(section.key));
 
   return normalizedDefaults
     .map((defaultSection) => {
@@ -951,18 +952,32 @@ function buildDailyOpenings(tickets, days = 5) {
   return buckets;
 }
 
-function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter = defaultServiceCenterSettings) {
+function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter = defaultServiceCenterSettings, currentUser = null) {
+  const canViewGlobalMetrics = canViewAllTicketsForContext(currentUser, departments, serviceCenter);
+  const scopedDepartmentIds = new Set(
+    canViewGlobalMetrics ? [] : getScopedServiceDepartmentIds(currentUser, departments, serviceCenter),
+  );
+  const visibleAssignedNames = new Set(
+    (Array.isArray(tickets) ? tickets : [])
+      .map((ticket) => normalizeText(ticket.assignee))
+      .filter(Boolean),
+  );
   const serviceCenterResponsibleIds = new Set(
     (departments || []).flatMap((department) => {
       const config = getServiceCenterDepartmentConfig(serviceCenter, department.id);
-      return config.active ? config.responsibleUserIds || [] : [];
+      if (!config.active) return [];
+      if (scopedDepartmentIds.size && !scopedDepartmentIds.has(department.id)) return [];
+      return config.responsibleUserIds || [];
     }),
   );
-  const technicians = users.filter(
-    (candidate) =>
-      normalizeText(candidate.department) === "ti" ||
-      serviceCenterResponsibleIds.has(candidate.id),
-  );
+  const technicians = users.filter((candidate) => {
+    const candidateName = normalizeText(candidate.name);
+    const isTiTechnician = normalizeText(candidate.department) === "ti";
+    if (normalizeText(candidate.status || "Ativo") === "inativo") return false;
+    if (visibleAssignedNames.has(candidateName) || serviceCenterResponsibleIds.has(candidate.id)) return true;
+    if (!serviceCenter?.enabled) return isTiTechnician;
+    return canViewGlobalMetrics && isTiTechnician;
+  });
   return technicians.map((technician) => {
     const assigned = tickets.filter((ticket) => normalizeText(ticket.assignee) === normalizeText(technician.name));
     const resolved = assigned.filter((ticket) => normalizeText(ticket.status) === "resolvido");
@@ -992,7 +1007,7 @@ function buildTechnicianMetrics(tickets, users, departments = [], serviceCenter 
       waitingUser,
       critical,
     };
-  });
+  }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function computeAverageResponseMinutes(tickets = []) {
@@ -1334,8 +1349,8 @@ export function AppDataProvider({ children }) {
   const priorityBuckets = useMemo(() => buildPriorityBuckets(operationalTickets), [operationalTickets]);
   const dailyOpenings = useMemo(() => buildDailyOpenings(operationalTickets, 5), [operationalTickets]);
   const technicianMetrics = useMemo(
-    () => buildTechnicianMetrics(allTickets, data.users || [], data.departments || [], data.serviceCenter || defaultServiceCenterSettings),
-    [allTickets, data.departments, data.serviceCenter, data.users],
+    () => buildTechnicianMetrics(visibleTickets, data.users || [], data.departments || [], data.serviceCenter || defaultServiceCenterSettings, user),
+    [data.departments, data.serviceCenter, data.users, user, visibleTickets],
   );
   const operationalReports = useMemo(
     () => ({

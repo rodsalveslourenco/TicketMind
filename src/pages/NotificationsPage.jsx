@@ -18,6 +18,34 @@ function buildRuleDraft(eventKey, existingRule) {
   };
 }
 
+function resolveRuleStatus(ruleDraft) {
+  const hasRecipients = Boolean(ruleDraft.recipientUserIds.length || String(ruleDraft.externalEmails || "").trim());
+  const hasLayout = Boolean(String(ruleDraft.layoutId || "").trim());
+  if (!ruleDraft.active) return "Pausada";
+  if (hasRecipients && hasLayout) return "Pronta";
+  if (hasRecipients) return "Sem layout";
+  return "Sem destinatarios";
+}
+
+function resolveSmtpHealth(settings) {
+  const hasCoreFields = Boolean(String(settings.host || "").trim() && String(settings.fromEmail || "").trim());
+  if (!hasCoreFields) return { label: "Incompleto", tone: "warning", detail: "Faltam host e remetente." };
+  if (!settings.hasPassword && !String(settings.password || "").trim()) {
+    return { label: "Credencial pendente", tone: "warning", detail: "Defina a senha do SMTP para validar o envio." };
+  }
+  return { label: "Configurado", tone: "success", detail: `${settings.host}:${settings.port || 587}` };
+}
+
+function resolveServiceHealth(settings) {
+  const hasProvider = Boolean(String(settings.provider || "").trim());
+  const hasSender = Boolean(String(settings.fromEmail || "").trim());
+  if (!hasProvider || !hasSender) return { label: "Incompleto", tone: "warning", detail: "Defina provedor e remetente." };
+  if (!settings.hasApiKey && !String(settings.apiKey || "").trim()) {
+    return { label: "Credencial pendente", tone: "warning", detail: "A API key ainda nao foi informada." };
+  }
+  return { label: "Configurado", tone: "success", detail: settings.provider };
+}
+
 function NotificationsPage() {
   const { user } = useAuth();
   const {
@@ -35,6 +63,7 @@ function NotificationsPage() {
     smtpSettings,
     users,
   } = useAppData();
+  const [activeSection, setActiveSection] = useState("overview");
   const [ruleDrafts, setRuleDrafts] = useState({});
   const [smtpDraft, setSmtpDraft] = useState(smtpSettings);
   const [serviceDraft, setServiceDraft] = useState(emailServiceSettings);
@@ -73,13 +102,37 @@ function NotificationsPage() {
   }, [emailServiceSettings]);
 
   const sortedUsers = useMemo(
-    () => users.slice().sort((left, right) => left.name.localeCompare(right.name)),
+    () =>
+      users
+        .filter((candidate) => candidate.email && candidate.status !== "Inativo")
+        .slice()
+        .sort((left, right) => left.name.localeCompare(right.name)),
     [users],
   );
 
   const availableLayouts = useMemo(
     () => emailLayouts.filter((layout) => layout.status === "Ativo"),
     [emailLayouts],
+  );
+
+  const ruleSummaries = useMemo(
+    () =>
+      notificationEvents.map((eventItem) => {
+        const draft = ruleDrafts[eventItem.key] || buildRuleDraft(eventItem.key);
+        return {
+          eventItem,
+          draft,
+          status: resolveRuleStatus(draft),
+        };
+      }),
+    [notificationEvents, ruleDrafts],
+  );
+
+  const smtpHealth = useMemo(() => resolveSmtpHealth(smtpDraft), [smtpDraft]);
+  const serviceHealth = useMemo(() => resolveServiceHealth(serviceDraft), [serviceDraft]);
+  const failedLogs = useMemo(
+    () => notificationLogs.filter((log) => log.status === "Falha"),
+    [notificationLogs],
   );
 
   if (!canView) {
@@ -112,7 +165,7 @@ function NotificationsPage() {
       },
       draft.id || undefined,
     );
-    pushToast("Notificacao atualizada", notificationEvents.find((event) => event.key === eventKey)?.label || eventKey);
+    pushToast("Regra atualizada", notificationEvents.find((event) => event.key === eventKey)?.label || eventKey);
   };
 
   const handleSaveSmtp = async (event) => {
@@ -131,7 +184,7 @@ function NotificationsPage() {
     event.preventDefault();
     try {
       await saveEmailServiceSettings(serviceDraft);
-      pushToast("Servico de e-mail atualizado", serviceDraft.provider || "Servico de envio");
+      pushToast("Servico atualizado", serviceDraft.provider || "Servico de envio");
     } catch (error) {
       pushToast("Falha ao salvar servico", error.message, "warning");
     }
@@ -184,55 +237,135 @@ function NotificationsPage() {
     pushToast("Exportacao concluida", `${notificationLogs.length} log(s) preparados em ${getExportFormatLabel(format)}.`);
   };
 
+  const sectionOptions = [
+    { key: "overview", label: "Visao geral" },
+    { key: "rules", label: "Regras" },
+    { key: "delivery", label: "Entrega" },
+    { key: "intake", label: "Entrada por e-mail" },
+    { key: "logs", label: "Logs" },
+  ];
+
   return (
     <div className="settings-page">
       <section className="module-hero board-card">
         <div>
-          <span className="eyebrow">Configuracoes</span>
-          <h2>Notificacoes</h2>
+          <span className="eyebrow">Mensageria</span>
+          <h2>Notificacoes e e-mail</h2>
         </div>
         <div className="insight-strip">
           <div className="insight-chip">
-            <strong>{notificationEvents.length}</strong>
-            <span>eventos disponiveis</span>
+            <strong>{ruleSummaries.filter((item) => item.status === "Pronta").length}</strong>
+            <span>regras prontas</span>
           </div>
           <div className="insight-chip">
-            <strong>{notificationRules.filter((rule) => rule.active).length}</strong>
-            <span>regras ativas</span>
+            <strong>{smtpHealth.label === "Configurado" || serviceHealth.label === "Configurado" ? "OK" : "Pendente"}</strong>
+            <span>canal de envio</span>
           </div>
           <div className="insight-chip">
-            <strong>{notificationLogs.filter((log) => log.status === "Falha").length}</strong>
-            <span>falhas registradas</span>
+            <strong>{failedLogs.length}</strong>
+            <span>falhas recentes</span>
           </div>
         </div>
       </section>
 
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Regras por evento</h2>
-            <span>Defina usuarios individuais, e-mails externos e layout para cada disparo.</span>
-          </div>
+      <section className="board-card">
+        <div className="toolbar">
+          {sectionOptions.map((option) => (
+            <button
+              className={`filter-pill interactive-button${activeSection === option.key ? " is-active" : ""}`}
+              key={option.key}
+              onClick={() => setActiveSection(option.key)}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
-        <div className="settings-stack">
-          {notificationEvents.map((eventItem) => {
-            const draft = ruleDrafts[eventItem.key] || buildRuleDraft(eventItem.key);
-            return (
+      </section>
+
+      {activeSection === "overview" ? (
+        <div className="page-grid">
+          <section className="board-card">
+            <div className="card-heading">
+              <div>
+                <h2>Saude do envio</h2>
+                <span>Resumo rapido do que esta pronto e do que ainda bloqueia notificacoes e recuperacao de senha.</span>
+              </div>
+            </div>
+            <div className="dashboard-kpi-strip compact-kpi-strip">
+              <div className="dashboard-kpi-card">
+                <span>SMTP</span>
+                <strong>{smtpHealth.label}</strong>
+                <small>{smtpHealth.detail}</small>
+              </div>
+              <div className="dashboard-kpi-card">
+                <span>Servico por API</span>
+                <strong>{serviceHealth.label}</strong>
+                <small>{serviceHealth.detail}</small>
+              </div>
+              <div className="dashboard-kpi-card">
+                <span>Recuperacao de senha</span>
+                <strong>{smtpHealth.label === "Configurado" || serviceHealth.label === "Configurado" ? "Disponivel" : "Bloqueada"}</strong>
+                <small>Depende de envio de e-mail configurado.</small>
+              </div>
+            </div>
+          </section>
+
+          <section className="board-card">
+            <div className="card-heading">
+              <div>
+                <h2>Eventos monitorados</h2>
+                <span>O que ja esta ativo e o que ainda precisa de destinatarios ou layout.</span>
+              </div>
+            </div>
+            <div className="ticket-rows">
+              {ruleSummaries.map(({ eventItem, status, draft }) => (
+                <article className="ticket-row-card" key={eventItem.key}>
+                  <div className="ticket-row-main">
+                    <div className="ticket-row-title">
+                      <strong>{eventItem.label}</strong>
+                      <h3>{eventItem.description}</h3>
+                    </div>
+                    <div className="ticket-row-badges">
+                      <span className={`badge ${status === "Pronta" ? "status-badge-resolvido" : status === "Pausada" ? "badge-neutral" : "status-badge-aguardando"}`}>{status}</span>
+                      <span className="badge badge-neutral">{draft.recipientUserIds.length} usuario(s)</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeSection === "rules" ? (
+        <section className="board-card glpi-panel">
+          <div className="glpi-toolbar">
+            <div>
+              <h2>Regras por evento</h2>
+              <span>Cada card ficou independente para reduzir o volume de configuracao por tela.</span>
+            </div>
+          </div>
+          <div className="settings-stack">
+            {ruleSummaries.map(({ eventItem, draft, status }) => (
               <article className="board-card settings-card" key={eventItem.key}>
                 <div className="settings-card-head">
                   <div>
                     <strong>{eventItem.label}</strong>
                     <span>{eventItem.description}</span>
                   </div>
-                  <label className="inline-toggle">
-                    <input
-                      checked={draft.active}
-                      disabled={!canManage}
-                      onChange={(event) => updateRuleDraft(eventItem.key, (current) => ({ ...current, active: event.target.checked }))}
-                      type="checkbox"
-                    />
-                    <span>Ativo</span>
-                  </label>
+                  <div className="ticket-row-badges">
+                    <span className={`badge ${status === "Pronta" ? "status-badge-resolvido" : status === "Pausada" ? "badge-neutral" : "status-badge-aguardando"}`}>{status}</span>
+                    <label className="inline-toggle">
+                      <input
+                        checked={draft.active}
+                        disabled={!canManage}
+                        onChange={(event) => updateRuleDraft(eventItem.key, (current) => ({ ...current, active: event.target.checked }))}
+                        type="checkbox"
+                      />
+                      <span>Ativo</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="glpi-form-grid">
@@ -266,7 +399,7 @@ function NotificationsPage() {
                 </div>
 
                 <div className="recipient-picker">
-                  <strong>Quem recebe</strong>
+                  <strong>Usuarios destinatarios</strong>
                   <div className="recipient-grid">
                     {sortedUsers.map((candidate) => (
                       <label className="recipient-option" key={candidate.id}>
@@ -293,244 +426,258 @@ function NotificationsPage() {
                   </div>
                 ) : null}
               </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Entrega de e-mail</h2>
-            <span>Selecione o metodo principal. O padrao agora e SMTP, sem depender de API.</span>
+            ))}
           </div>
-        </div>
-        <div className="glpi-form-grid">
-          <label className="field-block">
-            <span>Tipo de envio</span>
-            <select
-              disabled={!canManage}
-              onChange={(event) => {
-                const deliveryMode = event.target.value === "service" ? "service" : "smtp";
-                setSmtpDraft((current) => ({ ...current, deliveryMode }));
-                setServiceDraft((current) => ({ ...current, deliveryMode }));
-              }}
-              value={smtpDraft.deliveryMode || "smtp"}
-            >
-              <option value="smtp">SMTP padrao (sem API)</option>
-              <option value="service">Servico com API</option>
-            </select>
-          </label>
-        </div>
+        </section>
+      ) : null}
 
-        <div className="settings-divider" />
+      {activeSection === "delivery" ? (
+        <div className="page-grid">
+          <section className="board-card glpi-panel">
+            <div className="glpi-toolbar">
+              <div>
+                <h2>Entrega de e-mail</h2>
+                <span>Escolha o canal principal e mantenha um fallback pronto.</span>
+              </div>
+            </div>
+            <div className="glpi-form-grid">
+              <label className="field-block">
+                <span>Canal principal</span>
+                <select
+                  disabled={!canManage}
+                  onChange={(event) => {
+                    const deliveryMode = event.target.value === "service" ? "service" : "smtp";
+                    setSmtpDraft((current) => ({ ...current, deliveryMode }));
+                    setServiceDraft((current) => ({ ...current, deliveryMode }));
+                  }}
+                  value={smtpDraft.deliveryMode || "smtp"}
+                >
+                  <option value="smtp">SMTP</option>
+                  <option value="service">Servico por API</option>
+                </select>
+              </label>
+            </div>
 
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Servico de envio</h2>
-            <span>Opcional. Use Resend ou SendGrid se quiser um fallback por provedor externo.</span>
+            <div className="settings-divider" />
+
+            <div className="card-heading">
+              <div>
+                <h2>SMTP</h2>
+                <span>{smtpHealth.detail}</span>
+              </div>
+            </div>
+            <form className="glpi-ticket-form" onSubmit={handleSaveSmtp}>
+              <div className="glpi-form-grid">
+                <label className="field-block">
+                  <span>Servidor SMTP</span>
+                  <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, host: event.target.value }))} value={smtpDraft.host || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Porta</span>
+                  <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, port: event.target.value }))} type="number" value={smtpDraft.port || 587} />
+                </label>
+                <label className="field-block">
+                  <span>Usuario</span>
+                  <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, username: event.target.value }))} value={smtpDraft.username || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Senha {smtpDraft.hasPassword ? "(mantida se vazio)" : ""}</span>
+                  <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, password: event.target.value }))} type="password" value={smtpDraft.password || ""} />
+                </label>
+                <label className="field-block">
+                  <span>E-mail remetente</span>
+                  <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, fromEmail: event.target.value }))} type="email" value={smtpDraft.fromEmail || ""} />
+                </label>
+                <label className="field-block">
+                  <span>Nome do remetente</span>
+                  <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, fromName: event.target.value }))} value={smtpDraft.fromName || ""} />
+                </label>
+              </div>
+              <div className="toggle-row">
+                <label className="inline-toggle">
+                  <input checked={Boolean(smtpDraft.secure)} disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, secure: event.target.checked }))} type="checkbox" />
+                  <span>SSL/TLS</span>
+                </label>
+                <label className="inline-toggle">
+                  <input checked={smtpDraft.requireTls !== false} disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, requireTls: event.target.checked }))} type="checkbox" />
+                  <span>Exigir TLS</span>
+                </label>
+              </div>
+              {canManage ? (
+                <div className="ticket-create-actions compact-actions">
+                  <button className="primary-button interactive-button" type="submit">
+                    Salvar SMTP
+                  </button>
+                </div>
+              ) : null}
+            </form>
+          </section>
+
+          <section className="board-card glpi-panel">
+            <div className="card-heading">
+              <div>
+                <h2>Servico por API</h2>
+                <span>{serviceHealth.detail}</span>
+              </div>
+            </div>
+            <form className="glpi-ticket-form" onSubmit={handleSaveService}>
+              <div className="glpi-form-grid">
+                <label className="field-block">
+                  <span>Provedor</span>
+                  <select
+                    disabled={!canManage}
+                    onChange={(event) => setServiceDraft((current) => ({ ...current, provider: event.target.value }))}
+                    value={serviceDraft.provider || "resend"}
+                  >
+                    <option value="resend">Resend</option>
+                    <option value="sendgrid">SendGrid</option>
+                  </select>
+                </label>
+                <label className="field-block">
+                  <span>API key {serviceDraft.hasApiKey ? "(mantida se vazio)" : ""}</span>
+                  <input
+                    disabled={!canManage}
+                    onChange={(event) => setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))}
+                    type="password"
+                    value={serviceDraft.apiKey || ""}
+                  />
+                </label>
+                <label className="field-block">
+                  <span>E-mail remetente</span>
+                  <input
+                    disabled={!canManage}
+                    onChange={(event) => setServiceDraft((current) => ({ ...current, fromEmail: event.target.value }))}
+                    type="email"
+                    value={serviceDraft.fromEmail || ""}
+                  />
+                </label>
+                <label className="field-block">
+                  <span>Nome do remetente</span>
+                  <input
+                    disabled={!canManage}
+                    onChange={(event) => setServiceDraft((current) => ({ ...current, fromName: event.target.value }))}
+                    value={serviceDraft.fromName || ""}
+                  />
+                </label>
+              </div>
+              {canManage ? (
+                <div className="ticket-create-actions compact-actions">
+                  <button className="primary-button interactive-button" type="submit">
+                    Salvar servico
+                  </button>
+                </div>
+              ) : null}
+            </form>
+
+            <div className="settings-divider" />
+
+            <div className="card-heading">
+              <div>
+                <h2>Teste de envio</h2>
+                <span>Valida a configuracao atual sem depender de alteracao em chamado real.</span>
+              </div>
+            </div>
+            <div className="glpi-form-grid">
+              <label className="field-block field-span-2">
+                <span>Destinatarios do teste</span>
+                <input onChange={(event) => setTestDraft((current) => ({ ...current, recipients: event.target.value }))} placeholder="email1@dominio.com, email2@dominio.com" value={testDraft.recipients} />
+              </label>
+              <label className="field-block field-span-2">
+                <span>Assunto</span>
+                <input onChange={(event) => setTestDraft((current) => ({ ...current, subject: event.target.value }))} value={testDraft.subject} />
+              </label>
+              <label className="field-block field-span-2">
+                <span>Corpo</span>
+                <textarea onChange={(event) => setTestDraft((current) => ({ ...current, body: event.target.value }))} value={testDraft.body} />
+              </label>
+            </div>
+            {canManage ? (
+              <div className="ticket-create-actions compact-actions">
+                <button className="ghost-button interactive-button" disabled={testing} onClick={handleTestEmail} type="button">
+                  {testing ? "Testando..." : "Testar envio"}
+                </button>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
+
+      {activeSection === "intake" ? (
+        <section className="board-card glpi-panel">
+          <div className="glpi-toolbar">
+            <div>
+              <h2>Abertura de chamado por e-mail</h2>
+              <span>Simule a entrada da mensagem e confirme se o roteamento esta coerente.</span>
+            </div>
           </div>
-        </div>
-        <form className="glpi-ticket-form" onSubmit={handleSaveService}>
           <div className="glpi-form-grid">
             <label className="field-block">
-              <span>Provedor</span>
-              <select
-                disabled={!canManage}
-                onChange={(event) => setServiceDraft((current) => ({ ...current, provider: event.target.value }))}
-                value={serviceDraft.provider || "resend"}
-              >
-                <option value="resend">Resend</option>
-                <option value="sendgrid">SendGrid</option>
-              </select>
+              <span>Remetente</span>
+              <input onChange={(event) => setIntakeDraft((current) => ({ ...current, fromEmail: event.target.value }))} type="email" value={intakeDraft.fromEmail} />
             </label>
-            <label className="field-block">
-              <span>API key {serviceDraft.hasApiKey ? "(mantida se vazio)" : ""}</span>
-              <input
-                disabled={!canManage}
-                onChange={(event) => setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))}
-                type="password"
-                value={serviceDraft.apiKey || ""}
-              />
+            <label className="field-block field-span-2">
+              <span>Assunto</span>
+              <input onChange={(event) => setIntakeDraft((current) => ({ ...current, subject: event.target.value }))} value={intakeDraft.subject} />
             </label>
-            <label className="field-block">
-              <span>E-mail remetente</span>
-              <input
-                disabled={!canManage}
-                onChange={(event) => setServiceDraft((current) => ({ ...current, fromEmail: event.target.value }))}
-                type="email"
-                value={serviceDraft.fromEmail || ""}
-              />
-            </label>
-            <label className="field-block">
-              <span>Nome do remetente</span>
-              <input
-                disabled={!canManage}
-                onChange={(event) => setServiceDraft((current) => ({ ...current, fromName: event.target.value }))}
-                value={serviceDraft.fromName || ""}
-              />
+            <label className="field-block field-span-2">
+              <span>Corpo</span>
+              <textarea onChange={(event) => setIntakeDraft((current) => ({ ...current, body: event.target.value }))} value={intakeDraft.body} />
             </label>
           </div>
           {canManage ? (
             <div className="ticket-create-actions compact-actions">
-              <button className="primary-button interactive-button" type="submit">
-                Salvar servico
+              <button className="primary-button interactive-button" onClick={handleInboundEmail} type="button">
+                Processar e abrir chamado
               </button>
             </div>
           ) : null}
-        </form>
+        </section>
+      ) : null}
 
-        <div className="settings-divider" />
-
-        <div className="glpi-toolbar">
-          <div>
-            <h2>SMTP padrao</h2>
-            <span>Metodo principal de envio. Funciona com contas SMTP comuns, sem API key.</span>
-          </div>
-        </div>
-        <form className="glpi-ticket-form" onSubmit={handleSaveSmtp}>
-          <div className="glpi-form-grid">
-            <label className="field-block">
-              <span>Servidor SMTP</span>
-              <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, host: event.target.value }))} value={smtpDraft.host || ""} />
-            </label>
-            <label className="field-block">
-              <span>Porta</span>
-              <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, port: event.target.value }))} type="number" value={smtpDraft.port || 587} />
-            </label>
-            <label className="field-block">
-              <span>Usuario</span>
-              <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, username: event.target.value }))} value={smtpDraft.username || ""} />
-            </label>
-            <label className="field-block">
-              <span>Senha {smtpDraft.hasPassword ? "(mantida se vazio)" : ""}</span>
-              <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, password: event.target.value }))} type="password" value={smtpDraft.password || ""} />
-            </label>
-            <label className="field-block">
-              <span>E-mail remetente</span>
-              <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, fromEmail: event.target.value }))} type="email" value={smtpDraft.fromEmail || ""} />
-            </label>
-            <label className="field-block">
-              <span>Nome do remetente</span>
-              <input disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, fromName: event.target.value }))} value={smtpDraft.fromName || ""} />
-            </label>
-          </div>
-          <div className="toggle-row">
-            <label className="inline-toggle">
-              <input checked={Boolean(smtpDraft.secure)} disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, secure: event.target.checked }))} type="checkbox" />
-              <span>SSL/TLS</span>
-            </label>
-            <label className="inline-toggle">
-              <input checked={smtpDraft.requireTls !== false} disabled={!canManage} onChange={(event) => setSmtpDraft((current) => ({ ...current, requireTls: event.target.checked }))} type="checkbox" />
-              <span>Exigir TLS</span>
-            </label>
-          </div>
-          {canManage ? (
-            <div className="ticket-create-actions compact-actions">
-              <button className="primary-button interactive-button" type="submit">
-                Salvar SMTP
+      {activeSection === "logs" ? (
+        <section className="board-card glpi-panel">
+          <div className="glpi-toolbar">
+            <div>
+              <h2>Logs de envio</h2>
+              <span>Falhas nao param o sistema, mas precisam ficar visiveis para correcoes rapidas.</span>
+            </div>
+            <div className="toolbar">
+              <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("csv")} type="button">
+                CSV
+              </button>
+              <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("excel")} type="button">
+                Excel
+              </button>
+              <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("pdf")} type="button">
+                PDF
               </button>
             </div>
-          ) : null}
-        </form>
-
-        <div className="settings-divider" />
-
-        <div className="glpi-form-grid">
-          <label className="field-block field-span-2">
-            <span>Destinatarios do teste</span>
-            <input onChange={(event) => setTestDraft((current) => ({ ...current, recipients: event.target.value }))} placeholder="email1@dominio.com, email2@dominio.com" value={testDraft.recipients} />
-          </label>
-          <label className="field-block field-span-2">
-            <span>Assunto</span>
-            <input onChange={(event) => setTestDraft((current) => ({ ...current, subject: event.target.value }))} value={testDraft.subject} />
-          </label>
-          <label className="field-block field-span-2">
-            <span>Corpo</span>
-            <textarea onChange={(event) => setTestDraft((current) => ({ ...current, body: event.target.value }))} value={testDraft.body} />
-          </label>
-        </div>
-        {canManage ? (
-          <div className="ticket-create-actions compact-actions">
-            <button className="ghost-button interactive-button" disabled={testing} onClick={handleTestEmail} type="button">
-              {testing ? "Testando..." : "Testar envio"}
-            </button>
           </div>
-        ) : null}
-      </section>
-
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Logs de envio</h2>
-            <span>Falhas nao bloqueiam o sistema; ficam registradas aqui para auditoria.</span>
+          <div className="settings-log-list">
+            {notificationLogs.length ? (
+              notificationLogs.slice(0, 40).map((log) => (
+                <article className="table-row settings-log-row" key={log.id}>
+                  <div>
+                    <strong>{log.eventKey}</strong>
+                    <span>{log.ticketId || "Sem chamado"} | {log.sentAt}</span>
+                  </div>
+                  <div className="row-stats row-stats-wrap">
+                    <span>{log.recipients.join(", ") || "-"}</span>
+                    <span>{log.method || "-"}</span>
+                    <span>{log.status}</span>
+                    <span>{log.error || "-"}</span>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="empty-state">
+                <strong>Nenhum envio registrado.</strong>
+                <span>Os disparos e testes aparecerao aqui.</span>
+              </div>
+            )}
           </div>
-          <div className="toolbar">
-            <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("csv")} type="button">
-              CSV
-            </button>
-            <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("excel")} type="button">
-              Excel
-            </button>
-            <button className="ghost-button interactive-button" onClick={() => handleExportNotifications("pdf")} type="button">
-              PDF
-            </button>
-          </div>
-        </div>
-        <div className="settings-log-list">
-          {notificationLogs.length ? (
-            notificationLogs.slice(0, 40).map((log) => (
-              <article className="table-row settings-log-row" key={log.id}>
-                <div>
-                  <strong>{log.eventKey}</strong>
-                  <span>{log.ticketId || "Sem chamado"} | {log.sentAt}</span>
-                </div>
-                <div className="row-stats row-stats-wrap">
-                  <span>{log.recipients.join(", ") || "-"}</span>
-                  <span>{log.method || "-"}</span>
-                  <span>{log.status}</span>
-                  <span>{log.error || "-"}</span>
-                </div>
-              </article>
-            ))
-          ) : (
-            <div className="empty-state">
-              <strong>Nenhum envio registrado.</strong>
-              <span>Os disparos e testes aparecerão aqui.</span>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="board-card glpi-panel">
-        <div className="glpi-toolbar">
-          <div>
-            <h2>Abertura de chamado por e-mail</h2>
-            <span>Processa assunto e corpo, identifica o solicitante pelo e-mail e abre o chamado no fluxo normal.</span>
-          </div>
-        </div>
-        <div className="glpi-form-grid">
-          <label className="field-block">
-            <span>Remetente</span>
-            <input onChange={(event) => setIntakeDraft((current) => ({ ...current, fromEmail: event.target.value }))} type="email" value={intakeDraft.fromEmail} />
-          </label>
-          <label className="field-block field-span-2">
-            <span>Assunto</span>
-            <input onChange={(event) => setIntakeDraft((current) => ({ ...current, subject: event.target.value }))} value={intakeDraft.subject} />
-          </label>
-          <label className="field-block field-span-2">
-            <span>Corpo</span>
-            <textarea onChange={(event) => setIntakeDraft((current) => ({ ...current, body: event.target.value }))} value={intakeDraft.body} />
-          </label>
-        </div>
-        {canManage ? (
-          <div className="ticket-create-actions compact-actions">
-            <button className="primary-button interactive-button" onClick={handleInboundEmail} type="button">
-              Processar e abrir chamado
-            </button>
-          </div>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -20,8 +20,9 @@ const SIDEBAR_STATE_KEY = "ticketmind.sidebar.sections";
 const defaultExpandedSections = {
   attendance: true,
   operations: true,
-  technicians: true,
-  settings: true,
+  service: true,
+  admin: true,
+  integrations: true,
 };
 
 const navigationIcons = {

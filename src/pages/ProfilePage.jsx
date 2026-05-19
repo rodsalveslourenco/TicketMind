@@ -21,9 +21,15 @@ function readImageFileAsDataUrl(file) {
 }
 
 function ProfilePage() {
-  const { user } = useAuth();
+  const { changePassword, user } = useAuth();
   const { pushToast, updateOwnProfile, users } = useAppData();
   const [saving, setSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
   const fileInputRef = useRef(null);
 
   const currentUser = useMemo(
@@ -59,6 +65,35 @@ function ProfilePage() {
   const handleRemoveAvatar = () => {
     updateOwnProfile({ avatar: "" });
     pushToast("Foto removida", currentUser?.name || "Perfil");
+  };
+
+  const updatePasswordField = (field) => (event) =>
+    setPasswordForm((current) => ({ ...current, [field]: event.target.value }));
+
+  const handlePasswordSubmit = async (event) => {
+    event.preventDefault();
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      pushToast("Campos obrigatorios", "Preencha a senha atual, a nova senha e a confirmacao.", "warning");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      pushToast("Confirmacao invalida", "A confirmacao da nova senha nao confere.", "warning");
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      await changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      pushToast("Senha atualizada", "A nova senha ja esta ativa.");
+    } catch (error) {
+      pushToast("Falha ao alterar senha", error.message, "warning");
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   return (
@@ -126,6 +161,37 @@ function ProfilePage() {
             <input disabled value={currentUser?.team || ""} />
           </label>
         </div>
+      </section>
+
+      <section className="board-card profile-card">
+        <div className="card-heading">
+          <div>
+            <h2>Seguranca da conta</h2>
+            <span>Voce pode trocar a propria senha sem depender do administrador.</span>
+          </div>
+        </div>
+
+        <form className="glpi-ticket-form" onSubmit={handlePasswordSubmit}>
+          <div className="glpi-form-grid">
+            <label className="field-block">
+              <span>Senha atual</span>
+              <input autoComplete="current-password" onChange={updatePasswordField("currentPassword")} type="password" value={passwordForm.currentPassword} />
+            </label>
+            <label className="field-block">
+              <span>Nova senha</span>
+              <input autoComplete="new-password" onChange={updatePasswordField("newPassword")} type="password" value={passwordForm.newPassword} />
+            </label>
+            <label className="field-block">
+              <span>Confirmar nova senha</span>
+              <input autoComplete="new-password" onChange={updatePasswordField("confirmPassword")} type="password" value={passwordForm.confirmPassword} />
+            </label>
+          </div>
+          <div className="ticket-create-actions">
+            <button className="primary-button interactive-button" disabled={passwordSaving} type="submit">
+              {passwordSaving ? "Atualizando..." : "Alterar senha"}
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   );
