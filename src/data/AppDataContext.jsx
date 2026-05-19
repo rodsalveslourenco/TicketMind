@@ -752,7 +752,7 @@ function hydrateEmailServiceSettings(storedSettings) {
     ...(storedSettings && typeof storedSettings === "object" ? storedSettings : {}),
     hasApiKey: Boolean(storedSettings?.hasApiKey),
     apiKey: "",
-    deliveryMode: storedSettings?.deliveryMode === "service" ? "service" : "smtp",
+    deliveryMode: "smtp",
   };
 }
 
@@ -3166,7 +3166,7 @@ export function AppDataProvider({ children }) {
       ...data,
       smtpSettings: {
         ...data.smtpSettings,
-        deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
+        deliveryMode: "smtp",
         host: String(payload.host || "").trim(),
         port: Number(payload.port) || 587,
         secure: Boolean(payload.secure),
@@ -3187,12 +3187,12 @@ export function AppDataProvider({ children }) {
       ...data,
       emailServiceSettings: {
         ...data.emailServiceSettings,
-        provider: String(payload.provider || "resend").trim() || "resend",
+        provider: String(payload.provider || "").trim(),
         apiKey: String(payload.apiKey || ""),
         hasApiKey: data.emailServiceSettings?.hasApiKey || Boolean(payload.apiKey),
         fromEmail: String(payload.fromEmail || "").trim(),
         fromName: String(payload.fromName || "").trim(),
-        deliveryMode: payload.deliveryMode === "service" ? "service" : "smtp",
+        deliveryMode: "smtp",
       },
     };
     return persistStateImmediately(nextState);

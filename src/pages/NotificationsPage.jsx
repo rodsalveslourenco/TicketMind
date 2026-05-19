@@ -36,20 +36,9 @@ function resolveSmtpHealth(settings) {
   return { label: "Configurado", tone: "success", detail: `${settings.host}:${settings.port || 587}` };
 }
 
-function resolveServiceHealth(settings) {
-  const hasProvider = Boolean(String(settings.provider || "").trim());
-  const hasSender = Boolean(String(settings.fromEmail || "").trim());
-  if (!hasProvider || !hasSender) return { label: "Incompleto", tone: "warning", detail: "Defina provedor e remetente." };
-  if (!settings.hasApiKey && !String(settings.apiKey || "").trim()) {
-    return { label: "Credencial pendente", tone: "warning", detail: "A API key ainda nao foi informada." };
-  }
-  return { label: "Configurado", tone: "success", detail: settings.provider };
-}
-
 function NotificationsPage() {
   const { user } = useAuth();
   const {
-    emailServiceSettings,
     emailLayouts,
     notificationEvents,
     notificationLogs,
@@ -57,7 +46,6 @@ function NotificationsPage() {
     processInboundEmail,
     pushToast,
     requestNotificationTest,
-    saveEmailServiceSettings,
     saveNotificationRule,
     saveSmtpSettings,
     smtpSettings,
@@ -66,7 +54,6 @@ function NotificationsPage() {
   const [activeSection, setActiveSection] = useState("overview");
   const [ruleDrafts, setRuleDrafts] = useState({});
   const [smtpDraft, setSmtpDraft] = useState(smtpSettings);
-  const [serviceDraft, setServiceDraft] = useState(emailServiceSettings);
   const [testDraft, setTestDraft] = useState({
     recipients: "",
     subject: "Teste de notificacao TicketMind",
@@ -97,10 +84,6 @@ function NotificationsPage() {
     setSmtpDraft(smtpSettings);
   }, [smtpSettings]);
 
-  useEffect(() => {
-    setServiceDraft(emailServiceSettings);
-  }, [emailServiceSettings]);
-
   const sortedUsers = useMemo(
     () =>
       users
@@ -129,7 +112,6 @@ function NotificationsPage() {
   );
 
   const smtpHealth = useMemo(() => resolveSmtpHealth(smtpDraft), [smtpDraft]);
-  const serviceHealth = useMemo(() => resolveServiceHealth(serviceDraft), [serviceDraft]);
   const failedLogs = useMemo(
     () => notificationLogs.filter((log) => log.status === "Falha"),
     [notificationLogs],
@@ -171,7 +153,6 @@ function NotificationsPage() {
   const handleSaveSmtp = async (event) => {
     event.preventDefault();
     setSmtpDraft((current) => ({ ...current, deliveryMode: "smtp" }));
-    setServiceDraft((current) => ({ ...current, deliveryMode: "smtp" }));
     try {
       await saveSmtpSettings({ ...smtpDraft, deliveryMode: "smtp" });
       pushToast("SMTP atualizado", smtpDraft.host || "Configuracao salva");
@@ -180,22 +161,10 @@ function NotificationsPage() {
     }
   };
 
-  const handleSaveService = async (event) => {
-    event.preventDefault();
-    try {
-      await saveEmailServiceSettings(serviceDraft);
-      pushToast("Servico atualizado", serviceDraft.provider || "Servico de envio");
-    } catch (error) {
-      pushToast("Falha ao salvar servico", error.message, "warning");
-    }
-  };
-
   const handleTestEmail = async () => {
     setTesting(true);
     try {
       await requestNotificationTest({
-        smtpSettings: smtpDraft,
-        emailServiceSettings: serviceDraft,
         recipients: testDraft.recipients,
         subject: testDraft.subject,
         body: testDraft.body,
@@ -258,7 +227,7 @@ function NotificationsPage() {
             <span>regras prontas</span>
           </div>
           <div className="insight-chip">
-            <strong>{smtpHealth.label === "Configurado" || serviceHealth.label === "Configurado" ? "OK" : "Pendente"}</strong>
+            <strong>{smtpHealth.label === "Configurado" ? "OK" : "Pendente"}</strong>
             <span>canal de envio</span>
           </div>
           <div className="insight-chip">
@@ -299,14 +268,14 @@ function NotificationsPage() {
                 <small>{smtpHealth.detail}</small>
               </div>
               <div className="dashboard-kpi-card">
-                <span>Servico por API</span>
-                <strong>{serviceHealth.label}</strong>
-                <small>{serviceHealth.detail}</small>
+                <span>Recuperacao de senha</span>
+                <strong>{smtpHealth.label === "Configurado" ? "Disponivel" : "Bloqueada"}</strong>
+                <small>Depende do SMTP configurado.</small>
               </div>
               <div className="dashboard-kpi-card">
-                <span>Recuperacao de senha</span>
-                <strong>{smtpHealth.label === "Configurado" || serviceHealth.label === "Configurado" ? "Disponivel" : "Bloqueada"}</strong>
-                <small>Depende de envio de e-mail configurado.</small>
+                <span>Canal ativo</span>
+                <strong>SMTP</strong>
+                <small>O sistema envia somente por SMTP.</small>
               </div>
             </div>
           </section>
@@ -437,28 +406,9 @@ function NotificationsPage() {
             <div className="glpi-toolbar">
               <div>
                 <h2>Entrega de e-mail</h2>
-                <span>Escolha o canal principal e mantenha um fallback pronto.</span>
+                <span>O sistema usa apenas SMTP para notificacoes e recuperacao de senha.</span>
               </div>
             </div>
-            <div className="glpi-form-grid">
-              <label className="field-block">
-                <span>Canal principal</span>
-                <select
-                  disabled={!canManage}
-                  onChange={(event) => {
-                    const deliveryMode = event.target.value === "service" ? "service" : "smtp";
-                    setSmtpDraft((current) => ({ ...current, deliveryMode }));
-                    setServiceDraft((current) => ({ ...current, deliveryMode }));
-                  }}
-                  value={smtpDraft.deliveryMode || "smtp"}
-                >
-                  <option value="smtp">SMTP</option>
-                  <option value="service">Servico por API</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="settings-divider" />
 
             <div className="card-heading">
               <div>
@@ -516,65 +466,8 @@ function NotificationsPage() {
           <section className="board-card glpi-panel">
             <div className="card-heading">
               <div>
-                <h2>Servico por API</h2>
-                <span>{serviceHealth.detail}</span>
-              </div>
-            </div>
-            <form className="glpi-ticket-form" onSubmit={handleSaveService}>
-              <div className="glpi-form-grid">
-                <label className="field-block">
-                  <span>Provedor</span>
-                  <select
-                    disabled={!canManage}
-                    onChange={(event) => setServiceDraft((current) => ({ ...current, provider: event.target.value }))}
-                    value={serviceDraft.provider || "resend"}
-                  >
-                    <option value="resend">Resend</option>
-                    <option value="sendgrid">SendGrid</option>
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>API key {serviceDraft.hasApiKey ? "(mantida se vazio)" : ""}</span>
-                  <input
-                    disabled={!canManage}
-                    onChange={(event) => setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))}
-                    type="password"
-                    value={serviceDraft.apiKey || ""}
-                  />
-                </label>
-                <label className="field-block">
-                  <span>E-mail remetente</span>
-                  <input
-                    disabled={!canManage}
-                    onChange={(event) => setServiceDraft((current) => ({ ...current, fromEmail: event.target.value }))}
-                    type="email"
-                    value={serviceDraft.fromEmail || ""}
-                  />
-                </label>
-                <label className="field-block">
-                  <span>Nome do remetente</span>
-                  <input
-                    disabled={!canManage}
-                    onChange={(event) => setServiceDraft((current) => ({ ...current, fromName: event.target.value }))}
-                    value={serviceDraft.fromName || ""}
-                  />
-                </label>
-              </div>
-              {canManage ? (
-                <div className="ticket-create-actions compact-actions">
-                  <button className="primary-button interactive-button" type="submit">
-                    Salvar servico
-                  </button>
-                </div>
-              ) : null}
-            </form>
-
-            <div className="settings-divider" />
-
-            <div className="card-heading">
-              <div>
                 <h2>Teste de envio</h2>
-                <span>Valida a configuracao ja salva no servidor. Se alterar SMTP ou API, salve antes de testar.</span>
+                <span>Valida a configuracao SMTP ja salva no servidor. Se alterar SMTP, salve antes de testar.</span>
               </div>
             </div>
             <div className="glpi-form-grid">

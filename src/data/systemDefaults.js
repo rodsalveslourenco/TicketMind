@@ -544,7 +544,7 @@ export const defaultSmtpSettings = {
 };
 
 export const defaultEmailServiceSettings = {
-  provider: "resend",
+  provider: "",
   apiKey: "",
   hasApiKey: false,
   fromEmail: "",

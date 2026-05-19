@@ -88,75 +88,6 @@ function createMailTransport(smtpSettings) {
   });
 }
 
-async function sendWithResend(config, message) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: config.fromName ? `${config.fromName} <${config.fromEmail}>` : config.fromEmail,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Resend error: ${detail || response.status}`);
-  }
-}
-
-async function sendWithSendGrid(config, message) {
-  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: {
-        email: config.fromEmail,
-        name: config.fromName || undefined,
-      },
-      personalizations: [{ to: message.to.map((email) => ({ email })) }],
-      subject: message.subject,
-      content: [
-        { type: "text/plain", value: message.text },
-        { type: "text/html", value: message.html },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`SendGrid error: ${detail || response.status}`);
-  }
-}
-
-function resolveServiceConfig(stateOrPayload = {}) {
-  const settings = stateOrPayload?.emailServiceSettings || {};
-  const provider = String(settings.provider || process.env.EMAIL_SERVICE_PROVIDER || "resend").trim().toLowerCase();
-  const apiKey =
-    safeDecryptSecret(settings.apiKey || "") ||
-    String(process.env.EMAIL_SERVICE_API_KEY || process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY || "").trim();
-  const fromEmail =
-    String(settings.fromEmail || process.env.EMAIL_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || "").trim();
-  const fromName =
-    String(settings.fromName || process.env.EMAIL_FROM_NAME || process.env.RESEND_FROM_NAME || "TicketMind").trim();
-
-  return {
-    provider,
-    apiKey,
-    fromEmail,
-    fromName,
-    deliveryMode: String(settings.deliveryMode || "").trim().toLowerCase() === "service" ? "service" : "smtp",
-  };
-}
-
 function resolveSmtpConfig(stateOrPayload = {}) {
   const settings = stateOrPayload?.smtpSettings || {};
   return {
@@ -169,46 +100,8 @@ function isSmtpConfigured(smtpSettings = {}) {
   return Boolean(String(smtpSettings.host || "").trim() && String(smtpSettings.fromEmail || "").trim() && String(smtpSettings.password || "").trim());
 }
 
-function isServiceConfigured(serviceSettings = {}) {
-  return Boolean(String(serviceSettings.apiKey || "").trim() && String(serviceSettings.fromEmail || "").trim());
-}
-
-async function sendByService(serviceSettings, message) {
-  const provider = normalizeText(serviceSettings.provider);
-  if (provider === "sendgrid") {
-    await sendWithSendGrid(serviceSettings, message);
-    return "Servico: SendGrid";
-  }
-
-  await sendWithResend(serviceSettings, message);
-  return "Servico: Resend";
-}
-
 async function deliverEmail(stateOrPayload, message) {
   const smtpSettings = resolveSmtpConfig(stateOrPayload);
-  const serviceSettings = resolveServiceConfig(stateOrPayload);
-  const preferredMode =
-    String(stateOrPayload?.smtpSettings?.deliveryMode || stateOrPayload?.emailServiceSettings?.deliveryMode || "smtp")
-      .trim()
-      .toLowerCase();
-
-  if (preferredMode === "smtp" && isSmtpConfigured(smtpSettings)) {
-    const transport = createMailTransport(smtpSettings);
-    await transport.verify();
-    await transport.sendMail({
-      from: smtpSettings.fromName ? `"${smtpSettings.fromName}" <${smtpSettings.fromEmail}>` : smtpSettings.fromEmail,
-      to: message.to.join(", "),
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
-    return "SMTP";
-  }
-
-  if (isServiceConfigured(serviceSettings)) {
-    return sendByService(serviceSettings, message);
-  }
-
   if (isSmtpConfigured(smtpSettings)) {
     const transport = createMailTransport(smtpSettings);
     await transport.verify();
@@ -222,7 +115,7 @@ async function deliverEmail(stateOrPayload, message) {
     return "SMTP";
   }
 
-  throw new Error("Nenhum metodo de envio configurado. Defina um SMTP ou um servico de envio.");
+  throw new Error("Nenhum SMTP configurado. Defina host, remetente e credenciais de envio.");
 }
 
 function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
@@ -431,7 +324,6 @@ export function mergeIncomingState(previousState = {}, nextState = {}) {
 export async function sendNotificationTest(payload = {}, persistedState = {}) {
   const mergedState = mergeIncomingState(persistedState, {
     smtpSettings: payload.smtpSettings || {},
-    emailServiceSettings: payload.emailServiceSettings || {},
   });
   const recipients = parseEmails(payload.recipients);
   if (!recipients.length) {
