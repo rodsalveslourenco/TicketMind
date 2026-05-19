@@ -5,6 +5,7 @@ const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
   5 * 60 * 1000,
   Number(process.env.APPROVAL_REMINDER_INTERVAL_MS) || 60 * 60 * 1000,
 );
+const OPERATIONS_FORWARD_EMAIL = String(process.env.OPERATIONS_FORWARD_EMAIL || "ti@wegamarine.com.br").trim().toLowerCase();
 
 function safeDecryptSecret(value) {
   try {
@@ -69,6 +70,26 @@ function resolveTicketComments(ticket) {
 
 function compileTemplate(template, placeholders) {
   return String(template || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_match, key) => placeholders[key] ?? "");
+}
+
+function getOperationsMailboxRecipients() {
+  return OPERATIONS_FORWARD_EMAIL ? [OPERATIONS_FORWARD_EMAIL] : [];
+}
+
+function buildForwardingTextNotice(recipients = []) {
+  const originalRecipients = parseEmails(recipients);
+  if (!originalRecipients.length) return "";
+  return `\n\nDestinatarios originais previstos: ${originalRecipients.join(", ")}\nEncaminhamento operacional: ${OPERATIONS_FORWARD_EMAIL}`;
+}
+
+function buildForwardingHtmlNotice(recipients = []) {
+  const originalRecipients = parseEmails(recipients);
+  if (!originalRecipients.length) return "";
+  return `
+      <hr style="margin:24px 0;border:none;border-top:1px solid #cbd5e1" />
+      <p><strong>Destinatarios originais previstos:</strong> ${originalRecipients.join(", ")}</p>
+      <p><strong>Encaminhamento operacional:</strong> ${OPERATIONS_FORWARD_EMAIL}</p>
+  `;
 }
 
 function createMailTransport(smtpSettings) {
@@ -347,31 +368,36 @@ export async function sendPasswordRecoveryEmail(
 ) {
   const email = String(recipientEmail || "").trim().toLowerCase();
   const link = String(resetUrl || "").trim();
+  const forwardingRecipients = getOperationsMailboxRecipients();
   if (!email || !link) {
     throw new Error("Dados insuficientes para enviar a recuperacao de senha.");
+  }
+  if (!forwardingRecipients.length) {
+    throw new Error("Caixa operacional de encaminhamento nao configurada.");
   }
 
   const safeName = String(recipientName || "").trim() || "usuario";
   await deliverEmail(persistedState, {
-    to: [email],
-    subject: "Recuperacao de senha TicketMind",
+    to: forwardingRecipients,
+    subject: `Recuperacao de senha TicketMind - ${safeName}`,
     text: [
-      `Ola, ${safeName}.`,
+      "Encaminhamento operacional de recuperacao de senha.",
       "",
-      "Recebemos uma solicitacao para redefinir sua senha no TicketMind.",
+      `Usuario solicitado: ${safeName}`,
+      `Email do usuario: ${email}`,
       `Acesse o link para continuar: ${link}`,
       "",
-      "Se voce nao solicitou esta alteracao, ignore esta mensagem.",
+      "Use este e-mail para encaminhamento automatizado ao usuario final.",
     ].join("\n"),
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
-        <h2 style="margin-bottom:12px">Recuperacao de senha</h2>
-        <p>Ola, ${safeName}.</p>
-        <p>Recebemos uma solicitacao para redefinir sua senha no TicketMind.</p>
+        <h2 style="margin-bottom:12px">Encaminhamento operacional de recuperacao de senha</h2>
+        <p><strong>Usuario solicitado:</strong> ${safeName}</p>
+        <p><strong>Email do usuario:</strong> ${email}</p>
         <p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px">Redefinir senha</a></p>
         <p>Se o botao nao abrir, use este link:</p>
         <p><a href="${link}">${link}</a></p>
-        <p>Se voce nao solicitou esta alteracao, ignore esta mensagem.</p>
+        <p>Use este e-mail para encaminhamento automatizado ao usuario final.</p>
       </div>
     `,
   });
@@ -414,19 +440,28 @@ export async function processTicketNotifications({ previousState, nextState, per
       );
       const dedupeKey = `${change.key}:${nextTicket.id}:${change.signature}`;
       if (existingLogKeys.has(dedupeKey)) continue;
+      const deliveryRecipients =
+        change.key === "ticket_created" && getOperationsMailboxRecipients().length
+          ? getOperationsMailboxRecipients()
+          : recipients;
+      const deliveryText = deliveryRecipients === recipients ? body : `${body}${buildForwardingTextNotice(recipients)}`;
+      const deliveryHtml =
+        deliveryRecipients === recipients
+          ? `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>`
+          : `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>${buildForwardingHtmlNotice(recipients)}`;
 
       try {
         const method = await deliverEmail(nextState, {
-          to: recipients,
+          to: deliveryRecipients,
           subject,
-          text: body,
-          html: `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>`,
+          text: deliveryText,
+          html: deliveryHtml,
         });
         nextLogs.unshift(
           buildNotificationLogEntry({
             eventKey: change.key,
             ticketId: nextTicket.id,
-            recipients,
+            recipients: deliveryRecipients,
             status: "Enviado",
             dedupeKey,
             subject,
@@ -438,7 +473,7 @@ export async function processTicketNotifications({ previousState, nextState, per
           buildNotificationLogEntry({
             eventKey: change.key,
             ticketId: nextTicket.id,
-            recipients,
+            recipients: deliveryRecipients,
             status: "Falha",
             error: error instanceof Error ? error.message : "Falha ao enviar email.",
             dedupeKey,
