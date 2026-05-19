@@ -82,14 +82,111 @@ function buildForwardingTextNotice(recipients = []) {
   return `\n\nDestinatarios originais previstos: ${originalRecipients.join(", ")}\nEncaminhamento operacional: ${OPERATIONS_FORWARD_EMAIL}`;
 }
 
-function buildForwardingHtmlNotice(recipients = []) {
-  const originalRecipients = parseEmails(recipients);
-  if (!originalRecipients.length) return "";
-  return `
-      <hr style="margin:24px 0;border:none;border-top:1px solid #cbd5e1" />
-      <p><strong>Destinatarios originais previstos:</strong> ${originalRecipients.join(", ")}</p>
-      <p><strong>Encaminhamento operacional:</strong> ${OPERATIONS_FORWARD_EMAIL}</p>
+function buildPreformattedHtml(text, extraHtml = "") {
+  return `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${String(text || "")}</pre>${extraHtml}`;
+}
+
+export function buildPasswordRecoveryForwardMessage({
+  submittedEmail = "",
+  recipientName = "",
+  matchedUserEmail = "",
+  resetUrl = "",
+} = {}) {
+  const normalizedSubmittedEmail = String(submittedEmail || "").trim().toLowerCase();
+  const normalizedMatchedUserEmail = String(matchedUserEmail || "").trim().toLowerCase();
+  const safeName = String(recipientName || "").trim() || "usuario";
+  const forwardingRecipients = getOperationsMailboxRecipients();
+  const lines = [
+    "Encaminhamento operacional de recuperacao de senha.",
+    "",
+    `Email informado no formulario: ${normalizedSubmittedEmail || "(nao informado)"}`,
+    `Usuario vinculado encontrado: ${safeName}`,
+  ];
+
+  if (normalizedMatchedUserEmail) {
+    lines.push(`Email cadastrado do usuario: ${normalizedMatchedUserEmail}`);
+  }
+
+  if (String(resetUrl || "").trim()) {
+    lines.push(`Acesse o link para continuar: ${String(resetUrl).trim()}`);
+  } else {
+    lines.push("Nenhum usuario ativo correspondente foi localizado para gerar link de redefinicao.");
+  }
+
+  lines.push("", "Use este e-mail para encaminhamento automatizado ao usuario final.");
+
+  const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
+        <h2 style="margin-bottom:12px">Encaminhamento operacional de recuperacao de senha</h2>
+        <p><strong>Email informado no formulario:</strong> ${normalizedSubmittedEmail || "(nao informado)"}</p>
+        <p><strong>Usuario vinculado encontrado:</strong> ${safeName}</p>
+        ${normalizedMatchedUserEmail ? `<p><strong>Email cadastrado do usuario:</strong> ${normalizedMatchedUserEmail}</p>` : ""}
+        ${
+          String(resetUrl || "").trim()
+            ? `<p><a href="${String(resetUrl).trim()}" style="display:inline-block;padding:12px 18px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px">Redefinir senha</a></p>
+               <p>Se o botao nao abrir, use este link:</p>
+               <p><a href="${String(resetUrl).trim()}">${String(resetUrl).trim()}</a></p>`
+            : "<p>Nenhum usuario ativo correspondente foi localizado para gerar link de redefinicao.</p>"
+        }
+        <p>Use este e-mail para encaminhamento automatizado ao usuario final.</p>
+      </div>
   `;
+
+  return {
+    to: forwardingRecipients,
+    subject: `Recuperacao de senha TicketMind - ${safeName}`,
+    text: lines.join("\n"),
+    html,
+  };
+}
+
+export function buildTicketCreatedForwardMessage(ticket = {}, state = {}, baseUrl = "", intendedRecipients = []) {
+  const forwardingRecipients = getOperationsMailboxRecipients();
+  const watchers = Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((watcher) => watcher.email || watcher.name || "").filter(Boolean) : [];
+  const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
+  const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
+  const checklistItems = Array.isArray(ticket.checklistItems) ? ticket.checklistItems : [];
+  const placeholders = buildPlaceholders(state, ticket, "Abertura de chamado", baseUrl);
+  const lines = [
+    "Encaminhamento operacional de abertura de chamado.",
+    "",
+    `Chamado: ${ticket.id || ""}`,
+    `Titulo: ${ticket.title || ""}`,
+    `Descricao: ${ticket.description || ""}`,
+    `Solicitante: ${ticket.requester || ""}`,
+    `Email do solicitante: ${ticket.requesterEmail || ""}`,
+    `Tipo: ${ticket.type || ""}`,
+    `Status inicial: ${ticket.status || ""}`,
+    `Prioridade: ${ticket.priority || ""}`,
+    `Urgencia: ${ticket.urgency || ""}`,
+    `Impacto: ${ticket.impact || ""}`,
+    `Departamento: ${ticket.department || placeholders.departamento || ""}`,
+    `Fila: ${ticket.queue || ""}`,
+    `Categoria: ${ticket.category || ""}`,
+    `Origem: ${ticket.source || ""}`,
+    `Localizacao: ${ticket.location || ""}`,
+    `Data de abertura: ${ticket.openedAtLabel || ticket.openedAt || ""}`,
+    `SLA: ${ticket.sla || ""}`,
+    `Projeto: ${ticket.projectName || ""}`,
+    `Ativo: ${ticket.assetName || ""}`,
+    `Chamado pai: ${ticket.parentTicketId || ""}`,
+    `Aprovador atual: ${ticket.approval?.currentApproverName || ticket.approval?.approverName || ""}`,
+    `Valor para aprovacao: ${ticket.approvalAmount || 0}`,
+    `Watchers: ${watchers.join(", ") || ticket.watchers || ""}`,
+    `Anexos: ${attachments.length}`,
+    `Checklist inicial: ${checklistItems.length}`,
+    `Follow-ups iniciais: ${followUps.length}`,
+    `Link do chamado: ${placeholders.link_chamado || ""}`,
+  ];
+
+  const forwardingNotice = buildForwardingTextNotice(intendedRecipients);
+  const text = `${lines.join("\n")}${forwardingNotice}`;
+  return {
+    to: forwardingRecipients,
+    subject: `[TicketMind] Abertura de chamado - ${ticket.id || ""}`,
+    text,
+    html: buildPreformattedHtml(text),
+  };
 }
 
 function createMailTransport(smtpSettings) {
@@ -360,47 +457,27 @@ export async function sendNotificationTest(payload = {}, persistedState = {}) {
 
 export async function sendPasswordRecoveryEmail(
   {
+    submittedEmail = "",
     recipientEmail = "",
     recipientName = "",
     resetUrl = "",
   } = {},
   persistedState = {},
 ) {
-  const email = String(recipientEmail || "").trim().toLowerCase();
-  const link = String(resetUrl || "").trim();
-  const forwardingRecipients = getOperationsMailboxRecipients();
-  if (!email || !link) {
+  const normalizedSubmittedEmail = String(submittedEmail || "").trim().toLowerCase();
+  if (!normalizedSubmittedEmail) {
     throw new Error("Dados insuficientes para enviar a recuperacao de senha.");
   }
-  if (!forwardingRecipients.length) {
+  const message = buildPasswordRecoveryForwardMessage({
+    submittedEmail: normalizedSubmittedEmail,
+    recipientName,
+    matchedUserEmail: recipientEmail,
+    resetUrl,
+  });
+  if (!message.to.length) {
     throw new Error("Caixa operacional de encaminhamento nao configurada.");
   }
-
-  const safeName = String(recipientName || "").trim() || "usuario";
-  await deliverEmail(persistedState, {
-    to: forwardingRecipients,
-    subject: `Recuperacao de senha TicketMind - ${safeName}`,
-    text: [
-      "Encaminhamento operacional de recuperacao de senha.",
-      "",
-      `Usuario solicitado: ${safeName}`,
-      `Email do usuario: ${email}`,
-      `Acesse o link para continuar: ${link}`,
-      "",
-      "Use este e-mail para encaminhamento automatizado ao usuario final.",
-    ].join("\n"),
-    html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
-        <h2 style="margin-bottom:12px">Encaminhamento operacional de recuperacao de senha</h2>
-        <p><strong>Usuario solicitado:</strong> ${safeName}</p>
-        <p><strong>Email do usuario:</strong> ${email}</p>
-        <p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px">Redefinir senha</a></p>
-        <p>Se o botao nao abrir, use este link:</p>
-        <p><a href="${link}">${link}</a></p>
-        <p>Use este e-mail para encaminhamento automatizado ao usuario final.</p>
-      </div>
-    `,
-  });
+  await deliverEmail(persistedState, message);
 }
 
 export async function processTicketNotifications({ previousState, nextState, persistState, baseUrl }) {
@@ -417,6 +494,38 @@ export async function processTicketNotifications({ previousState, nextState, per
   for (const nextTicket of nextTickets.values()) {
     const previousTicket = previousTickets.get(nextTicket.id) || null;
     const changes = resolveEventChanges(previousTicket, nextTicket);
+    const createdDeliveryKey = `ticket_created_operational:${nextTicket.id}:${nextTicket.openedAt || nextTicket.updatedAtIso || nextTicket.id}`;
+
+    if (!previousTicket && !existingLogKeys.has(createdDeliveryKey) && getOperationsMailboxRecipients().length) {
+      try {
+        const method = await deliverEmail(nextState, buildTicketCreatedForwardMessage(nextTicket, nextState, baseUrl));
+        nextLogs.unshift(
+          buildNotificationLogEntry({
+            eventKey: "ticket_created",
+            ticketId: nextTicket.id,
+            recipients: getOperationsMailboxRecipients(),
+            status: "Enviado",
+            dedupeKey: createdDeliveryKey,
+            subject: `[TicketMind] Abertura de chamado - ${nextTicket.id || ""}`,
+            method,
+          }),
+        );
+      } catch (error) {
+        nextLogs.unshift(
+          buildNotificationLogEntry({
+            eventKey: "ticket_created",
+            ticketId: nextTicket.id,
+            recipients: getOperationsMailboxRecipients(),
+            status: "Falha",
+            error: error instanceof Error ? error.message : "Falha ao enviar email operacional de abertura.",
+            dedupeKey: createdDeliveryKey,
+            subject: `[TicketMind] Abertura de chamado - ${nextTicket.id || ""}`,
+            method: "Falha",
+          }),
+        );
+      }
+      existingLogKeys.add(createdDeliveryKey);
+    }
 
     for (const change of changes) {
       const rule = rules.find((candidate) => candidate.eventKey === change.key);
@@ -440,28 +549,19 @@ export async function processTicketNotifications({ previousState, nextState, per
       );
       const dedupeKey = `${change.key}:${nextTicket.id}:${change.signature}`;
       if (existingLogKeys.has(dedupeKey)) continue;
-      const deliveryRecipients =
-        change.key === "ticket_created" && getOperationsMailboxRecipients().length
-          ? getOperationsMailboxRecipients()
-          : recipients;
-      const deliveryText = deliveryRecipients === recipients ? body : `${body}${buildForwardingTextNotice(recipients)}`;
-      const deliveryHtml =
-        deliveryRecipients === recipients
-          ? `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>`
-          : `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>${buildForwardingHtmlNotice(recipients)}`;
 
       try {
         const method = await deliverEmail(nextState, {
-          to: deliveryRecipients,
+          to: recipients,
           subject,
-          text: deliveryText,
-          html: deliveryHtml,
+          text: body,
+          html: `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${body}</pre>`,
         });
         nextLogs.unshift(
           buildNotificationLogEntry({
             eventKey: change.key,
             ticketId: nextTicket.id,
-            recipients: deliveryRecipients,
+            recipients,
             status: "Enviado",
             dedupeKey,
             subject,
@@ -473,7 +573,7 @@ export async function processTicketNotifications({ previousState, nextState, per
           buildNotificationLogEntry({
             eventKey: change.key,
             ticketId: nextTicket.id,
-            recipients: deliveryRecipients,
+            recipients,
             status: "Falha",
             error: error instanceof Error ? error.message : "Falha ao enviar email.",
             dedupeKey,

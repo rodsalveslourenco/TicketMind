@@ -610,32 +610,29 @@ app.post("/api/auth/forgot-password", handleAsync(async (request, response) => {
     return;
   }
 
-  if (!account || !isActiveUser(account)) {
-    response.json({ ok: true, message: "Se o e-mail existir e estiver ativo, enviaremos o link de recuperacao." });
-    return;
-  }
-
-  const { token } = createPasswordResetToken(account);
-  const resetUrl = `${resetUrlBase}?token=${encodeURIComponent(token)}`;
+  const activeAccount = account && isActiveUser(account) ? account : null;
+  const { token } = activeAccount ? createPasswordResetToken(activeAccount) : { token: "" };
+  const resetUrl = token ? `${resetUrlBase}?token=${encodeURIComponent(token)}` : "";
 
   try {
     await sendPasswordRecoveryEmail(
       {
-        recipientEmail: account.email,
-        recipientName: account.name,
+        submittedEmail: normalizedEmail,
+        recipientEmail: activeAccount?.email || "",
+        recipientName: activeAccount?.name || "usuario",
         resetUrl,
       },
       state,
     );
     await insertSystemLog(
       createSystemLog({
-        ...buildActorFromUser(account),
+        ...buildActorFromUser(activeAccount || null),
         module: "autenticacao",
         eventType: "configuracao",
-        description: `Link de recuperacao de senha enviado para ${account.email}.`,
+        description: `Solicitacao de recuperacao de senha registrada para ${normalizedEmail}.`,
         origin: getRequestOrigin(request),
         status: "sucesso",
-        metadata: { action: "password_recovery_request" },
+        metadata: { action: "password_recovery_request", submittedEmail: normalizedEmail, matchedUserId: activeAccount?.id || "" },
       }),
     );
     response.json({ ok: true, message: "Se o e-mail existir e estiver ativo, enviaremos o link de recuperacao." });

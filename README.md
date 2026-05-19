@@ -36,6 +36,7 @@ Arquiteturalmente, o projeto segue como um monolito web simples:
 - protecao de rotas no frontend
 - validacao de acoes criticas no backend
 - invalidacao de sessao por alteracao de credenciais
+- recuperacao de senha com notificacao operacional centralizada em `ti@wegamarine.com.br`
 
 ### Dashboard operacional
 
@@ -108,6 +109,8 @@ Endpoints legados principais:
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 - `GET /api/auth/session`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
 - `GET /api/state`
 - `PUT /api/state`
 - `POST /api/notifications/test`
@@ -153,6 +156,19 @@ Variaveis aceitas:
 - `DB_DIR`: diretorio base do SQLite
 - `DB_PATH`: caminho completo do arquivo SQLite
 - `DATABASE_URL`: ativa Postgres
+- `OPERATIONS_FORWARD_EMAIL`: caixa operacional usada para recuperacao de senha e copia obrigatoria de abertura de chamado. Padrao `ti@wegamarine.com.br`
+
+## Comportamento de notificacoes operacionais
+
+Alguns fluxos foram fixados para uma caixa operacional unica com o objetivo de permitir encaminhamento externo por automacao:
+
+- toda solicitacao de recuperacao de senha envia a notificacao para `ti@wegamarine.com.br` por padrao
+- o e-mail digitado pelo usuario no formulario de recuperacao nao e usado como destinatario
+- o e-mail digitado no formulario aparece apenas no corpo da mensagem como dado informado
+- quando existe um usuario ativo correspondente, o link de redefinicao e incluido no corpo do e-mail enviado para a caixa operacional
+- toda abertura de chamado gera uma copia operacional completa para `ti@wegamarine.com.br`
+- essa copia operacional lista os dados relevantes do chamado: id, titulo, descricao, solicitante, email, prioridade, tipo, fila, departamento, categoria, localizacao, SLA, projeto, ativo, anexos, checklist e link
+- as regras normais de notificacao do sistema continuam existindo; a copia operacional de abertura de chamado e adicional e nao substitui os demais destinatarios configurados
 
 ### Modo Render / Postgres
 
