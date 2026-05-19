@@ -3200,23 +3200,11 @@ export function AppDataProvider({ children }) {
 
   const requestNotificationTest = async (payload) => {
     if (!hasAnyPermission(user, ["notifications_manage", "users_admin"])) return;
-    const nextState = {
-      ...data,
-      smtpSettings: {
-        ...data.smtpSettings,
-        ...(payload.smtpSettings || {}),
-        hasPassword: data.smtpSettings?.hasPassword || Boolean(payload.smtpSettings?.password),
-      },
-      emailServiceSettings: {
-        ...data.emailServiceSettings,
-        ...(payload.emailServiceSettings || {}),
-        hasApiKey: data.emailServiceSettings?.hasApiKey || Boolean(payload.emailServiceSettings?.apiKey),
-      },
-    };
-
-    await persistStateImmediately(nextState);
-
-    return sendNotificationTestRequest(payload);
+    return sendNotificationTestRequest({
+      recipients: payload?.recipients || "",
+      subject: payload?.subject || "",
+      body: payload?.body || "",
+    });
   };
 
   const processInboundEmail = (payload = {}) => {

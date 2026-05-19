@@ -574,7 +574,7 @@ function NotificationsPage() {
             <div className="card-heading">
               <div>
                 <h2>Teste de envio</h2>
-                <span>Valida a configuracao atual sem depender de alteracao em chamado real.</span>
+                <span>Valida a configuracao ja salva no servidor. Se alterar SMTP ou API, salve antes de testar.</span>
               </div>
             </div>
             <div className="glpi-form-grid">
