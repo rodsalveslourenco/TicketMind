@@ -16,6 +16,7 @@ test("password recovery always routes to TI and keeps submitted email in body", 
 
   assert.deepEqual(message.to, ["ti@wegamarine.com.br"]);
   assert.equal(message.subject, "Recuperacao de senha TicketMind - Rodrigo Alves");
+  assert.equal(message.meta?.transport, "formsubmit");
   assert.match(message.text, /Email informado no formulario: solicitante@externo\.com/);
   assert.match(message.text, /Email cadastrado do usuario: rodrigo@interno\.local/);
   assert.doesNotMatch(message.to.join(","), /solicitante@externo\.com/);
@@ -31,6 +32,7 @@ test("password recovery without matched user still notifies TI", () => {
   });
 
   assert.deepEqual(message.to, ["ti@wegamarine.com.br"]);
+  assert.equal(message.meta?.transport, "formsubmit");
   assert.match(message.text, /naoexiste@externo\.com/);
   assert.match(message.text, /Nenhum usuario ativo correspondente foi localizado/);
 });
@@ -71,6 +73,7 @@ test("ticket created forwarding contains the full operational form for TI", () =
 
   assert.deepEqual(message.to, ["ti@wegamarine.com.br"]);
   assert.match(message.subject, /\[TicketMind\] Abertura de chamado - INC-2050/);
+  assert.equal(message.meta?.transport, "formsubmit");
   assert.match(message.text, /Titulo: Impressora sem comunicacao/);
   assert.match(message.text, /Descricao: Equipamento da recepcao nao imprime etiquetas\./);
   assert.match(message.text, /Email do solicitante: marina@empresa\.com\.br/);

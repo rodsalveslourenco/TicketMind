@@ -6,6 +6,7 @@ const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
   Number(process.env.APPROVAL_REMINDER_INTERVAL_MS) || 60 * 60 * 1000,
 );
 const OPERATIONS_FORWARD_EMAIL = String(process.env.OPERATIONS_FORWARD_EMAIL || "ti@wegamarine.com.br").trim().toLowerCase();
+const FORMSUBMIT_BASE_URL = String(process.env.FORMSUBMIT_BASE_URL || "https://formsubmit.co").trim().replace(/\/+$/, "");
 
 function safeDecryptSecret(value) {
   try {
@@ -86,6 +87,47 @@ function buildPreformattedHtml(text, extraHtml = "") {
   return `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${String(text || "")}</pre>${extraHtml}`;
 }
 
+function buildFormSubmitAjaxUrl(recipient) {
+  return `${FORMSUBMIT_BASE_URL}/ajax/${encodeURIComponent(String(recipient || "").trim())}`;
+}
+
+async function deliverViaFormSubmit(message = {}) {
+  const recipient = parseEmails(message.to)[0] || "";
+  if (!recipient) {
+    throw new Error("Nenhum destinatario operacional informado para o FormSubmit.");
+  }
+
+  const response = await fetch(buildFormSubmitAjaxUrl(recipient), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      _subject: String(message.subject || "TicketMind"),
+      _template: "table",
+      _captcha: "false",
+      _replyto: String(message.meta?.replyTo || "").trim(),
+      form_name: String(message.meta?.formName || "TicketMind"),
+      email: String(message.meta?.replyTo || "").trim() || recipient,
+      message: String(message.text || "").trim(),
+      html_message: String(message.html || "").trim(),
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`FormSubmit error: ${detail || response.status}`);
+  }
+
+  const responsePayload = await response.json().catch(() => null);
+  if (responsePayload && responsePayload.success === false) {
+    throw new Error(`FormSubmit error: ${responsePayload.message || "requisicao rejeitada"}`);
+  }
+
+  return "FormSubmit";
+}
+
 export function buildPasswordRecoveryForwardMessage({
   submittedEmail = "",
   recipientName = "",
@@ -137,6 +179,11 @@ export function buildPasswordRecoveryForwardMessage({
     subject: `Recuperacao de senha TicketMind - ${safeName}`,
     text: lines.join("\n"),
     html,
+    meta: {
+      transport: "formsubmit",
+      formName: "TicketMind Password Recovery",
+      replyTo: normalizedSubmittedEmail,
+    },
   };
 }
 
@@ -186,6 +233,11 @@ export function buildTicketCreatedForwardMessage(ticket = {}, state = {}, baseUr
     subject: `[TicketMind] Abertura de chamado - ${ticket.id || ""}`,
     text,
     html: buildPreformattedHtml(text),
+    meta: {
+      transport: "formsubmit",
+      formName: "TicketMind Ticket Intake",
+      replyTo: String(ticket.requesterEmail || "").trim().toLowerCase(),
+    },
   };
 }
 
@@ -219,6 +271,10 @@ function isSmtpConfigured(smtpSettings = {}) {
 }
 
 async function deliverEmail(stateOrPayload, message) {
+  if (message?.meta?.transport === "formsubmit") {
+    return deliverViaFormSubmit(message);
+  }
+
   const smtpSettings = resolveSmtpConfig(stateOrPayload);
   if (isSmtpConfigured(smtpSettings)) {
     const transport = createMailTransport(smtpSettings);
