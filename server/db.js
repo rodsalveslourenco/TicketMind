@@ -610,6 +610,8 @@ function protectProductionCollections(nextCollections = {}, existingCollections 
 let sqlitePromise = null;
 let pgPool = null;
 let pgSchemaPromise = null;
+let sqliteHistoryCleanupPromise = null;
+let pgHistoryCleanupPromise = null;
 let stateCache = null;
 let stateCacheBackend = "";
 let stateReadPromise = null;
@@ -793,6 +795,19 @@ async function getSqliteDb() {
   }
 
   return sqlitePromise;
+}
+
+async function cleanupSqliteStateHistory() {
+  if (sqliteHistoryCleanupPromise) return sqliteHistoryCleanupPromise;
+  sqliteHistoryCleanupPromise = (async () => {
+    const db = await getSqliteDb();
+    db.run("DELETE FROM app_state_history");
+    await persistSqliteDb(db);
+  })().catch((error) => {
+    sqliteHistoryCleanupPromise = null;
+    throw error;
+  });
+  return sqliteHistoryCleanupPromise;
 }
 
 function persistSqliteDb(db) {
@@ -1172,7 +1187,6 @@ async function writeSqliteState(nextState) {
     JSON.stringify(buildLegacyAppStatePayload(protectedState)),
     now,
   ]);
-  db.run("INSERT INTO app_state_history (data, created_at) VALUES (?, ?)", [JSON.stringify(protectedState), now]);
   await persistSqliteDb(db);
   return protectedState;
 }
@@ -1363,6 +1377,19 @@ async function ensurePgSchema() {
   await pgSchemaPromise;
 }
 
+async function cleanupPostgresStateHistory() {
+  await ensurePgSchema();
+  if (pgHistoryCleanupPromise) return pgHistoryCleanupPromise;
+  pgHistoryCleanupPromise = (async () => {
+    const pool = getPgPool();
+    await pool.query("TRUNCATE TABLE app_state_history");
+  })().catch((error) => {
+    pgHistoryCleanupPromise = null;
+    throw error;
+  });
+  return pgHistoryCleanupPromise;
+}
+
 async function readPostgresStateRaw() {
   await ensurePgSchema();
   const pool = getPgPool();
@@ -1371,17 +1398,11 @@ async function readPostgresStateRaw() {
 }
 
 async function readSqliteStateBackupRaw() {
-  const db = await getSqliteDb();
-  const result = db.exec("SELECT data FROM app_state_history ORDER BY created_at DESC, id DESC LIMIT 1");
-  const rawData = result?.[0]?.values?.[0]?.[0];
-  return parseJson(rawData, null);
+  return readSqliteStateRaw();
 }
 
 async function readPostgresStateBackupRaw() {
-  await ensurePgSchema();
-  const pool = getPgPool();
-  const { rows } = await pool.query("SELECT data FROM app_state_history ORDER BY created_at DESC, id DESC LIMIT 1");
-  return rows[0]?.data || null;
+  return readPostgresStateRaw();
 }
 
 async function readPostgresCollections() {
@@ -1640,7 +1661,6 @@ async function writePostgresState(nextState) {
     `,
     [JSON.stringify(buildLegacyAppStatePayload(protectedState))],
   );
-  await pool.query("INSERT INTO app_state_history (data, created_at) VALUES ($1::jsonb, NOW())", [JSON.stringify(protectedState)]);
 
   return protectedState;
 }
@@ -1901,6 +1921,7 @@ async function queryPostgresSystemLogs(filters = {}) {
 
 async function loadStateFromStorage() {
   if (!isPostgresEnabled()) {
+    await cleanupSqliteStateHistory();
     await migrateSqliteCollectionsIfNeeded();
     const [sqliteState, collections, domainCollections, singletonState] = await Promise.all([
       readSqliteStateRaw(),
@@ -1932,6 +1953,7 @@ async function loadStateFromStorage() {
     return initialState;
   }
 
+  await cleanupPostgresStateHistory();
   await migratePostgresCollectionsIfNeeded();
   await ensurePgSchema();
   const [postgresState, collections, domainCollections, singletonState] = await Promise.all([
