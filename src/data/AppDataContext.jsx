@@ -1608,9 +1608,13 @@ export function AppDataProvider({ children }) {
 
     try {
       const persistedTicket = await createTicketRequest(createdTicket);
-      const persistedState = await loadAppState();
       skipNextPersistenceRef.current = true;
-      setData(mergeCollections(persistedState));
+      setData((latest) =>
+        mergeCollections({
+          ...latest,
+          tickets: [persistedTicket || createdTicket, ...(latest.tickets || []).filter((ticket) => ticket.id !== createdTicket.id)],
+        }),
+      );
       return persistedTicket || createdTicket;
     } catch (error) {
       console.error(error);
