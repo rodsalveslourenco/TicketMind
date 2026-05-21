@@ -330,6 +330,7 @@ function TicketsPage() {
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
   const canCloseTicket = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
+  const canRecordResolution = hasAnyPermission(user, ["tickets_edit", "tickets_close", "tickets_admin"]);
   const canReopenTicket = hasAnyPermission(user, ["tickets_reopen", "tickets_admin"]);
   const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);
   const canViewPrivateFollowUps = hasAnyPermission(user, ["tickets_admin", "tickets_edit", "tickets_assign", "tickets_change_status"]);
@@ -1209,10 +1210,9 @@ function TicketsPage() {
     }
 
     updateTicket(detailTicket.id, {
-      ...detailForm,
       status: "Resolvido",
-      dueDate: detailForm.dueDate || "",
       resolutionNotes: detailForm.resolutionNotes.trim(),
+      slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
     });
     pushToast("Chamado finalizado", detailForm.title);
   };
@@ -1444,7 +1444,11 @@ function TicketsPage() {
         pushToast("Solucao obrigatoria", "Preencha a solucao tecnica antes do atalho de encerramento.", "warning");
         return;
       }
-      updateTicket(detailTicket.id, { ...detailForm, status: "Resolvido", resolutionNotes: detailForm.resolutionNotes.trim() });
+      updateTicket(detailTicket.id, {
+        status: "Resolvido",
+        resolutionNotes: detailForm.resolutionNotes.trim(),
+        slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
+      });
       pushToast("Atalho aplicado", "Chamado resolvido.");
     }
   };
@@ -1485,7 +1489,11 @@ function TicketsPage() {
         pushToast("Solucao obrigatoria", `Preencha a solucao de ${ticket.id} antes de resolver.`, "warning");
         return;
       }
-      updateTicket(ticket.id, { status: "Resolvido", resolutionNotes: String(ticket.resolutionNotes || "").trim() });
+      updateTicket(ticket.id, {
+        status: "Resolvido",
+        resolutionNotes: String(ticket.resolutionNotes || "").trim(),
+        slaTargetMinutes: Math.max(15, Number(ticket.slaTargetMinutes) || 240),
+      });
       pushToast("Atalho aplicado", `${ticket.id} resolvido.`);
     }
   };
@@ -2662,7 +2670,7 @@ function TicketsPage() {
 
               <label className={`field-block field-full${detailDirtyFields.resolutionNotes ? " is-dirty" : ""}`}>
                 <span>Solucao tecnica</span>
-                <textarea disabled={!canEditTicket} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
+                <textarea disabled={!canRecordResolution} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
               </label>
               {statusRequiresPauseReason(detailForm.status, serviceCenter || {}) ? (
                 <label className={`field-block field-full${detailDirtyFields.pauseReason ? " is-dirty" : ""}`}>
@@ -3141,7 +3149,7 @@ function TicketsPage() {
               </section>
 
               <div className="ticket-create-actions">
-                {canEditTicket ? (
+                {canEditTicket || canRecordResolution ? (
                   <button className="primary-button interactive-button" type="submit">
                     Salvar alteracoes
                   </button>
