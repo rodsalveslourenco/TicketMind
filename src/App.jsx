@@ -22,7 +22,6 @@ import DepartmentsPage from "./pages/DepartmentsPage";
 import LocationsPage from "./pages/LocationsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import EmailLayoutsPage from "./pages/EmailLayoutsPage";
-import SystemLogsPage from "./pages/SystemLogsPage";
 import PermissionProfilesPage from "./pages/PermissionProfilesPage";
 import CentralServicesPage from "./pages/CentralServicesPage";
 
@@ -66,7 +65,6 @@ function App() {
         <Route element={<ProtectedRoute moduleKey="settings_locations"><LocationsPage /></ProtectedRoute>} path="settings/locations" />
         <Route element={<ProtectedRoute moduleKey="notifications"><NotificationsPage /></ProtectedRoute>} path="notifications" />
         <Route element={<ProtectedRoute moduleKey="email_layouts"><EmailLayoutsPage /></ProtectedRoute>} path="email-layouts" />
-        <Route element={<ProtectedRoute moduleKey="system_logs"><SystemLogsPage /></ProtectedRoute>} path="system-logs" />
       </Route>
       <Route
         element={<Navigate replace to={isAuthenticated ? homePath : "/login"} />}

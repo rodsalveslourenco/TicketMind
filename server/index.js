@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHistoryEntry, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
-import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
+import { insertSystemLog, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -25,7 +25,7 @@ import {
   verifyPassword,
   verifySessionToken,
 } from "./security.js";
-import { buildActorFromUser, collectStateAuditLogs, createSystemLog, getRequestOrigin, isTiDepartmentUser } from "./systemLogs.js";
+import { buildActorFromUser, collectStateAuditLogs, createSystemLog, getRequestOrigin } from "./systemLogs.js";
 import { createV1Router } from "./api/routes/v1.js";
 import * as stateRepository from "./repositories/stateRepository.js";
 import { createStateService } from "./services/stateService.js";
@@ -60,10 +60,6 @@ function isDatabaseConnectionError(error) {
     message.includes("connection terminated unexpectedly") ||
     message.includes("connect econnrefused")
   );
-}
-
-function hasPermission(user, permissionKey) {
-  return Boolean(user?.permissions && user.permissions[permissionKey]);
 }
 
 function isActiveUser(user) {
@@ -372,32 +368,6 @@ async function requireAuthenticatedUser(request, response, stateOverride = null)
   }
 
   return { state, requestUser, session };
-}
-
-async function requireTiAccess(request, response, stateOverride = null) {
-  const auth = await requireAuthenticatedUser(request, response, stateOverride);
-  if (!auth) return null;
-  if (isTiDepartmentUser(auth.requestUser) && hasPermission(auth.requestUser, "system_logs_view")) {
-    return auth;
-  }
-
-  await insertSystemLog(
-    createSystemLog({
-      ...buildActorFromUser(auth.requestUser, { userName: "Acesso nao autorizado" }),
-      module: "seguranca",
-      eventType: "permissao",
-      description: "Tentativa de acesso nao autorizado ao Log Geral do Sistema.",
-      origin: getRequestOrigin(request),
-      status: "erro",
-      metadata: {
-        route: request.originalUrl,
-        method: request.method,
-      },
-    }),
-  );
-
-  response.status(403).json({ error: "Acesso restrito ao departamento de TI." });
-  return null;
 }
 
 app.get("/api/health", (_request, response) => {
@@ -756,28 +726,6 @@ app.post("/api/notifications/test", handleAsync(async (request, response) => {
       error: error instanceof Error ? error.message : "Falha ao testar envio de email.",
     });
   }
-}));
-
-app.get("/api/system-logs", handleAsync(async (request, response) => {
-  const access = await requireTiAccess(request, response);
-  if (!access) return;
-
-  const startDate = String(request.query.startDate || "").trim();
-  const endDate = String(request.query.endDate || "").trim();
-  const queryResult = await querySystemLogs({
-    startDate: toIsoDateOrEmpty(startDate),
-    endDate: toIsoDateOrEmpty(endDate, { endOfDay: true }),
-    user: String(request.query.user || "").trim(),
-    department: String(request.query.department || "").trim(),
-    module: String(request.query.module || "").trim(),
-    eventType: String(request.query.eventType || "").trim(),
-    status: String(request.query.status || "").trim(),
-    search: String(request.query.search || "").trim(),
-    page: Number(request.query.page) || 1,
-    limit: Number(request.query.limit) || 25,
-  });
-
-  response.json(queryResult);
 }));
 
 app.use(express.static(distPath));

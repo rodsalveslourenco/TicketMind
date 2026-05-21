@@ -60,7 +60,6 @@ import {
   parseInboundEmailTicket,
   progressApprovalWorkflow,
   resolveApprovalWorkflow,
-  resolveTicketSlaTargets,
 } from "./ticketAutomation";
 
 const AppDataContext = createContext(null);
@@ -549,7 +548,7 @@ function hydratePermissionCatalog(storedCatalog) {
         action: String(permission.action || "view").trim(),
       })),
     }))
-    .filter((module) => module.module && module.permissions.length);
+    .filter((module) => module.module && module.permissions.length && module.module !== "system_logs");
 
   return normalizedDefaults
     .map((defaultModule) => {
@@ -632,13 +631,15 @@ function hydrateNavigationSections(storedSections) {
       return {
         ...defaultSection,
         ...storedSection,
-        items: dedupeNavigationItems([...mergedItems, ...extraItems].filter((item) => item.to !== "/app/locations")),
+        items: dedupeNavigationItems(
+          [...mergedItems, ...extraItems].filter((item) => item.to !== "/app/locations" && item.to !== "/app/system-logs" && item.module !== "system_logs"),
+        ),
       };
     })
     .concat(normalizedStored.filter((section) => !normalizedDefaults.some((candidate) => candidate.key === section.key)))
     .map((section) => ({
       ...section,
-      items: dedupeNavigationItems(section.items || []),
+      items: dedupeNavigationItems((section.items || []).filter((item) => item.to !== "/app/system-logs" && item.module !== "system_logs")),
     }))
     .filter((section) => section.key && section.items.length)
     .sort((left, right) => left.order - right.order);
@@ -1157,10 +1158,6 @@ const TICKET_STATUS_TRANSITIONS = {
   Reaberto: ["Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Resolvido"],
 };
 
-function resolveTicketSlaPolicyMinutes(ticketLike = {}, serviceCenter = defaultServiceCenterSettings) {
-  return resolveTicketSlaTargets(ticketLike, serviceCenter?.slaPolicies || []).resolutionMinutes;
-}
-
 function getAllowedTicketStatusesForTicket(ticket, serviceCenter = defaultServiceCenterSettings) {
   const statusOptions = getTicketStatusOptionsForType(ticket?.type || "Incidente", serviceCenter);
   const currentStatus = normalizeTicketStatus(ticket?.status || "Aberto", statusOptions);
@@ -1475,24 +1472,8 @@ export function AppDataProvider({ children }) {
           }
         : resolveApprovalState(routedPayload.type, payload.approval);
       const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
-      const slaTargets = resolveTicketSlaTargets(
-        {
-          type: routedPayload.type,
-          priority,
-          category: routedPayload.category,
-          department: routedPayload.department,
-          departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
-        },
-        current.serviceCenter?.slaPolicies || [],
-      );
-      const slaTargetMinutes = slaTargets.resolutionMinutes;
-      const initialResponseTargetMinutes = slaTargets.initialResponseMinutes;
-      const slaRuleScope = {
-        type: routedPayload.type,
-        priority,
-        category: routedPayload.category,
-        department: routedPayload.department,
-      };
+      const slaTargetMinutes = Math.max(15, Number(payload.slaTargetMinutes) || 240);
+      const initialResponseTargetMinutes = Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25));
       const history = [
         createHistoryEntry({
           type: "created",
@@ -1505,7 +1486,7 @@ export function AppDataProvider({ children }) {
             department: targetDepartment?.name || "",
             queue: routedPayload.queue || "Service Desk",
             approvalAmount: Number(payload.approvalAmount) || 0,
-            slaRule: slaTargets.matchedRuleName || "",
+            slaOrigin: "manual",
           },
           createdAt: nowIso,
         }),
@@ -1567,7 +1548,11 @@ export function AppDataProvider({ children }) {
         parentTicketId: String(payload.parentTicketId || "").trim(),
         childTicketIds: [],
         parentTicketTitle: "",
-        slaRuleScope,
+        slaRuleScope: {
+          source: "manual",
+          technicianId: String(user?.id || "").trim(),
+          technicianName: String(user?.name || "Sistema").trim(),
+        },
       };
 
       return { ...current, tickets: [createdTicket, ...current.tickets] };
@@ -1938,15 +1923,11 @@ export function AppDataProvider({ children }) {
           historyEntries.push(createHistoryEntry({ type: "approval_rejected", actorId: user?.id, actorName: user?.name || "Sistema", message: "Requisicao reprovada", createdAt: nowIso }));
         }
 
-        const slaTargets = resolveTicketSlaTargets({
-          type: updates.type ?? ticket.type,
-          priority: nextPriority,
-          category: nextCategory,
-          department: nextDepartment,
-          departmentId: nextDepartmentId,
-        }, current.serviceCenter?.slaPolicies || []);
-        const nextSlaTargetMinutes = slaTargets.resolutionMinutes;
-        const nextInitialResponseTargetMinutes = slaTargets.initialResponseMinutes;
+        const nextSlaTargetMinutes = Math.max(15, Number(updates.slaTargetMinutes ?? ticket.slaTargetMinutes) || 240);
+        const nextInitialResponseTargetMinutes = Math.max(
+          15,
+          Number(updates.initialResponseTargetMinutes ?? ticket.initialResponseTargetMinutes) || Math.round(nextSlaTargetMinutes * 0.25),
+        );
         const routedState = applyRoutingRules({
           type: updates.type ?? ticket.type,
           category: nextCategory,
@@ -2018,7 +1999,11 @@ export function AppDataProvider({ children }) {
           projectName: nextProjectName,
           assetId: nextAssetId,
           assetName: nextAssetName,
-          slaRuleScope: { type: updates.type ?? ticket.type, priority: nextPriority, category: nextCategory, department: nextDepartment },
+          slaRuleScope: {
+            source: "manual",
+            technicianId: String(user?.id || "").trim(),
+            technicianName: String(user?.name || "Sistema").trim(),
+          },
           history: appendHistory(ticket, historyEntries),
         };
       }),

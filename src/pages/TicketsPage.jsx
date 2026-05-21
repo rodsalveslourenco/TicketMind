@@ -31,6 +31,7 @@ const defaultCreateForm = {
   priority: "Media",
   urgency: "Media",
   impact: "Media",
+  slaTargetMinutes: "240",
   watchers: [],
   watcherEventKeys: [...DEFAULT_WATCHER_EVENT_KEYS],
   description: "",
@@ -234,6 +235,13 @@ function buildChecklistTemplate(type) {
     label,
     checked: false,
   }));
+}
+
+function formatSlaMinutesLabel(minutes) {
+  const normalizedMinutes = Number(minutes) || 0;
+  if (normalizedMinutes < 60) return `${normalizedMinutes} min`;
+  if (normalizedMinutes % 60 === 0) return `${normalizedMinutes / 60}h`;
+  return `${(normalizedMinutes / 60).toFixed(1)}h`;
 }
 
 function getTypeProfile(type) {
@@ -853,6 +861,7 @@ function TicketsPage() {
       priority: detailTicket.priority,
       urgency: detailTicket.urgency || detailTicket.priority,
       impact: detailTicket.impact || detailTicket.priority,
+      slaTargetMinutes: String(detailTicket.slaTargetMinutes || 240),
       dueDate: detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : "",
       watchers: detailTicket.watchers || "",
       approvalAmount: String(detailTicket.approvalAmount || ""),
@@ -1044,6 +1053,7 @@ function TicketsPage() {
 
     const createdTicket = createTicket({
       ...createForm,
+      slaTargetMinutes: Math.max(15, Number(createForm.slaTargetMinutes) || 240),
       requester: user.name,
       requesterId: user.id,
       requesterEmail: user.email,
@@ -1115,6 +1125,7 @@ function TicketsPage() {
 
     updateTicket(detailTicket.id, {
       ...detailForm,
+      slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
       dueDate: detailForm.dueDate || "",
       approvalAmount: Number(detailForm.approvalAmount) || 0,
       approval: normalizeText(detailForm.type) === "requisicao"
@@ -1492,6 +1503,7 @@ function TicketsPage() {
       priority: String(detailForm.priority || "") !== String(detailTicket.priority || ""),
       urgency: String(detailForm.urgency || "") !== String(detailTicket.urgency || detailTicket.priority || ""),
       impact: String(detailForm.impact || "") !== String(detailTicket.impact || detailTicket.priority || ""),
+      slaTargetMinutes: String(detailForm.slaTargetMinutes || "") !== String(detailTicket.slaTargetMinutes || ""),
       dueDate: String(detailForm.dueDate || "") !== String(detailTicket.dueDate ? detailTicket.dueDate.slice(0, 10) : ""),
       watchers: String(detailForm.watchers || "") !== String(detailTicket.watchers || ""),
       assignee: String(detailForm.assignee || "") !== String(detailTicket.assignee || ""),
@@ -1979,6 +1991,11 @@ function TicketsPage() {
                       <option key={priority}>{priority}</option>
                     ))}
                   </select>
+                </label>
+                <label className="field-block">
+                  <span>SLA resolucao (minutos)</span>
+                  <input min="15" onChange={updateCreateField("slaTargetMinutes")} step="15" type="number" value={createForm.slaTargetMinutes || ""} />
+                  <small>{formatSlaMinutesLabel(createForm.slaTargetMinutes || 240)}</small>
                 </label>
                 {serviceCenterEnabled ? (
                   <label className="field-block field-full">
@@ -2488,6 +2505,11 @@ function TicketsPage() {
                       <option key={priority}>{priority}</option>
                     ))}
                   </select>
+                </label>
+                <label className={`field-block${detailDirtyFields.slaTargetMinutes ? " is-dirty" : ""}`}>
+                  <span>SLA resolucao (minutos)</span>
+                  <input disabled={!canEditTicket} min="15" onChange={updateDetailField("slaTargetMinutes")} step="15" type="number" value={detailForm.slaTargetMinutes || ""} />
+                  <small>{formatSlaMinutesLabel(detailForm.slaTargetMinutes || detailTicket.slaTargetMinutes || 240)}</small>
                 </label>
                 <label className={`field-block${detailDirtyFields.dueDate ? " is-dirty" : ""}`}>
                   <span>Data limite</span>

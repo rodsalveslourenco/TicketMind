@@ -243,15 +243,6 @@ export const defaultPermissionCatalog = [
       { key: "assets_admin", label: "Acessar configuracoes", action: "settings" },
     ],
   },
-  {
-    module: "system_logs",
-    label: "Auditoria e Acessos",
-    description: "Auditoria centralizada de eventos, acessos, permissoes e configuracoes sensiveis.",
-    order: 140,
-    departmentScope: "ti",
-    accessKeys: ["system_logs_view"],
-    permissions: [{ key: "system_logs_view", label: "Visualizar", action: "view" }],
-  },
 ];
 
 export const defaultNavigationSections = [
@@ -311,12 +302,11 @@ export const defaultNavigationSections = [
   },
   {
     key: "integrations",
-    title: "Integracoes e Auditoria",
+    title: "Integracoes",
     collapsible: true,
     order: 60,
     items: [
       { to: "/app/api-rest", label: "API REST", module: "api_rest", icon: "api_rest" },
-      { to: "/app/system-logs", label: "Auditoria e Acessos", module: "system_logs", icon: "system_logs" },
     ],
   },
 ];
@@ -466,7 +456,6 @@ export const defaultPermissionProfiles = [
       "brands_models_edit",
       "knowledge_view",
       "projects_view",
-      "system_logs_view",
     ],
   },
   {

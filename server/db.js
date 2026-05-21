@@ -24,6 +24,9 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const dataDir = process.env.DB_DIR ? path.resolve(process.env.DB_DIR) : path.join(rootDir, "data");
 const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(dataDir, "ticketmind.sqlite");
+const logsDir = path.join(dataDir, "logs");
+const systemLogsJsonPath = path.join(logsDir, "system-logs.jsonl");
+const systemLogsTxtPath = path.join(logsDir, "system-logs.txt");
 const wasmPath = path.join(rootDir, "node_modules", "sql.js", "dist");
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 
@@ -1701,6 +1704,21 @@ async function restorePostgresCollectionsFromRecoveryState(currentCollections = 
   return currentCollections;
 }
 
+function ensureLogDirectory() {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+function formatSystemLogTextLine(entry = {}) {
+  const metadata = entry.metadata && Object.keys(entry.metadata).length ? ` | metadata=${JSON.stringify(entry.metadata)}` : "";
+  return `[${entry.occurredAt || new Date().toISOString()}] [${String(entry.status || "sucesso").toUpperCase()}] ${entry.module || "sistema"}/${entry.eventType || "alteracao"} | ${entry.userName || "Sistema"} | ${entry.description || "Evento registrado."}${metadata}`;
+}
+
+async function persistSystemLogToFiles(entry) {
+  ensureLogDirectory();
+  fs.appendFileSync(systemLogsJsonPath, `${JSON.stringify(entry)}\n`, "utf8");
+  fs.appendFileSync(systemLogsTxtPath, `${formatSystemLogTextLine(entry)}\n`, "utf8");
+}
+
 async function insertSqliteSystemLog(entry) {
   const db = await getSqliteDb();
   db.run(
@@ -2015,19 +2033,21 @@ export async function writeState(nextState) {
 
 export async function insertSystemLog(entry) {
   if (!entry?.id) return null;
-  if (!isPostgresEnabled()) {
-    await insertSqliteSystemLog(entry);
-    return entry;
-  }
-  await insertPostgresSystemLog(entry);
+  await persistSystemLogToFiles(entry);
   return entry;
 }
 
 export async function querySystemLogs(filters = {}) {
-  if (!isPostgresEnabled()) {
-    return querySqliteSystemLogs(filters);
-  }
-  return queryPostgresSystemLogs(filters);
+  void filters;
+  return {
+    items: [],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 0,
+      totalPages: 1,
+    },
+  };
 }
 
 export function sanitizeSessionUser(user) {
