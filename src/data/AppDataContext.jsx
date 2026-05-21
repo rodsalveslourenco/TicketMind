@@ -1261,6 +1261,7 @@ export function AppDataProvider({ children }) {
 
   const persistStateImmediately = async (nextState) => {
     const persistedState = await persistAppState(nextState);
+    skipNextPersistenceRef.current = true;
     setData(mergeCollections(persistedState));
     return persistedState;
   };
@@ -1440,110 +1441,109 @@ export function AppDataProvider({ children }) {
   const createTicket = (payload) => {
     if (!hasAnyPermission(user, ["tickets_create", "tickets_admin"])) return null;
     let createdTicket = null;
-
-    applyState((current) => {
-      const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
-      const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
-      const nowIso = new Date().toISOString();
-      const openedAt = nowIso;
-      const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
-      const serviceCenterEnabled = Boolean(current.serviceCenter?.enabled);
-      const targetDepartment =
-        serviceCenterEnabled
-          ? (current.departments || []).find((department) => department.id === payload.departmentId) || null
-          : null;
-      const targetDepartmentConfig = targetDepartment
-        ? getServiceCenterDepartmentConfig(current.serviceCenter, targetDepartment.id)
+    const current = data;
+    const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
+    const nextNumber = (current.tickets.length + 2049).toString().padStart(4, "0");
+    const nowIso = new Date().toISOString();
+    const openedAt = nowIso;
+    const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
+    const serviceCenterEnabled = Boolean(current.serviceCenter?.enabled);
+    const targetDepartment =
+      serviceCenterEnabled
+        ? (current.departments || []).find((department) => department.id === payload.departmentId) || null
         : null;
-      const requesterId = canViewGlobalTickets ? payload.requesterId || "" : user?.id || "";
-      const requesterEmail = canViewGlobalTickets
-        ? String(payload.requesterEmail || "").trim().toLowerCase()
-        : String(user?.email || "").trim().toLowerCase();
-      const requester = canViewGlobalTickets ? payload.requester : user?.name || payload.requester;
+    const targetDepartmentConfig = targetDepartment
+      ? getServiceCenterDepartmentConfig(current.serviceCenter, targetDepartment.id)
+      : null;
+    const requesterId = canViewGlobalTickets ? payload.requesterId || "" : user?.id || "";
+    const requesterEmail = canViewGlobalTickets
+      ? String(payload.requesterEmail || "").trim().toLowerCase()
+      : String(user?.email || "").trim().toLowerCase();
+    const requester = canViewGlobalTickets ? payload.requester : user?.name || payload.requester;
 
-      if (
-        serviceCenterEnabled &&
-        (!targetDepartment ||
-          normalizeText(targetDepartment.status) !== "ativo" ||
-          !targetDepartmentConfig?.active ||
-          !targetDepartmentConfig?.acceptsTickets ||
-          !targetDepartmentConfig?.showInRequestPortal)
-      ) {
-        return current;
-      }
+    if (
+      serviceCenterEnabled &&
+      (!targetDepartment ||
+        normalizeText(targetDepartment.status) !== "ativo" ||
+        !targetDepartmentConfig?.active ||
+        !targetDepartmentConfig?.acceptsTickets ||
+        !targetDepartmentConfig?.showInRequestPortal)
+    ) {
+      return null;
+    }
 
-      const watcherDetails = normalizeWatcherDetails(payload.watcherDetails || payload.watchers, current.users || [], payload.watchers || "");
-      const routedPayload = applyRoutingRules({
-        ...payload,
-        type: payload.type,
-        priority,
-        category: String(payload.category || "Geral").trim(),
-        location: String(payload.location || "").trim(),
-        title: String(payload.title || "").trim(),
-        description: String(payload.description || "").trim(),
-        source: String(payload.source || "Portal").trim(),
-        departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
-        department: String(targetDepartment?.name || payload.department || "").trim(),
-        queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
-      }, current.serviceCenter || defaultServiceCenterSettings, current.users || []);
-      const approvalBase = resolveApprovalWorkflow(
-        {
-          ...routedPayload,
+    const watcherDetails = normalizeWatcherDetails(payload.watcherDetails || payload.watchers, current.users || [], payload.watchers || "");
+    const routedPayload = applyRoutingRules({
+      ...payload,
+      type: payload.type,
+      priority,
+      category: String(payload.category || "Geral").trim(),
+      location: String(payload.location || "").trim(),
+      title: String(payload.title || "").trim(),
+      description: String(payload.description || "").trim(),
+      source: String(payload.source || "Portal").trim(),
+      departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
+      department: String(targetDepartment?.name || payload.department || "").trim(),
+      queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
+    }, current.serviceCenter || defaultServiceCenterSettings, current.users || []);
+    const approvalBase = resolveApprovalWorkflow(
+      {
+        ...routedPayload,
+        approvalAmount: Number(payload.approvalAmount) || 0,
+      },
+      current.serviceCenter?.approvalRules || [],
+      current.serviceCenter?.approverDelegations || [],
+      current.users || [],
+      String(payload.approval?.approverId || payload.approvalApproverId || "").trim(),
+    );
+    const approval = approvalBase.required
+      ? {
+          ...approvalBase,
+          requestedAt: nowIso,
+          requestedById: user?.id || "",
+          requestedByName: user?.name || "Sistema",
+          history: [
+            createApprovalHistoryEntry({
+              action: "requested",
+              actorId: user?.id || "",
+              actorName: user?.name || "Sistema",
+              reason: String(payload.approval?.decisionReason || "").trim(),
+              stepName: approvalBase.steps?.[0]?.name || "Etapa 1",
+              approverName: approvalBase.currentApproverName || payload.approvalApproverName || "",
+              createdAt: nowIso,
+            }),
+          ],
+        }
+      : resolveApprovalState(routedPayload.type, payload.approval);
+    const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
+    const slaSettings = resolveTicketSlaSettings({
+      openedAt,
+      dueDate: payload.dueDate || "",
+      slaTargetMinutes: payload.slaTargetMinutes,
+      fallbackMinutes: 240,
+      nowIso,
+    });
+    const slaTargetMinutes = slaSettings.slaTargetMinutes;
+    const initialResponseTargetMinutes = Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25));
+    const history = [
+      createHistoryEntry({
+        type: "created",
+        actorId: user?.id,
+        actorName: user?.name || "Sistema",
+        message: "Chamado aberto",
+        metadata: {
+          status: initialStatus,
+          departmentId: targetDepartment?.id || "",
+          department: targetDepartment?.name || "",
+          queue: routedPayload.queue || "Service Desk",
           approvalAmount: Number(payload.approvalAmount) || 0,
+          slaOrigin: "manual",
         },
-        current.serviceCenter?.approvalRules || [],
-        current.serviceCenter?.approverDelegations || [],
-        current.users || [],
-        String(payload.approval?.approverId || payload.approvalApproverId || "").trim(),
-      );
-      const approval = approvalBase.required
-        ? {
-            ...approvalBase,
-            requestedAt: nowIso,
-            requestedById: user?.id || "",
-            requestedByName: user?.name || "Sistema",
-            history: [
-              createApprovalHistoryEntry({
-                action: "requested",
-                actorId: user?.id || "",
-                actorName: user?.name || "Sistema",
-                reason: String(payload.approval?.decisionReason || "").trim(),
-                stepName: approvalBase.steps?.[0]?.name || "Etapa 1",
-                approverName: approvalBase.currentApproverName || payload.approvalApproverName || "",
-                createdAt: nowIso,
-              }),
-            ],
-          }
-        : resolveApprovalState(routedPayload.type, payload.approval);
-      const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
-      const slaSettings = resolveTicketSlaSettings({
-        openedAt,
-        dueDate: payload.dueDate || "",
-        slaTargetMinutes: payload.slaTargetMinutes,
-        fallbackMinutes: 240,
-        nowIso,
-      });
-      const slaTargetMinutes = slaSettings.slaTargetMinutes;
-      const initialResponseTargetMinutes = Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25));
-      const history = [
-        createHistoryEntry({
-          type: "created",
-          actorId: user?.id,
-          actorName: user?.name || "Sistema",
-          message: "Chamado aberto",
-          metadata: {
-            status: initialStatus,
-            departmentId: targetDepartment?.id || "",
-            department: targetDepartment?.name || "",
-            queue: routedPayload.queue || "Service Desk",
-            approvalAmount: Number(payload.approvalAmount) || 0,
-            slaOrigin: "manual",
-          },
-          createdAt: nowIso,
-        }),
-      ];
+        createdAt: nowIso,
+      }),
+    ];
 
-      createdTicket = {
+    createdTicket = {
         id: `${typeCodeMap[normalizeText(payload.type)] ?? "TCK"}-${nextNumber}`,
         title: String(payload.title || "").trim(),
         type: payload.type,
@@ -1604,9 +1604,15 @@ export function AppDataProvider({ children }) {
           technicianId: String(user?.id || "").trim(),
           technicianName: String(user?.name || "Sistema").trim(),
         },
-      };
+    };
 
-      return { ...current, tickets: [createdTicket, ...current.tickets] };
+    const nextStateSnapshot = mergeCollections({ ...current, tickets: [createdTicket, ...current.tickets] });
+    skipNextPersistenceRef.current = true;
+    setData(nextStateSnapshot);
+
+    void persistStateImmediately(nextStateSnapshot).catch((error) => {
+      console.error(error);
+      pushToast("Falha ao salvar chamado", error?.message || "O chamado foi exibido localmente, mas nao conseguiu ser persistido no servidor.", "warning");
     });
 
     return createdTicket;
