@@ -2011,6 +2011,30 @@ function TicketsPage() {
               </div>
 
               <div className="glpi-form-grid ticket-create-grid-simplified">
+                {serviceCenterEnabled ? (
+                  <label className="field-block field-full">
+                    <span>Departamento de destino</span>
+                    <select
+                      onChange={updateCreateField("departmentId")}
+                      required
+                      style={getDepartmentColorStyle(selectedCreateDepartment?.color, { alpha: 0.16 })}
+                      value={createForm.departmentId}
+                    >
+                      <option value="">Selecione o departamento</option>
+                      {requestableDepartments.map((department) => (
+                        <option key={department.id} style={toDepartmentOptionStyle(department.color)} value={department.id}>
+                          {department.name}{department.code ? ` | ${department.code}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {!requestableDepartments.length ? (
+                      <div className="empty-state">
+                        <strong>Nenhum departamento disponivel.</strong>
+                        <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
+                      </div>
+                    ) : null}
+                  </label>
+                ) : null}
                 <label className="field-block field-full">
                   <span>Titulo</span>
                   <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitacao em uma linha" value={createForm.title} />
@@ -2079,30 +2103,6 @@ function TicketsPage() {
                     <span>Categoria</span>
                     <input onChange={updateCreateField("category")} value={createForm.category} />
                   </label>
-                  {serviceCenterEnabled ? (
-                    <label className="field-block field-full">
-                      <span>Departamento de destino</span>
-                      <select
-                        onChange={updateCreateField("departmentId")}
-                        required
-                        style={getDepartmentColorStyle(selectedCreateDepartment?.color, { alpha: 0.16 })}
-                        value={createForm.departmentId}
-                      >
-                        <option value="">Selecione o departamento</option>
-                        {requestableDepartments.map((department) => (
-                          <option key={department.id} style={toDepartmentOptionStyle(department.color)} value={department.id}>
-                            {department.name}{department.code ? ` | ${department.code}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      {!requestableDepartments.length ? (
-                        <div className="empty-state">
-                          <strong>Nenhum departamento disponivel.</strong>
-                          <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
-                        </div>
-                      ) : null}
-                    </label>
-                  ) : null}
                   <div className="field-block">
                     <span>Solicitante</span>
                     <div className="requester-stamp requester-stamp-compact">
