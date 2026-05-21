@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite --host 0.0.0.0 --port 5180 --strictPort",
-    "dev:server": "node --watch-path=server --watch-path=src --watch-preserve-output server/index.js",
+    "dev:server": "node --watch --watch-preserve-output server/index.js",
     "build": "vite build",
     "test:notifications": "node --test tests/notifications.test.mjs",
     "smoke:release": "node scripts/release-smoke.mjs",

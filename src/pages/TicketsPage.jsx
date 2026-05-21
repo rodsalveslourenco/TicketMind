@@ -421,6 +421,7 @@ function TicketsPage() {
   const canManageManualSla = hasAnyPermission(user, ["tickets_admin"]) || isCurrentUserAssignedToDetailTicket;
   const isDetailResolved = normalizeText(detailTicket?.status) === "resolvido";
   const isDetailReopened = normalizeText(detailTicket?.status) === "reaberto";
+  const isDetailLocked = isDetailResolved;
   const detailTypeProfile = useMemo(() => getTypeProfile(detailForm?.type), [detailForm?.type]);
   const detailStatusOptions = useMemo(
     () => getTicketStatusOptionsForType(detailForm?.type || detailTicket?.type || "Incidente", serviceCenter || {}),
@@ -1015,6 +1016,11 @@ function TicketsPage() {
     setDetailTicketId(ticketId);
   };
 
+  const handleCloseTicketDetail = () => {
+    setDetailTicketId(null);
+    setPreviewTicketId(null);
+  };
+
   const handleCloseCreateModal = () => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("new");
@@ -1149,6 +1155,9 @@ function TicketsPage() {
         "",
     });
     pushToast("Chamado atualizado", detailForm.title);
+    if (normalizeText(detailForm.status) === "resolvido") {
+      handleCloseTicketDetail();
+    }
   };
 
   const handleAddFollowUp = () => {
@@ -1215,6 +1224,7 @@ function TicketsPage() {
       slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
     });
     pushToast("Chamado finalizado", detailForm.title);
+    handleCloseTicketDetail();
   };
 
   const handleApplyResponseTemplate = (templateId) => {
@@ -1320,7 +1330,7 @@ function TicketsPage() {
   const handleDeleteTicket = () => {
     if (!detailTicket) return;
     deleteTicket(detailTicket.id);
-    setDetailTicketId(null);
+    handleCloseTicketDetail();
     pushToast("Chamado removido", detailTicket.title);
   };
 
@@ -1450,6 +1460,7 @@ function TicketsPage() {
         slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
       });
       pushToast("Atalho aplicado", "Chamado resolvido.");
+      handleCloseTicketDetail();
     }
   };
 
@@ -2276,7 +2287,7 @@ function TicketsPage() {
       ) : null}
 
       {detailTicket && detailForm ? (
-        <div className="ticket-modal-backdrop" onClick={() => setDetailTicketId(null)} role="presentation">
+        <div className="ticket-modal-backdrop" onClick={handleCloseTicketDetail} role="presentation">
           <div className="ticket-modal ticket-modal-large board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <form className="ticket-detail-form" onSubmit={handleSaveTicket}>
               <div className="ticket-modal-header">
@@ -2288,7 +2299,7 @@ function TicketsPage() {
                   </span>
                 </div>
                 <div className="ticket-detail-actions">
-                  <button className="ghost-button interactive-button" onClick={() => setDetailTicketId(null)} type="button">
+                  <button className="ghost-button interactive-button" onClick={handleCloseTicketDetail} type="button">
                     Fechar
                   </button>
                   {canDeleteTicket ? (
@@ -2327,6 +2338,8 @@ function TicketsPage() {
                 ) : null}
                 <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
               </div>
+
+              <fieldset disabled={isDetailLocked} style={{ border: 0, margin: 0, minInlineSize: 0, padding: 0 }}>
 
               <section className="ticket-inline-panel">
                 <div className="ticket-inline-panel-head">
@@ -3148,8 +3161,10 @@ function TicketsPage() {
                 )}
               </section>
 
+              </fieldset>
+
               <div className="ticket-create-actions">
-                {canEditTicket || canRecordResolution ? (
+                {(canEditTicket || canRecordResolution) && !isDetailLocked ? (
                   <button className="primary-button interactive-button" type="submit">
                     Salvar alteracoes
                   </button>
