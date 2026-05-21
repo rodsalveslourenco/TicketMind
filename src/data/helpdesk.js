@@ -127,6 +127,32 @@ export function getSlaPolicyMinutes(priority) {
   return SLA_POLICY_MINUTES[normalizeText(priority)] ?? SLA_POLICY_MINUTES.media;
 }
 
+export function resolveTicketSlaSettings({ openedAt, dueDate, slaTargetMinutes, fallbackMinutes = SLA_POLICY_MINUTES.media, nowIso = new Date().toISOString() }) {
+  const openedAtIso = String(openedAt || nowIso).trim() || nowIso;
+  const openedAtMs = new Date(openedAtIso).getTime();
+  const fallbackTargetMinutes = Math.max(15, Number(slaTargetMinutes) || Number(fallbackMinutes) || SLA_POLICY_MINUTES.media);
+
+  if (!dueDate) {
+    return {
+      slaTargetMinutes: fallbackTargetMinutes,
+      slaDeadlineAt: new Date(openedAtMs + fallbackTargetMinutes * 60 * 1000).toISOString(),
+    };
+  }
+
+  const dueDateDeadlineMs = new Date(`${dueDate}T23:59:59.999`).getTime();
+  if (Number.isNaN(openedAtMs) || Number.isNaN(dueDateDeadlineMs)) {
+    return {
+      slaTargetMinutes: fallbackTargetMinutes,
+      slaDeadlineAt: new Date(openedAtMs + fallbackTargetMinutes * 60 * 1000).toISOString(),
+    };
+  }
+
+  return {
+    slaTargetMinutes: Math.max(15, Math.round((dueDateDeadlineMs - openedAtMs) / 60000)),
+    slaDeadlineAt: new Date(dueDateDeadlineMs).toISOString(),
+  };
+}
+
 export function formatDateLabel(isoValue) {
   if (!isoValue) return "";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(isoValue));
@@ -418,9 +444,15 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     ticket.priority && String(ticket.priority).trim()
       ? normalizePriorityLabel(ticket.priority)
       : computePriorityFromMatrix(ticket.urgency, ticket.impact);
-  const slaTargetMinutes = Number(ticket.slaTargetMinutes) || getSlaPolicyMinutes(priority);
-  const slaDeadlineAt =
-    ticket.slaDeadlineAt || new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString();
+  const slaSettings = resolveTicketSlaSettings({
+    openedAt,
+    dueDate: ticket.dueDate || "",
+    slaTargetMinutes: ticket.slaTargetMinutes,
+    fallbackMinutes: getSlaPolicyMinutes(priority),
+    nowIso,
+  });
+  const slaTargetMinutes = slaSettings.slaTargetMinutes;
+  const slaDeadlineAt = slaSettings.slaDeadlineAt;
   const history = normalizeHistory(ticket.history);
   const followUps = normalizeFollowUps(ticket.followUps);
   const subtasks = normalizeTicketSubtasks(ticket.subtasks);

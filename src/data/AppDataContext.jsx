@@ -45,6 +45,7 @@ import {
   normalizeText,
   normalizeTicketStatus,
   prepareTickets,
+  resolveTicketSlaSettings,
   sanitizeKnowledgeArticlePayload,
   statusRequiresPauseReason,
   statusRequiresWaitingReason,
@@ -1474,7 +1475,14 @@ export function AppDataProvider({ children }) {
           }
         : resolveApprovalState(routedPayload.type, payload.approval);
       const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
-      const slaTargetMinutes = Math.max(15, Number(payload.slaTargetMinutes) || 240);
+      const slaSettings = resolveTicketSlaSettings({
+        openedAt,
+        dueDate: payload.dueDate || "",
+        slaTargetMinutes: payload.slaTargetMinutes,
+        fallbackMinutes: 240,
+        nowIso,
+      });
+      const slaTargetMinutes = slaSettings.slaTargetMinutes;
       const initialResponseTargetMinutes = Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25));
       const history = [
         createHistoryEntry({
@@ -1514,7 +1522,7 @@ export function AppDataProvider({ children }) {
         location: String(payload.location || "").trim(),
         sla: `${computeSlaFromMinutes(slaTargetMinutes)}`,
         slaTargetMinutes,
-        slaDeadlineAt: new Date(new Date(openedAt).getTime() + slaTargetMinutes * 60 * 1000).toISOString(),
+        slaDeadlineAt: slaSettings.slaDeadlineAt,
         initialResponseTargetMinutes,
         initialResponseDeadlineAt: new Date(new Date(openedAt).getTime() + initialResponseTargetMinutes * 60 * 1000).toISOString(),
         firstResponseAt: "",
@@ -1925,7 +1933,14 @@ export function AppDataProvider({ children }) {
           historyEntries.push(createHistoryEntry({ type: "approval_rejected", actorId: user?.id, actorName: user?.name || "Sistema", message: "Requisicao reprovada", createdAt: nowIso }));
         }
 
-        const nextSlaTargetMinutes = Math.max(15, Number(updates.slaTargetMinutes ?? ticket.slaTargetMinutes) || 240);
+        const nextSlaSettings = resolveTicketSlaSettings({
+          openedAt: ticket.openedAt,
+          dueDate: nextDueDate || "",
+          slaTargetMinutes: updates.slaTargetMinutes ?? ticket.slaTargetMinutes,
+          fallbackMinutes: 240,
+          nowIso,
+        });
+        const nextSlaTargetMinutes = nextSlaSettings.slaTargetMinutes;
         const nextInitialResponseTargetMinutes = Math.max(
           15,
           Number(updates.initialResponseTargetMinutes ?? ticket.initialResponseTargetMinutes) || Math.round(nextSlaTargetMinutes * 0.25),
@@ -1962,7 +1977,7 @@ export function AppDataProvider({ children }) {
           category: nextCategory,
           sla: computeSlaFromMinutes(nextSlaTargetMinutes),
           slaTargetMinutes: nextSlaTargetMinutes,
-          slaDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + nextSlaTargetMinutes * 60 * 1000).toISOString(),
+          slaDeadlineAt: nextSlaSettings.slaDeadlineAt,
           initialResponseTargetMinutes: nextInitialResponseTargetMinutes,
           initialResponseDeadlineAt: new Date(new Date(ticket.openedAt).getTime() + nextInitialResponseTargetMinutes * 60 * 1000).toISOString(),
           firstResponseAt,

@@ -10,6 +10,7 @@ import {
   createFollowUpEntry,
   getTicketStatusOptionsForType,
   normalizeText,
+  resolveTicketSlaSettings,
   statusRequiresPauseReason,
   statusRequiresWaitingReason,
 } from "../data/helpdesk";
@@ -955,6 +956,21 @@ function TicketsPage() {
 
   const updateCreateField = (field) => (event) => setCreateForm((current) => ({ ...current, [field]: event.target.value }));
   const updateDetailField = (field) => (event) => setDetailForm((current) => ({ ...current, [field]: event.target.value }));
+  const updateDetailDueDateField = (event) => {
+    const nextDueDate = event.target.value;
+    setDetailForm((current) => {
+      const slaSettings = resolveTicketSlaSettings({
+        openedAt: detailTicket?.openedAt,
+        dueDate: nextDueDate,
+        slaTargetMinutes: current?.slaTargetMinutes || detailTicket?.slaTargetMinutes || 240,
+      });
+      return {
+        ...current,
+        dueDate: nextDueDate,
+        slaTargetMinutes: String(slaSettings.slaTargetMinutes),
+      };
+    });
+  };
 
   const handleCreateTypeChange = (event) => {
     const nextType = event.target.value;
@@ -2541,7 +2557,7 @@ function TicketsPage() {
                 ) : null}
                 <label className={`field-block${detailDirtyFields.dueDate ? " is-dirty" : ""}`}>
                   <span>Data limite</span>
-                  <input disabled={!canEditTicket} onChange={updateDetailField("dueDate")} type="date" value={detailForm.dueDate || ""} />
+                  <input disabled={!canEditTicket} onChange={updateDetailDueDateField} type="date" value={detailForm.dueDate || ""} />
                 </label>
                 <label className="field-block">
                   <span>Abertura</span>
