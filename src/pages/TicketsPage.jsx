@@ -1061,7 +1061,7 @@ function TicketsPage() {
     setCreateForm((current) => ({ ...current, watchers: current.watchers.filter((watcher) => watcher.id !== watcherId) }));
   };
 
-  const handleCreateSubmit = (event) => {
+  const handleCreateSubmit = async (event) => {
     event.preventDefault();
     if (!createForm.title || !user?.name || !createForm.description) return;
     if (serviceCenterEnabled && !createForm.departmentId) {
@@ -1082,7 +1082,7 @@ function TicketsPage() {
     }
     const selectedApprover = approvalCandidates.find((candidate) => candidate.id === createForm.approvalApproverId) || null;
 
-    const createdTicket = createTicket({
+    const createdTicket = await createTicket({
       ...createForm,
       slaTargetMinutes: Math.max(15, Number(createForm.slaTargetMinutes) || 240),
       requester: user.name,

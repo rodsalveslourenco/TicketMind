@@ -11,6 +11,14 @@ export async function persistAppState(nextState) {
   });
 }
 
+export async function createTicketRequest(payload) {
+  const envelope = await requestJson("/api/v1/tickets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return envelope?.data || null;
+}
+
 export async function sendNotificationTestRequest(payload) {
   return requestJson("/api/notifications/test", {
     method: "POST",

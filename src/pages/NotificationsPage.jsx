@@ -177,8 +177,8 @@ function NotificationsPage() {
     }
   };
 
-  const handleInboundEmail = () => {
-    const createdTicket = processInboundEmail(intakeDraft);
+  const handleInboundEmail = async () => {
+    const createdTicket = await processInboundEmail(intakeDraft);
     if (!createdTicket?.id) {
       pushToast("Falha ao processar e-mail", "Revise o remetente, assunto ou permissoes.", "warning");
       return;

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
+import { createTicketRequest, loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
 import {
   buildEmptyPermissions,
   getRolePermissions,
@@ -1438,7 +1438,7 @@ export function AppDataProvider({ children }) {
     return articles.filter((article) => buildKnowledgeSearchText(article).includes(normalizedQuery));
   };
 
-  const createTicket = (payload) => {
+  const createTicket = async (payload) => {
     if (!hasAnyPermission(user, ["tickets_create", "tickets_admin"])) return null;
     let createdTicket = null;
     const current = data;
@@ -1606,16 +1606,17 @@ export function AppDataProvider({ children }) {
         },
     };
 
-    const nextStateSnapshot = mergeCollections({ ...current, tickets: [createdTicket, ...current.tickets] });
-    skipNextPersistenceRef.current = true;
-    setData(nextStateSnapshot);
-
-    void persistStateImmediately(nextStateSnapshot).catch((error) => {
+    try {
+      const persistedTicket = await createTicketRequest(createdTicket);
+      const persistedState = await loadAppState();
+      skipNextPersistenceRef.current = true;
+      setData(mergeCollections(persistedState));
+      return persistedTicket || createdTicket;
+    } catch (error) {
       console.error(error);
       pushToast("Falha ao salvar chamado", error?.message || "O chamado foi exibido localmente, mas nao conseguiu ser persistido no servidor.", "warning");
-    });
-
-    return createdTicket;
+      return null;
+    }
   };
 
   const updateTicket = (ticketId, updates) => {
@@ -3315,7 +3316,7 @@ export function AppDataProvider({ children }) {
     });
   };
 
-  const processInboundEmail = (payload = {}) => {
+  const processInboundEmail = async (payload = {}) => {
     if (!hasAnyPermission(user, ["tickets_create", "tickets_admin"])) return null;
     const parsedPayload = parseInboundEmailTicket(payload, data.users || [], data.departments || [], data.serviceCenter || defaultServiceCenterSettings);
     return createTicket({
