@@ -24,6 +24,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import EmailLayoutsPage from "./pages/EmailLayoutsPage";
 import PermissionProfilesPage from "./pages/PermissionProfilesPage";
 import CentralServicesPage from "./pages/CentralServicesPage";
+import TeamsPage from "./pages/TeamsPage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -59,6 +60,7 @@ function App() {
         <Route element={<ProtectedRoute moduleKey="knowledge"><KnowledgePage /></ProtectedRoute>} path="knowledge" />
         <Route element={<ProtectedRoute moduleKey="api_rest"><ApiConfigPage /></ProtectedRoute>} path="api-rest" />
         <Route element={<ProtectedRoute moduleKey="users"><UsersPage /></ProtectedRoute>} path="users" />
+        <Route element={<ProtectedRoute moduleKey="users"><TeamsPage /></ProtectedRoute>} path="teams" />
         <Route element={<ProtectedRoute moduleKey="service_center"><CentralServicesPage /></ProtectedRoute>} path="service-center" />
         <Route element={<ProtectedRoute moduleKey="users"><DepartmentsPage /></ProtectedRoute>} path="departments" />
         <Route element={<ProtectedRoute moduleKey="permission_profiles"><PermissionProfilesPage /></ProtectedRoute>} path="permission-profiles" />

@@ -113,6 +113,7 @@ function UsersPage() {
     permissionProfiles,
     pushToast,
     setUserStatus,
+    teams,
     updateUser,
     users,
   } = useAppData();
@@ -162,6 +163,11 @@ function UsersPage() {
   const availableDepartments = useMemo(
     () => departments.filter((department) => department.status === "Ativo" || department.id === form.departmentId),
     [departments, form.departmentId],
+  );
+  const availableTeams = useMemo(
+    () =>
+      (teams || []).filter((team) => team.status === "Ativo" || normalizeText(team.name) === normalizeText(form.team)),
+    [form.team, teams],
   );
 
   const matchingUsers = useMemo(() => {
@@ -729,7 +735,14 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Equipe</span>
-                  <input onChange={updateField("team")} value={form.team} />
+                  <select onChange={updateField("team")} value={form.team}>
+                    <option value="">Sem equipe</option>
+                    {availableTeams.map((team) => (
+                      <option key={team.id} value={team.name}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="field-block">
                   <span>Departamento</span>
@@ -876,7 +889,14 @@ function UsersPage() {
                 </label>
                 <label className={`field-block${detailDirtyFields.team ? " is-dirty" : ""}`}>
                   <span>Equipe</span>
-                  <input disabled={!canEditUsers} onChange={updateField("team")} value={form.team} />
+                  <select disabled={!canEditUsers} onChange={updateField("team")} value={form.team}>
+                    <option value="">Sem equipe</option>
+                    {availableTeams.map((team) => (
+                      <option key={team.id} value={team.name}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className={`field-block${detailDirtyFields.departmentId ? " is-dirty" : ""}`}>
                   <span>Departamento</span>

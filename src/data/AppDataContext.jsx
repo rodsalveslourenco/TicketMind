@@ -311,6 +311,43 @@ function hydrateDepartments(storedDepartments) {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function sanitizeTeamPayload(payload, currentTeam = {}) {
+  const nowIso = new Date().toISOString();
+  const name = String(payload.name || payload.team || currentTeam.name || "").trim();
+  return {
+    name,
+    status: String(payload.status || currentTeam.status || "Ativo").trim() || "Ativo",
+    createdAt: payload.createdAt || currentTeam.createdAt || nowIso,
+    updatedAt: payload.updatedAt || currentTeam.updatedAt || nowIso,
+  };
+}
+
+function hydrateTeams(storedTeams, users = []) {
+  const explicitTeams = (Array.isArray(storedTeams) ? storedTeams : [])
+    .map((team) => ({
+      id: String(team.id || "").trim(),
+      ...sanitizeTeamPayload(team, team),
+    }))
+    .filter((team) => team.id && team.name);
+
+  const usedTeamNames = Array.from(
+    new Set(
+      (Array.isArray(users) ? users : [])
+        .map((candidate) => String(candidate.team || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const inferredTeams = usedTeamNames
+    .filter((teamName) => !explicitTeams.some((team) => normalizeText(team.name) === normalizeText(teamName)))
+    .map((teamName) => ({
+      id: `team-${normalizeCode(teamName, "EQUIPE").toLowerCase()}`,
+      ...sanitizeTeamPayload({ name: teamName, status: "Ativo" }),
+    }));
+
+  return [...explicitTeams, ...inferredTeams].sort((left, right) => left.name.localeCompare(right.name));
+}
+
 function hydrateServiceCenter(storedConfig, departments = []) {
   const rawConfig = storedConfig && typeof storedConfig === "object" ? storedConfig : {};
   const rawDepartments = rawConfig.departments && typeof rawConfig.departments === "object" ? rawConfig.departments : {};
@@ -836,6 +873,7 @@ function mergeCollections(stored) {
   const rawUsers = hydrateUsers(stored?.users, permissionCatalog, permissionProfiles);
   const baseCurrentUser = stored?.currentUser && typeof stored.currentUser === "object" ? stored.currentUser : null;
   const departments = hydrateDepartments(stored?.departments);
+  const teams = hydrateTeams(stored?.teams, rawUsers);
   const users = rawUsers.map((candidate) => syncUserDepartment(candidate, departments));
   const currentUserFromUsers = baseCurrentUser?.id ? users.find((candidate) => candidate.id === baseCurrentUser.id) || null : null;
   const currentUser = currentUserFromUsers
@@ -879,6 +917,7 @@ function mergeCollections(stored) {
     serviceCenter,
     users,
     departments,
+    teams,
     locations,
     queues: Array.isArray(stored?.queues) ? stored.queues : [],
     tickets: Array.isArray(stored?.tickets) ? stored.tickets : [],
@@ -2326,6 +2365,59 @@ export function AppDataProvider({ children }) {
     });
   };
 
+  const addTeam = (payload) => {
+    if (!hasAnyPermission(user, ["users_create", "users_admin"])) return null;
+    let createdTeam = null;
+    applyState((current) => {
+      createdTeam = {
+        id: nextId("team", current.teams || []),
+        ...sanitizeTeamPayload(payload),
+      };
+      return { ...current, teams: [createdTeam, ...(current.teams || [])] };
+    });
+    return createdTeam;
+  };
+
+  const updateTeam = (teamId, payload) => {
+    if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return null;
+    let previousTeamName = "";
+    let updatedTeam = null;
+    applyState((current) => {
+      const nowIso = new Date().toISOString();
+      const nextTeams = (current.teams || []).map((team) =>
+        team.id === teamId
+          ? (() => {
+              previousTeamName = team.name;
+              updatedTeam = {
+                ...team,
+                ...sanitizeTeamPayload({ ...team, ...payload, createdAt: team.createdAt, updatedAt: nowIso }, team),
+              };
+              return updatedTeam;
+            })()
+          : team,
+      );
+      if (!updatedTeam) return current;
+      return {
+        ...current,
+        teams: nextTeams,
+        users: (current.users || []).map((candidate) =>
+          normalizeText(candidate.team) === normalizeText(previousTeamName)
+            ? { ...candidate, team: updatedTeam.name, updatedAt: nowIso }
+            : candidate,
+        ),
+      };
+    });
+    return updatedTeam;
+  };
+
+  const deleteTeam = (teamId) => {
+    if (!hasAnyPermission(user, ["users_delete", "users_admin"])) return;
+    applyState((current) => ({
+      ...current,
+      teams: (current.teams || []).filter((team) => team.id !== teamId),
+    }));
+  };
+
   const updateServiceCenterSettings = (payload = {}) => {
     if (!hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"])) return;
     applyState((current) => {
@@ -3241,6 +3333,7 @@ export function AppDataProvider({ children }) {
       serviceCenter: data.serviceCenter || defaultServiceCenterSettings,
       users: data.users || [],
       departments: data.departments || [],
+      teams: data.teams || [],
       linkedServiceDepartmentIds,
       locations: data.locations || [],
       tickets: visibleTickets,
@@ -3281,6 +3374,9 @@ export function AppDataProvider({ children }) {
       addDepartment,
       updateDepartment,
       deleteDepartment,
+      addTeam,
+      updateTeam,
+      deleteTeam,
       updateServiceCenterSettings,
       saveServiceCenterAutomation,
       saveServiceCenterDepartmentConfig,

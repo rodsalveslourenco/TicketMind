@@ -295,6 +295,7 @@ export const defaultNavigationSections = [
     order: 50,
     items: [
       { to: "/app/users", label: "Usuarios", module: "users", icon: "users" },
+      { to: "/app/teams", label: "Equipes", module: "users", icon: "users" },
       { to: "/app/permission-profiles", label: "Perfis de Permissao", module: "permission_profiles", icon: "users" },
       { to: "/app/departments", label: "Departamentos", module: "users", icon: "users" },
       { to: "/app/settings/locations", label: "Localizacoes", module: "settings_locations", icon: "assets" },
