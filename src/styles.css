@@ -807,6 +807,54 @@ textarea:focus {
   margin-bottom: 0;
 }
 
+.ticket-glpi-workspace {
+  border-color: rgba(133, 217, 255, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(133, 217, 255, 0.08);
+}
+
+.ticket-glpi-disclosure {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-alt);
+}
+
+.ticket-glpi-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ticket-glpi-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.ticket-glpi-disclosure summary strong {
+  font-size: 0.92rem;
+}
+
+.ticket-glpi-disclosure summary span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ticket-glpi-nested-panel {
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 10px 10px;
+  box-shadow: none;
+}
+
+.ghost-button.is-active {
+  border-color: rgba(133, 217, 255, 0.5);
+  background: rgba(133, 217, 255, 0.14);
+}
+
 .glpi-ticket-form,
 .ticket-attachment-panel {
   margin-bottom: 1rem;

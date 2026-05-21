@@ -320,6 +320,7 @@ function TicketsPage() {
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [timelineFilter, setTimelineFilter] = useState("all");
   const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [activeDetailWorkspace, setActiveDetailWorkspace] = useState("");
   const [showTriagePanel, setShowTriagePanel] = useState(() => Boolean(getModulePreference("tickets", "showTriagePanel", true)));
   const [analystPreviewMode, setAnalystPreviewMode] = useState(() => Boolean(getModulePreference("tickets", "analystPreviewMode", true)));
   const [visibleColumns, setVisibleColumns] = useState(
@@ -893,6 +894,7 @@ function TicketsPage() {
     setApprovalReason(detailTicket.approval?.decisionReason || "");
     setTimelineFilter("all");
     setSubtaskDraft("");
+    setActiveDetailWorkspace("");
   }, [detailTicket]);
 
   useEffect(() => {
@@ -956,6 +958,9 @@ function TicketsPage() {
 
   const updateCreateField = (field) => (event) => setCreateForm((current) => ({ ...current, [field]: event.target.value }));
   const updateDetailField = (field) => (event) => setDetailForm((current) => ({ ...current, [field]: event.target.value }));
+  const toggleDetailWorkspace = (workspace) => {
+    setActiveDetailWorkspace((current) => (current === workspace ? "" : workspace));
+  };
   const updateDetailDueDateField = (event) => {
     const nextDueDate = event.target.value;
     setDetailForm((current) => {
@@ -2357,6 +2362,16 @@ function TicketsPage() {
                     Aguardar usuario
                   </button>
                 ) : null}
+                {canEditTicket ? (
+                  <button className={`ghost-button interactive-button${activeDetailWorkspace === "followup" ? " is-active" : ""}`} onClick={() => toggleDetailWorkspace("followup")} type="button">
+                    Incluir acompanhamento
+                  </button>
+                ) : null}
+                {canRecordResolution ? (
+                  <button className={`ghost-button interactive-button${activeDetailWorkspace === "resolve" ? " is-active" : ""}`} onClick={() => toggleDetailWorkspace("resolve")} type="button">
+                    Resolver chamado
+                  </button>
+                ) : null}
                 <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
               </div>
 
@@ -2704,10 +2719,6 @@ function TicketsPage() {
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} value={detailForm.description} />
               </label>
 
-              <label className={`field-block field-full${detailDirtyFields.resolutionNotes ? " is-dirty" : ""}`}>
-                <span>Solucao tecnica</span>
-                <textarea disabled={!canRecordResolution} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
-              </label>
               {statusRequiresPauseReason(detailForm.status, serviceCenter || {}) ? (
                 <label className={`field-block field-full${detailDirtyFields.pauseReason ? " is-dirty" : ""}`}>
                   <span>Motivo da pausa</span>
@@ -2721,15 +2732,14 @@ function TicketsPage() {
                 </label>
               ) : null}
 
-              <section className="ticket-inline-panel">
-                <div className="ticket-inline-panel-head">
+              <details className="ticket-glpi-disclosure" open>
+                <summary>
                   <strong>Checklist operacional</strong>
-                  <span>Lista base por tipo de chamado para padronizar a execucao do atendimento.</span>
-                </div>
-                <div className="ticket-inline-compose">
-                  <span className="shortcut-hint">
+                  <span>
                     {(detailForm.checklistItems || []).filter((item) => item.checked).length}/{(detailForm.checklistItems || []).length} etapa(s) concluida(s)
                   </span>
+                </summary>
+                <div className="ticket-inline-compose">
                   <button className="ghost-button interactive-button" disabled={!canEditTicket} onClick={handleResetChecklistForType} type="button">
                     Reaplicar checklist do tipo
                   </button>
@@ -2752,53 +2762,15 @@ function TicketsPage() {
                     <span>Use o botao acima para reaplicar o checklist padrao do tipo atual.</span>
                   </div>
                 )}
-              </section>
-
-              <div className="detail-grid">
-                <label className="field-block">
-                  <span>Template de solucao</span>
-                  <select disabled={!canEditTicket} onChange={(event) => handleApplySolutionTemplate(event.target.value)} value={selectedSolutionTemplateId}>
-                    <option value="">Selecione</option>
-                    {solutionTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {normalizeText(detailForm.status) === "reaberto" ? (
-                  <>
-                    <label className="field-block">
-                      <span>Template de reabertura</span>
-                      <select disabled={!canEditTicket} onChange={(event) => handleApplyReopenTemplate(event.target.value)} value={selectedReopenTemplateId}>
-                        <option value="">Selecione</option>
-                        {reopenReasonTemplates.map((template) => (
-                          <option key={template.id} value={template.id}>
-                            {template.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className={`field-block${detailDirtyFields.reopenCategory ? " is-dirty" : ""}`}>
-                      <span>Classificacao da reabertura</span>
-                      <select disabled={!canEditTicket} onChange={updateDetailField("reopenCategory")} value={detailForm.reopenCategory || ""}>
-                        <option value="">Selecione</option>
-                        <option>Reincidencia</option>
-                        <option>Correcao parcial</option>
-                        <option>Validacao</option>
-                        <option>Novo escopo</option>
-                      </select>
-                    </label>
-                    <label className={`field-block field-full${detailDirtyFields.reopenReason ? " is-dirty" : ""}`}>
-                      <span>Motivo da reabertura</span>
-                      <textarea disabled={!canEditTicket} onChange={updateDetailField("reopenReason")} value={detailForm.reopenReason || ""} />
-                    </label>
-                  </>
-                ) : null}
-              </div>
+              </details>
 
               {normalizeText(detailForm.type) === "requisicao" ? (
-                <section className="ticket-attachment-panel">
+                <details className="ticket-glpi-disclosure">
+                  <summary>
+                    <strong>Aprovacao da requisicao</strong>
+                    <span>{detailTicket.approval?.currentApproverName || detailTicket.approval?.approverName || "Nao definido"}</span>
+                  </summary>
+                <section className="ticket-attachment-panel ticket-glpi-nested-panel">
                   <div className="attachment-toolbar glpi-subbar">
                     <div>
                       <strong>Aprovacao da requisicao</strong>
@@ -2868,17 +2840,22 @@ function TicketsPage() {
                     )}
                   </div>
                 </section>
+                </details>
               ) : null}
 
               </aside>
               <div className="ticket-glpi-main">
 
-              <section className="ticket-attachment-panel">
+              {activeDetailWorkspace === "followup" ? (
+              <section className="ticket-attachment-panel ticket-glpi-workspace">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Acompanhamentos</strong>
                     <span>Registre novas interacoes tecnicas sem sobrescrever o historico do chamado.</span>
                   </div>
+                  <button className="ghost-button interactive-button" onClick={() => setActiveDetailWorkspace("")} type="button">
+                    Fechar painel
+                  </button>
                 </div>
                 <div className="detail-grid">
                   <label className="field-block">
@@ -2972,8 +2949,88 @@ function TicketsPage() {
                   </div>
                 )}
               </section>
+              ) : null}
 
-              <section className="ticket-attachment-panel">
+              {activeDetailWorkspace === "resolve" ? (
+              <section className="ticket-attachment-panel ticket-glpi-workspace">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Resolucao do chamado</strong>
+                    <span>Monte a solucao, registre o encerramento e finalize o atendimento quando estiver pronto.</span>
+                  </div>
+                  <button className="ghost-button interactive-button" onClick={() => setActiveDetailWorkspace("")} type="button">
+                    Fechar painel
+                  </button>
+                </div>
+                <div className="detail-grid">
+                  <label className="field-block">
+                    <span>Template de solucao</span>
+                    <select disabled={!canEditTicket} onChange={(event) => handleApplySolutionTemplate(event.target.value)} value={selectedSolutionTemplateId}>
+                      <option value="">Selecione</option>
+                      {solutionTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {normalizeText(detailForm.status) === "reaberto" ? (
+                    <>
+                      <label className="field-block">
+                        <span>Template de reabertura</span>
+                        <select disabled={!canEditTicket} onChange={(event) => handleApplyReopenTemplate(event.target.value)} value={selectedReopenTemplateId}>
+                          <option value="">Selecione</option>
+                          {reopenReasonTemplates.map((template) => (
+                            <option key={template.id} value={template.id}>
+                              {template.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className={`field-block${detailDirtyFields.reopenCategory ? " is-dirty" : ""}`}>
+                        <span>Classificacao da reabertura</span>
+                        <select disabled={!canEditTicket} onChange={updateDetailField("reopenCategory")} value={detailForm.reopenCategory || ""}>
+                          <option value="">Selecione</option>
+                          <option>Reincidencia</option>
+                          <option>Correcao parcial</option>
+                          <option>Validacao</option>
+                          <option>Novo escopo</option>
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
+                </div>
+                {normalizeText(detailForm.status) === "reaberto" ? (
+                  <label className={`field-block field-full${detailDirtyFields.reopenReason ? " is-dirty" : ""}`}>
+                    <span>Motivo da reabertura</span>
+                    <textarea disabled={!canEditTicket} onChange={updateDetailField("reopenReason")} value={detailForm.reopenReason || ""} />
+                  </label>
+                ) : null}
+                <label className={`field-block field-full${detailDirtyFields.resolutionNotes ? " is-dirty" : ""}`}>
+                  <span>Solucao tecnica</span>
+                  <textarea disabled={!canRecordResolution} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
+                </label>
+                <div className="ticket-create-actions compact-actions">
+                  {(canEditTicket || canRecordResolution) && !isDetailLocked ? (
+                    <button className="primary-button interactive-button" type="submit">
+                      Salvar alteracoes
+                    </button>
+                  ) : null}
+                  {canCloseTicket && !isDetailResolved ? (
+                    <button className="ghost-button interactive-button" onClick={handleFinishTicket} type="button">
+                      Finalizar chamado
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+              ) : null}
+
+              <details className="ticket-glpi-disclosure">
+                <summary>
+                  <strong>Base de conhecimento vinculada</strong>
+                  <span>{linkedArticles.length ? `${linkedArticles.length} artigo(s)` : "Nenhum artigo vinculado"}</span>
+                </summary>
+              <section className="ticket-attachment-panel ticket-glpi-nested-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Base de conhecimento vinculada</strong>
@@ -3040,8 +3097,14 @@ function TicketsPage() {
                   </div>
                 ) : null}
               </section>
+              </details>
 
-              <section className="ticket-attachment-panel">
+              <details className="ticket-glpi-disclosure">
+                <summary>
+                  <strong>Subtarefas tecnicas</strong>
+                  <span>{detailTicket.subtasks?.length ? `${detailTicket.subtasks.length} vinculada(s)` : "Nenhuma subtarefa"}</span>
+                </summary>
+              <section className="ticket-attachment-panel ticket-glpi-nested-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Subtarefas tecnicas</strong>
@@ -3087,8 +3150,14 @@ function TicketsPage() {
                   </div>
                 )}
               </section>
+              </details>
 
-              <section className="ticket-attachment-panel">
+              <details className="ticket-glpi-disclosure">
+                <summary>
+                  <strong>Anexos</strong>
+                  <span>{detailTicket.attachments?.length ? `${detailTicket.attachments.length} arquivo(s)` : "Nenhum anexo vinculado"}</span>
+                </summary>
+              <section className="ticket-attachment-panel ticket-glpi-nested-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Anexos</strong>
@@ -3136,6 +3205,7 @@ function TicketsPage() {
                   </div>
                 )}
               </section>
+              </details>
 
               <section className="ticket-attachment-panel">
                 <div className="attachment-toolbar glpi-subbar">
