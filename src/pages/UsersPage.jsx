@@ -66,6 +66,7 @@ function createDefaultUserForm(permissionProfiles, permissionCatalog) {
     name: "",
     email: "",
     password: "",
+    passwordReveal: "",
     mustChangePassword: false,
     status: "Ativo",
     role: defaultProfile?.name || "Solicitante Interno",
@@ -203,7 +204,7 @@ function UsersPage() {
     return {
       name: String(form.name || "") !== String(detailUser.name || ""),
       email: String(form.email || "") !== String(detailUser.email || ""),
-      password: String(form.password || "") !== String(detailUser.password || ""),
+      password: String(form.password || "") !== String(detailUser.passwordReveal || ""),
       mustChangePassword: Boolean(form.mustChangePassword) !== Boolean(detailUser.mustChangePassword),
       status: String(form.status || "") !== String(detailUser.status || ""),
       permissionProfileId: String(form.permissionProfileId || "") !== String(detailUser.permissionProfileId || ""),
@@ -267,7 +268,8 @@ function UsersPage() {
     setForm({
       name: candidate.name || "",
       email: candidate.email || "",
-      password: candidate.password || "",
+      password: candidate.passwordReveal || "",
+      passwordReveal: candidate.passwordReveal || "",
       mustChangePassword: Boolean(candidate.mustChangePassword),
       status: candidate.status || "Ativo",
       role: candidate.role || "",
@@ -340,6 +342,7 @@ function UsersPage() {
     setForm((current) => ({
       ...current,
       password: generatedPassword,
+      passwordReveal: generatedPassword,
       mustChangePassword: true,
     }));
     pushToast("Senha gerada", "Senha inicial criada com base no nome do usuario.");
@@ -381,6 +384,7 @@ function UsersPage() {
     const selectedPermissionProfile = permissionProfiles.find((profile) => profile.id === form.permissionProfileId) || null;
     const payload = {
       ...form,
+      passwordReveal: String(form.password || ""),
       role: selectedPermissionProfile?.name || form.role,
       departmentId: selectedDepartment?.id || "",
       department: selectedDepartment?.name || "",

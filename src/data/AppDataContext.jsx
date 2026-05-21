@@ -80,6 +80,7 @@ function hydrateUsers(users, permissionCatalog, permissionProfiles) {
     return {
       ...candidate,
       password: String(candidate.password || ""),
+      passwordReveal: String(candidate.passwordReveal || ""),
       mustChangePassword: Boolean(candidate.mustChangePassword),
       status: String(candidate.status || "Ativo").trim() || "Ativo",
       role: normalizedRole,
@@ -460,6 +461,7 @@ function sanitizeUserPayload(payload, departments = [], permissionCatalog = defa
     name: String(payload.name || "").trim(),
     email: String(payload.email || "").trim().toLowerCase(),
     password: String(payload.password || ""),
+    passwordReveal: String(payload.passwordReveal || payload.password || ""),
     mustChangePassword: Boolean(payload.mustChangePassword),
     status: String(payload.status || "Ativo").trim() || "Ativo",
     role: permissionProfile?.name || normalizeRoleName(payload.role),
@@ -2145,6 +2147,7 @@ export function AppDataProvider({ children }) {
         email: "",
         status: "Inativo",
         password: "",
+        passwordReveal: "",
         mustChangePassword: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -2168,7 +2171,7 @@ export function AppDataProvider({ children }) {
         );
         const permissionsChanged =
           JSON.stringify(candidate.permissions || {}) !== JSON.stringify(sanitizedPayload.permissions || {});
-        const passwordChanged = String(candidate.password || "") !== String(sanitizedPayload.password || "");
+        const passwordChanged = String(candidate.passwordReveal || "") !== String(sanitizedPayload.passwordReveal || "");
         const nextUser = {
           ...candidate,
           name: sanitizedPayload.name,
@@ -2187,7 +2190,7 @@ export function AppDataProvider({ children }) {
           additionalPermissions: sanitizedPayload.additionalPermissions,
           restrictedPermissions: sanitizedPayload.restrictedPermissions,
           ...(passwordChanged && hasAnyPermission(user, ["users_reset_password", "users_admin"])
-            ? { password: sanitizedPayload.password }
+            ? { password: sanitizedPayload.password, passwordReveal: sanitizedPayload.passwordReveal }
             : {}),
           ...(permissionsChanged && hasAnyPermission(user, ["users_manage_permissions", "users_admin"])
             ? { permissions: sanitizedPayload.permissions }

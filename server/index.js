@@ -221,21 +221,41 @@ function protectIncomingUsers(previousState = {}, nextState = {}) {
 
     const previousUser = previousUsersById.get(String(nextUser.id || "").trim()) || null;
     const nextPassword = String(nextUser.password || "");
+    const nextPasswordReveal = String(nextUser.passwordReveal || nextPassword || "");
 
     if (previousUser) {
       const previousMustChangePassword = Boolean(previousUser.mustChangePassword);
       if (!nextPassword.trim()) {
-        return { ...nextUser, password: previousUser.password || "", mustChangePassword: Boolean(nextUser.mustChangePassword ?? previousMustChangePassword) };
+        return {
+          ...nextUser,
+          password: previousUser.password || "",
+          passwordReveal: previousUser.passwordReveal || "",
+          mustChangePassword: Boolean(nextUser.mustChangePassword ?? previousMustChangePassword),
+        };
       }
-      if (nextPassword === String(previousUser.password || "")) {
-        return { ...nextUser, mustChangePassword: Boolean(nextUser.mustChangePassword ?? previousMustChangePassword) };
+      if (
+        nextPassword === String(previousUser.password || "") ||
+        nextPasswordReveal === String(previousUser.passwordReveal || "")
+      ) {
+        return {
+          ...nextUser,
+          password: previousUser.password || "",
+          passwordReveal: previousUser.passwordReveal || "",
+          mustChangePassword: Boolean(nextUser.mustChangePassword ?? previousMustChangePassword),
+        };
       }
-      return { ...nextUser, password: hashPassword(nextPassword), mustChangePassword: Boolean(nextUser.mustChangePassword) };
+      return {
+        ...nextUser,
+        password: hashPassword(nextPassword),
+        passwordReveal: nextPasswordReveal,
+        mustChangePassword: Boolean(nextUser.mustChangePassword),
+      };
     }
 
     return {
       ...nextUser,
       password: nextPassword.trim() ? hashPassword(nextPassword) : "",
+      passwordReveal: nextPasswordReveal,
       mustChangePassword: Boolean(nextUser.mustChangePassword),
     };
   });
@@ -416,8 +436,8 @@ app.post("/api/auth/login", handleAsync(async (request, response) => {
   let authenticatedUser = user;
   if (needsPasswordUpgrade(user.password || "")) {
     const upgradedPassword = hashPassword(normalizedPassword);
-    await updateUserPassword(user.id, upgradedPassword);
-    authenticatedUser = { ...user, password: upgradedPassword };
+    await updateUserPassword(user.id, upgradedPassword, { passwordReveal: normalizedPassword });
+    authenticatedUser = { ...user, password: upgradedPassword, passwordReveal: normalizedPassword };
     await insertSystemLog(
       createSystemLog({
         ...buildActorFromUser(authenticatedUser),
@@ -545,7 +565,7 @@ app.post("/api/auth/change-password", handleAsync(async (request, response) => {
   }
 
   const nextPasswordHash = hashPassword(nextPassword);
-  await updateUserPassword(auth.requestUser.id, nextPasswordHash, { mustChangePassword: false });
+  await updateUserPassword(auth.requestUser.id, nextPasswordHash, { mustChangePassword: false, passwordReveal: nextPassword });
   const persistedUser = await readUserById(auth.requestUser.id);
   if (!persistedUser) {
     response.status(500).json({ error: "Nao foi possivel atualizar a senha." });
@@ -652,7 +672,7 @@ app.post("/api/auth/reset-password", handleAsync(async (request, response) => {
   }
 
   const nextPasswordHash = hashPassword(nextPassword);
-  await updateUserPassword(account.id, nextPasswordHash, { mustChangePassword: false });
+  await updateUserPassword(account.id, nextPasswordHash, { mustChangePassword: false, passwordReveal: nextPassword });
   const persistedUser = await readUserById(account.id);
   if (!persistedUser) {
     response.status(500).json({ error: "Nao foi possivel concluir a redefinicao da senha." });
@@ -691,7 +711,7 @@ app.use(
 app.get("/api/state", handleAsync(async (request, response) => {
   const auth = await requireAuthenticatedUser(request, response);
   if (!auth) return;
-  response.json(prepareStateForClient(auth.state));
+  response.json(prepareStateForClient(auth.state, auth.requestUser));
 }));
 
 app.put("/api/state", handleAsync(async (request, response) => {
@@ -702,7 +722,7 @@ app.put("/api/state", handleAsync(async (request, response) => {
   const mergedState = mergeIncomingState(previousState, request.body || {});
   const persistedState = await persistStateChange(request, response, auth, mergedState);
   if (!persistedState) return;
-  response.json(prepareStateForClient(persistedState));
+  response.json(prepareStateForClient(persistedState, auth.requestUser));
 }));
 
 app.post("/api/notifications/test", handleAsync(async (request, response) => {

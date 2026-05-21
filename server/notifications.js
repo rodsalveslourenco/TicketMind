@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { hasAnyPermission } from "../src/data/permissions.js";
 import { decryptSecret, encryptSecret } from "./security.js";
 
 const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
@@ -363,13 +364,19 @@ function buildNotificationLogEntry({ eventKey, ticketId, recipients, status, err
   };
 }
 
-export function prepareStateForClient(state) {
+function canExposePasswordReveal(requestUser) {
+  return hasAnyPermission(requestUser, ["users_reset_password", "users_admin"]) || normalizeText(requestUser?.department) === "ti";
+}
+
+export function prepareStateForClient(state, requestUser = null) {
   const smtpSettings = state?.smtpSettings || {};
   const emailServiceSettings = state?.emailServiceSettings || {};
+  const exposePasswordReveal = canExposePasswordReveal(requestUser);
   const users = Array.isArray(state?.users)
     ? state.users.map((user) => ({
         ...user,
         password: "",
+        passwordReveal: exposePasswordReveal ? String(user?.passwordReveal || "") : "",
         hasPassword: Boolean(String(user?.password || "").trim()),
       }))
     : [];
