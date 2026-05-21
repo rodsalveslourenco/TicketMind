@@ -2315,6 +2315,21 @@ function TicketsPage() {
                   </span>
                 </div>
                 <div className="ticket-detail-actions">
+                  {(canEditTicket || canRecordResolution) && !isDetailLocked ? (
+                    <button className="primary-button interactive-button" type="submit">
+                      Salvar alteracoes
+                    </button>
+                  ) : null}
+                  {canCloseTicket && !isDetailResolved ? (
+                    <button className="ghost-button interactive-button" onClick={handleFinishTicket} type="button">
+                      Finalizar chamado
+                    </button>
+                  ) : null}
+                  {canReopenTicket && isDetailResolved && !isDetailReopened ? (
+                    <button className="ghost-button interactive-button" onClick={() => handleQuickAction("reopen")} type="button">
+                      Reabrir chamado
+                    </button>
+                  ) : null}
                   <button className="ghost-button interactive-button" onClick={handleCloseTicketDetail} type="button">
                     Fechar
                   </button>
@@ -2340,16 +2355,6 @@ function TicketsPage() {
                 {canChangeStatus && !isDetailResolved ? (
                   <button className="ghost-button interactive-button" onClick={() => handleQuickAction("wait")} type="button">
                     Aguardar usuario
-                  </button>
-                ) : null}
-                {canCloseTicket && !isDetailResolved ? (
-                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("resolve")} type="button">
-                    Resolver agora
-                  </button>
-                ) : null}
-                {canReopenTicket && isDetailResolved ? (
-                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("reopen")} type="button">
-                    Reabrir chamado
                   </button>
                 ) : null}
                 <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
@@ -3179,23 +3184,6 @@ function TicketsPage() {
 
               </fieldset>
 
-              <div className="ticket-create-actions">
-                {(canEditTicket || canRecordResolution) && !isDetailLocked ? (
-                  <button className="primary-button interactive-button" type="submit">
-                    Salvar alteracoes
-                  </button>
-                ) : null}
-                {canCloseTicket && !isDetailResolved ? (
-                  <button className="ghost-button interactive-button" onClick={handleFinishTicket} type="button">
-                    Finalizar chamado
-                  </button>
-                ) : null}
-                {canReopenTicket && isDetailResolved && !isDetailReopened ? (
-                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("reopen")} type="button">
-                    Reabrir chamado
-                  </button>
-                ) : null}
-              </div>
             </form>
           </div>
         </div>

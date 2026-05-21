@@ -347,8 +347,8 @@ function UsersPage() {
       return;
     }
 
-    if (!form.name.trim() || !form.team.trim()) {
-      pushToast("Campos obrigatorios", "Preencha nome e equipe do usuario.", "warning");
+    if (!form.name.trim()) {
+      pushToast("Campos obrigatorios", "Preencha o nome do usuario.", "warning");
       return;
     }
 
