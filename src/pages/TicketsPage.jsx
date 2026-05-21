@@ -415,6 +415,9 @@ function TicketsPage() {
 
   const detailTicket = tickets.find((ticket) => ticket.id === detailTicketId) ?? null;
   const previewTicket = tickets.find((ticket) => ticket.id === previewTicketId) ?? null;
+  const isCurrentUserAssignedToDetailTicket =
+    Boolean(detailTicket) && normalizeText(detailForm?.assignee || detailTicket?.assignee || "") === normalizeText(user?.name || "");
+  const canManageManualSla = hasAnyPermission(user, ["tickets_admin"]) || isCurrentUserAssignedToDetailTicket;
   const isDetailResolved = normalizeText(detailTicket?.status) === "resolvido";
   const isDetailReopened = normalizeText(detailTicket?.status) === "reaberto";
   const detailTypeProfile = useMemo(() => getTypeProfile(detailForm?.type), [detailForm?.type]);
@@ -1973,18 +1976,6 @@ function TicketsPage() {
                   <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitacao em uma linha" value={createForm.title} />
                 </label>
                 <label className="field-block">
-                  <span>Tipo</span>
-                  <select onChange={handleCreateTypeChange} value={createForm.type}>
-                    <option>Incidente</option>
-                    <option>Requisicao</option>
-                    <option>Problema</option>
-                  </select>
-                </label>
-                <label className="field-block">
-                  <span>Categoria</span>
-                  <input onChange={updateCreateField("category")} value={createForm.category} />
-                </label>
-                <label className="field-block">
                   <span>Prioridade</span>
                   <select onChange={updateCreateField("priority")} value={createForm.priority}>
                     {PRIORITY_LEVELS.map((priority) => (
@@ -1993,49 +1984,37 @@ function TicketsPage() {
                   </select>
                 </label>
                 <label className="field-block">
-                  <span>SLA resolucao (minutos)</span>
-                  <input min="15" onChange={updateCreateField("slaTargetMinutes")} step="15" type="number" value={createForm.slaTargetMinutes || ""} />
-                  <small>{formatSlaMinutesLabel(createForm.slaTargetMinutes || 240)}</small>
-                </label>
-                {serviceCenterEnabled ? (
-                  <label className="field-block field-full">
-                    <span>Departamento de destino</span>
-                    <select
-                      onChange={updateCreateField("departmentId")}
-                      required
-                      style={getDepartmentColorStyle(selectedCreateDepartment?.color, { alpha: 0.16 })}
-                      value={createForm.departmentId}
-                    >
-                      <option value="">Selecione o departamento</option>
-                      {requestableDepartments.map((department) => (
-                        <option key={department.id} style={toDepartmentOptionStyle(department.color)} value={department.id}>
-                          {department.name}{department.code ? ` | ${department.code}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {!requestableDepartments.length ? (
-                      <div className="empty-state">
-                        <strong>Nenhum departamento disponivel.</strong>
-                        <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
-                      </div>
-                    ) : null}
-                  </label>
-                ) : null}
-                <div className="field-block">
-                  <span>Solicitante</span>
-                  <div className="requester-stamp requester-stamp-compact">
-                    <strong>{user?.name || "Usuario nao identificado"}</strong>
-                    <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
-                  </div>
-                </div>
-                <label className="field-block">
-                  <span>Localizacao</span>
-                  <input onChange={updateCreateField("location")} value={createForm.location} />
+                  <span>Urgencia</span>
+                  <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
+                    {PRIORITY_LEVELS.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
                 </label>
                 <label className="field-block field-full">
                   <span>Descricao</span>
                   <textarea onChange={updateCreateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." value={createForm.description} />
                 </label>
+                <div className="field-block field-full">
+                  <span>Anexos</span>
+                  <div className="attachment-toolbar glpi-subbar">
+                    <button className="ghost-button interactive-button" onClick={() => createInputRef.current?.click()} type="button">
+                      Anexar arquivos
+                    </button>
+                    <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
+                    <span>{createForm.attachments.length} arquivo(s) selecionado(s)</span>
+                  </div>
+                  {createForm.attachments.length ? (
+                    <div className="attachment-list">
+                      {createForm.attachments.map((attachment) => (
+                        <div className="attachment-item" key={attachment.id}>
+                          <strong>{attachment.name}</strong>
+                          <span>{formatBytes(attachment.size)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 {getDynamicCategoryValidation({ ...createForm, requesterEmail: user?.email || "" }) ? (
                   <div className="field-block field-full">
                     <div className="ticket-rule-alert">
@@ -2044,6 +2023,59 @@ function TicketsPage() {
                   </div>
                 ) : null}
               </div>
+
+              <details className="ticket-create-section">
+                <summary>Classificacao e roteamento</summary>
+                <div className="glpi-form-grid ticket-create-grid-simplified">
+                  <label className="field-block">
+                    <span>Tipo</span>
+                    <select onChange={handleCreateTypeChange} value={createForm.type}>
+                      <option>Incidente</option>
+                      <option>Requisicao</option>
+                      <option>Problema</option>
+                    </select>
+                  </label>
+                  <label className="field-block">
+                    <span>Categoria</span>
+                    <input onChange={updateCreateField("category")} value={createForm.category} />
+                  </label>
+                  {serviceCenterEnabled ? (
+                    <label className="field-block field-full">
+                      <span>Departamento de destino</span>
+                      <select
+                        onChange={updateCreateField("departmentId")}
+                        required
+                        style={getDepartmentColorStyle(selectedCreateDepartment?.color, { alpha: 0.16 })}
+                        value={createForm.departmentId}
+                      >
+                        <option value="">Selecione o departamento</option>
+                        {requestableDepartments.map((department) => (
+                          <option key={department.id} style={toDepartmentOptionStyle(department.color)} value={department.id}>
+                            {department.name}{department.code ? ` | ${department.code}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {!requestableDepartments.length ? (
+                        <div className="empty-state">
+                          <strong>Nenhum departamento disponivel.</strong>
+                          <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
+                        </div>
+                      ) : null}
+                    </label>
+                  ) : null}
+                  <div className="field-block">
+                    <span>Solicitante</span>
+                    <div className="requester-stamp requester-stamp-compact">
+                      <strong>{user?.name || "Usuario nao identificado"}</strong>
+                      <small>{user ? `${user.email} | ${user.role}` : "Faca login para registrar o solicitante."}</small>
+                    </div>
+                  </div>
+                  <label className="field-block">
+                    <span>Localizacao</span>
+                    <input onChange={updateCreateField("location")} value={createForm.location} />
+                  </label>
+                </div>
+              </details>
 
               {normalizeText(createForm.type) === "requisicao" ? (
                 <details className="ticket-create-section" open>
@@ -2071,14 +2103,6 @@ function TicketsPage() {
               <details className="ticket-create-section">
                 <summary>Classificacao avancada</summary>
                 <div className="glpi-form-grid ticket-create-grid-simplified">
-                  <label className="field-block">
-                    <span>Urgencia</span>
-                    <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
-                      {PRIORITY_LEVELS.map((priority) => (
-                        <option key={priority}>{priority}</option>
-                      ))}
-                    </select>
-                  </label>
                   <label className="field-block">
                     <span>Impacto</span>
                     <select onChange={updateCreateField("impact")} value={createForm.impact}>
@@ -2178,7 +2202,7 @@ function TicketsPage() {
               </details>
 
               <details className="ticket-create-section">
-                <summary>Base de conhecimento e anexos</summary>
+                <summary>Base de conhecimento</summary>
                 <div className="glpi-form-grid ticket-create-grid-simplified">
                   <label className="field-block field-full">
                     <span>Pesquisar artigo</span>
@@ -2226,25 +2250,6 @@ function TicketsPage() {
                 {createForm.knowledgeArticleIds.length ? (
                   <div className="ticket-row-meta">
                     <span>{createForm.knowledgeArticleIds.length} artigo(s) vinculado(s) ao novo chamado</span>
-                  </div>
-                ) : null}
-
-                <div className="attachment-toolbar glpi-subbar">
-                  <button className="ghost-button interactive-button" onClick={() => createInputRef.current?.click()} type="button">
-                    Anexar arquivos
-                  </button>
-                  <input hidden multiple onChange={handleCreateAttachments} ref={createInputRef} type="file" />
-                  <span>{createForm.attachments.length} arquivo(s) selecionado(s)</span>
-                </div>
-
-                {createForm.attachments.length ? (
-                  <div className="attachment-list">
-                    {createForm.attachments.map((attachment) => (
-                      <div className="attachment-item" key={attachment.id}>
-                        <strong>{attachment.name}</strong>
-                        <span>{formatBytes(attachment.size)}</span>
-                      </div>
-                    ))}
                   </div>
                 ) : null}
               </details>
@@ -2506,11 +2511,13 @@ function TicketsPage() {
                     ))}
                   </select>
                 </label>
-                <label className={`field-block${detailDirtyFields.slaTargetMinutes ? " is-dirty" : ""}`}>
-                  <span>SLA resolucao (minutos)</span>
-                  <input disabled={!canEditTicket} min="15" onChange={updateDetailField("slaTargetMinutes")} step="15" type="number" value={detailForm.slaTargetMinutes || ""} />
-                  <small>{formatSlaMinutesLabel(detailForm.slaTargetMinutes || detailTicket.slaTargetMinutes || 240)}</small>
-                </label>
+                {canManageManualSla ? (
+                  <label className={`field-block${detailDirtyFields.slaTargetMinutes ? " is-dirty" : ""}`}>
+                    <span>SLA resolucao (minutos)</span>
+                    <input disabled={!canEditTicket} min="15" onChange={updateDetailField("slaTargetMinutes")} step="15" type="number" value={detailForm.slaTargetMinutes || ""} />
+                    <small>{formatSlaMinutesLabel(detailForm.slaTargetMinutes || detailTicket.slaTargetMinutes || 240)}</small>
+                  </label>
+                ) : null}
                 <label className={`field-block${detailDirtyFields.dueDate ? " is-dirty" : ""}`}>
                   <span>Data limite</span>
                   <input disabled={!canEditTicket} onChange={updateDetailField("dueDate")} type="date" value={detailForm.dueDate || ""} />
