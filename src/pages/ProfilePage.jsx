@@ -171,6 +171,12 @@ function ProfilePage() {
           </div>
         </div>
 
+        {currentUser?.mustChangePassword ? (
+          <div className="ticket-rule-alert">
+            Sua conta esta marcada para trocar a senha no proximo login. Atualize a senha abaixo para liberar o restante do sistema.
+          </div>
+        ) : null}
+
         <form className="glpi-ticket-form" onSubmit={handlePasswordSubmit}>
           <div className="glpi-form-grid">
             <label className="field-block">

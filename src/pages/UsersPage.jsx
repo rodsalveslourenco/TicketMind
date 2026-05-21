@@ -30,6 +30,22 @@ function maskPassword(password) {
   return "*".repeat(Math.max(normalizedPassword.length, 8));
 }
 
+function normalizePasswordSeed(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .trim();
+}
+
+function generatePasswordFromName(name) {
+  const normalized = normalizePasswordSeed(name);
+  const [firstName = "usuario", lastName = "ticketmind"] = normalized.split(/\s+/).filter(Boolean);
+  const base = `${firstName.slice(0, 1).toUpperCase()}${firstName.slice(1).toLowerCase()}${lastName.slice(0, 1).toUpperCase()}${lastName.slice(1).toLowerCase()}`;
+  const suffix = new Date().getFullYear().toString().slice(-2);
+  return `${base}${suffix}#`;
+}
+
 function createOverrideMap(permissionCatalog) {
   const uniqueKeys = Array.from(
     new Set(
@@ -50,6 +66,7 @@ function createDefaultUserForm(permissionProfiles, permissionCatalog) {
     name: "",
     email: "",
     password: "",
+    mustChangePassword: false,
     status: "Ativo",
     role: defaultProfile?.name || "Solicitante Interno",
     permissionProfileId: defaultProfile?.id || "",
@@ -181,6 +198,7 @@ function UsersPage() {
       name: String(form.name || "") !== String(detailUser.name || ""),
       email: String(form.email || "") !== String(detailUser.email || ""),
       password: String(form.password || "") !== String(detailUser.password || ""),
+      mustChangePassword: Boolean(form.mustChangePassword) !== Boolean(detailUser.mustChangePassword),
       status: String(form.status || "") !== String(detailUser.status || ""),
       permissionProfileId: String(form.permissionProfileId || "") !== String(detailUser.permissionProfileId || ""),
       team: String(form.team || "") !== String(detailUser.team || ""),
@@ -201,7 +219,8 @@ function UsersPage() {
   );
 
   const updateField = (field) => (event) => {
-    setForm((current) => ({ ...current, [field]: event.target.value }));
+    const nextValue = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    setForm((current) => ({ ...current, [field]: nextValue }));
   };
 
   const updateDepartmentField = (event) => {
@@ -243,6 +262,7 @@ function UsersPage() {
       name: candidate.name || "",
       email: candidate.email || "",
       password: candidate.password || "",
+      mustChangePassword: Boolean(candidate.mustChangePassword),
       status: candidate.status || "Ativo",
       role: candidate.role || "",
       permissionProfileId: candidate.permissionProfileId || "",
@@ -309,6 +329,16 @@ function UsersPage() {
     }
   };
 
+  const handleGeneratePassword = () => {
+    const generatedPassword = generatePasswordFromName(form.name || form.email || "usuario");
+    setForm((current) => ({
+      ...current,
+      password: generatedPassword,
+      mustChangePassword: true,
+    }));
+    pushToast("Senha gerada", "Senha inicial criada com base no nome do usuario.");
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     if (editingUserId) {
@@ -348,6 +378,7 @@ function UsersPage() {
       role: selectedPermissionProfile?.name || form.role,
       departmentId: selectedDepartment?.id || "",
       department: selectedDepartment?.name || "",
+      mustChangePassword: Boolean(form.mustChangePassword),
     };
 
     if (editingUserId) {
@@ -616,9 +647,16 @@ function UsersPage() {
                 <div className="form-section-header">
                   <strong>Novo usuario</strong>
                 </div>
-                <button className="ghost-button interactive-button" onClick={() => setShowCreateModal(false)} type="button">
-                  Fechar
-                </button>
+                <div className="ticket-detail-actions">
+                  {canCreateUsers ? (
+                    <button className="primary-button interactive-button" type="submit">
+                      Cadastrar usuario
+                    </button>
+                  ) : null}
+                  <button className="ghost-button interactive-button" onClick={() => setShowCreateModal(false)} type="button">
+                    Fechar
+                  </button>
+                </div>
               </div>
               <div className="glpi-form-grid">
                 <label className={`field-block field-span-2${detailDirtyFields.avatar ? " is-dirty" : ""}`}>
@@ -644,7 +682,32 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Senha inicial</span>
-                  <input onChange={updateField("password")} type="password" value={form.password} />
+                  <div className="user-password-row">
+                    <input onChange={updateField("password")} type={canRevealPasswords && revealedUserIds.includes("new-user") ? "text" : "password"} value={form.password} />
+                    {canRevealPasswords ? (
+                      <button
+                        className="ghost-link interactive-button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          togglePassword("new-user");
+                        }}
+                        type="button"
+                      >
+                        {revealedUserIds.includes("new-user") ? "Ocultar" : "Revelar"}
+                      </button>
+                    ) : null}
+                    <button className="ghost-link interactive-button" onClick={handleGeneratePassword} type="button">
+                      Gerar senha
+                    </button>
+                  </div>
+                </label>
+                <label className="field-block">
+                  <span>Seguranca de acesso</span>
+                  <label className="inline-toggle">
+                    <input checked={Boolean(form.mustChangePassword)} onChange={updateField("mustChangePassword")} type="checkbox" />
+                    <span>Solicitar alteracao de senha no proximo login</span>
+                  </label>
                 </label>
                 <label className="field-block">
                   <span>Status</span>
@@ -710,6 +773,11 @@ function UsersPage() {
                   </span>
                 </div>
                 <div className="ticket-detail-actions">
+                  {canEditUsers || canResetPasswords || canManagePermissions ? (
+                    <button className="primary-button interactive-button" type="submit">
+                      Salvar usuario
+                    </button>
+                  ) : null}
                   <button className="ghost-button interactive-button" onClick={() => setDetailUserId(null)} type="button">
                     Fechar
                   </button>
@@ -762,7 +830,7 @@ function UsersPage() {
                     />
                     {canRevealPasswords ? (
                       <button
-                        className="ghost-link"
+                        className="ghost-link interactive-button"
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -773,7 +841,19 @@ function UsersPage() {
                         {revealedUserIds.includes(detailUser.id) ? "Ocultar" : "Revelar"}
                       </button>
                     ) : null}
+                    {canResetPasswords ? (
+                      <button className="ghost-link interactive-button" onClick={handleGeneratePassword} type="button">
+                        Gerar senha
+                      </button>
+                    ) : null}
                   </div>
+                </label>
+                <label className={`field-block${detailDirtyFields.mustChangePassword ? " is-dirty" : ""}`}>
+                  <span>Seguranca de acesso</span>
+                  <label className="inline-toggle">
+                    <input checked={Boolean(form.mustChangePassword)} disabled={!canResetPasswords} onChange={updateField("mustChangePassword")} type="checkbox" />
+                    <span>Solicitar alteracao de senha no proximo login</span>
+                  </label>
                 </label>
                 <label className={`field-block${detailDirtyFields.status ? " is-dirty" : ""}`}>
                   <span>Status</span>

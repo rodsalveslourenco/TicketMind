@@ -79,6 +79,7 @@ function hydrateUsers(users, permissionCatalog, permissionProfiles) {
     return {
       ...candidate,
       password: String(candidate.password || ""),
+      mustChangePassword: Boolean(candidate.mustChangePassword),
       status: String(candidate.status || "Ativo").trim() || "Ativo",
       role: normalizedRole,
       permissionProfileId: String(permissionProfile?.id || candidate.permissionProfileId || "").trim(),
@@ -421,6 +422,7 @@ function sanitizeUserPayload(payload, departments = [], permissionCatalog = defa
     name: String(payload.name || "").trim(),
     email: String(payload.email || "").trim().toLowerCase(),
     password: String(payload.password || ""),
+    mustChangePassword: Boolean(payload.mustChangePassword),
     status: String(payload.status || "Ativo").trim() || "Ativo",
     role: permissionProfile?.name || normalizeRoleName(payload.role),
     permissionProfileId: String(permissionProfile?.id || payload.permissionProfileId || "").trim(),
@@ -2089,6 +2091,7 @@ export function AppDataProvider({ children }) {
         email: "",
         status: "Inativo",
         password: "",
+        mustChangePassword: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -2098,7 +2101,7 @@ export function AppDataProvider({ children }) {
   };
 
   const updateUser = (userId, payload) => {
-    if (!hasAnyPermission(user, ["users_edit", "users_admin"])) return;
+    if (!hasAnyPermission(user, ["users_edit", "users_reset_password", "users_manage_permissions", "users_admin"])) return;
     applyState((current) => {
       let nextCurrentUser = null;
       const nextUsers = current.users.map((candidate) => {
@@ -2116,6 +2119,10 @@ export function AppDataProvider({ children }) {
           ...candidate,
           name: sanitizedPayload.name,
           email: sanitizedPayload.email,
+          mustChangePassword:
+            hasAnyPermission(user, ["users_reset_password", "users_admin"]) || !candidate.id
+              ? sanitizedPayload.mustChangePassword
+              : Boolean(candidate.mustChangePassword),
           status: sanitizedPayload.status,
           role: sanitizedPayload.role,
           permissionProfileId: sanitizedPayload.permissionProfileId,

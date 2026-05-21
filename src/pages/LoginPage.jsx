@@ -4,15 +4,12 @@ import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
 
 function LoginPage() {
-  const { login, requestPasswordRecovery } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [recovering, setRecovering] = useState(false);
-  const [recoveryEmail, setRecoveryEmail] = useState("");
-  const [recoveryMessage, setRecoveryMessage] = useState("");
 
   const from = location.state?.from?.pathname || "/app/dashboard";
 
@@ -33,22 +30,6 @@ function LoginPage() {
 
   const updateField = (field) => (event) =>
     setForm((current) => ({ ...current, [field]: event.target.value }));
-
-  const handleRecovery = async (event) => {
-    event.preventDefault();
-    setRecovering(true);
-    setError("");
-    setRecoveryMessage("");
-
-    try {
-      const payload = await requestPasswordRecovery(recoveryEmail || form.email);
-      setRecoveryMessage(payload?.message || "Se a conta estiver ativa, o link de recuperacao sera enviado.");
-    } catch (nextError) {
-      setError(nextError.message);
-    } finally {
-      setRecovering(false);
-    }
-  };
 
   return (
     <div className="login-shell">
@@ -92,25 +73,6 @@ function LoginPage() {
 
           <button className="primary-button interactive-button" disabled={submitting} type="submit">
             {submitting ? "Validando acesso..." : "Entrar"}
-          </button>
-        </form>
-
-        <div className="settings-divider" />
-
-        <form className="login-form" onSubmit={handleRecovery}>
-          <label>
-            Recuperar senha
-            <input
-              autoComplete="email"
-              onChange={(event) => setRecoveryEmail(event.target.value)}
-              placeholder="usuario@empresa.com"
-              type="email"
-              value={recoveryEmail}
-            />
-          </label>
-          {recoveryMessage ? <div className="status-pill">{recoveryMessage}</div> : null}
-          <button className="ghost-button interactive-button" disabled={recovering} type="submit">
-            {recovering ? "Enviando link..." : "Enviar link de recuperacao"}
           </button>
         </form>
       </section>

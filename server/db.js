@@ -702,6 +702,7 @@ async function getSqliteDb() {
           name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
           password TEXT NOT NULL,
+          must_change_password INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'Ativo',
           role TEXT NOT NULL,
           permission_profile_id TEXT NOT NULL DEFAULT '',
@@ -786,6 +787,9 @@ async function getSqliteDb() {
       `);
       if (!sqliteTableHasColumn(db, "departments", "color")) {
         db.run("ALTER TABLE departments ADD COLUMN color TEXT NOT NULL DEFAULT ''");
+      }
+      if (!sqliteTableHasColumn(db, "users", "must_change_password")) {
+        db.run("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
       }
       return db;
     })().catch((error) => {
@@ -943,6 +947,7 @@ function mapSqliteUserRow(row = {}) {
     name: row.name,
     email: row.email,
     password: row.password,
+    mustChangePassword: Boolean(row.must_change_password),
     status: row.status || "Ativo",
     role: row.role,
     permissionProfileId: row.permission_profile_id || "",
@@ -964,6 +969,7 @@ function mapPostgresUserRow(row = {}) {
     name: row.name,
     email: row.email,
     password: row.password,
+    mustChangePassword: Boolean(row.must_change_password),
     status: row.status || "Ativo",
     role: row.role,
     permissionProfileId: row.permission_profile_id || "",
@@ -997,7 +1003,7 @@ async function readSqliteCollections() {
     ORDER BY locations.name
   `);
   const usersResult = db.exec(`
-    SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+    SELECT users.id, users.name, users.email, users.password, users.must_change_password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
            departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
     FROM users
     LEFT JOIN departments ON departments.id = users.department_id
@@ -1042,7 +1048,7 @@ async function readSqliteUserByEmail(email) {
   const row = readFirstSqliteRow(
     db.exec(
       `
-        SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+        SELECT users.id, users.name, users.email, users.password, users.must_change_password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
                departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
         FROM users
         LEFT JOIN departments ON departments.id = users.department_id
@@ -1063,7 +1069,7 @@ async function readSqliteUserById(userId) {
   const row = readFirstSqliteRow(
     db.exec(
       `
-        SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+        SELECT users.id, users.name, users.email, users.password, users.must_change_password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
                departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
         FROM users
         LEFT JOIN departments ON departments.id = users.department_id
@@ -1120,10 +1126,10 @@ async function writeSqliteCollections(collections) {
 
     const insertUser = db.prepare(`
       INSERT INTO users (
-        id, name, email, password, status, role, permission_profile_id, team, department_id, avatar,
+        id, name, email, password, must_change_password, status, role, permission_profile_id, team, department_id, avatar,
         additional_permissions, restricted_permissions, permissions, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     collections.users.forEach((user) => {
       insertUser.run([
@@ -1131,6 +1137,7 @@ async function writeSqliteCollections(collections) {
         user.name,
         user.email,
         user.password,
+        user.mustChangePassword ? 1 : 0,
         user.status || "Ativo",
         user.role,
         user.permissionProfileId || "",
@@ -1280,6 +1287,7 @@ async function ensurePgSchema() {
           name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
           password TEXT NOT NULL,
+          must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
           status TEXT NOT NULL DEFAULT 'Ativo',
           role TEXT NOT NULL,
           permission_profile_id TEXT NOT NULL DEFAULT '',
@@ -1363,6 +1371,7 @@ async function ensurePgSchema() {
       `);
       await pool.query(`
         ALTER TABLE departments ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Ativo';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS permission_profile_id TEXT NOT NULL DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
@@ -1417,7 +1426,7 @@ async function readPostgresCollections() {
     ORDER BY locations.name
   `);
   const usersResult = await pool.query(`
-    SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+    SELECT users.id, users.name, users.email, users.password, users.must_change_password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
            departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
     FROM users
     LEFT JOIN departments ON departments.id = users.department_id
@@ -1456,7 +1465,7 @@ async function readPostgresUserByEmail(email) {
   if (!normalizedEmail) return null;
   const { rows } = await pool.query(
     `
-      SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+      SELECT users.id, users.name, users.email, users.password, users.must_change_password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
              departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
       FROM users
       LEFT JOIN departments ON departments.id = users.department_id
@@ -1476,7 +1485,7 @@ async function readPostgresUserById(userId) {
   if (!normalizedUserId) return null;
   const { rows } = await pool.query(
     `
-      SELECT users.id, users.name, users.email, users.password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
+      SELECT users.id, users.name, users.email, users.password, users.must_change_password, users.status, users.role, users.permission_profile_id, users.team, users.department_id,
              departments.name AS department_name, users.avatar, users.additional_permissions, users.restricted_permissions, users.permissions, users.created_at, users.updated_at
       FROM users
       LEFT JOIN departments ON departments.id = users.department_id
@@ -1582,16 +1591,17 @@ async function writePostgresCollections(collections) {
         await client.query(
           `
             INSERT INTO users (
-              id, name, email, password, status, role, permission_profile_id, team, department_id, avatar,
+              id, name, email, password, must_change_password, status, role, permission_profile_id, team, department_id, avatar,
               additional_permissions, restricted_permissions, permissions, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16)
           `,
           [
             user.id,
             user.name,
             user.email,
             user.password,
+            Boolean(user.mustChangePassword),
             user.status || "Ativo",
             user.role,
             user.permissionProfileId || "",
@@ -2022,7 +2032,7 @@ export async function readUserById(userId) {
   return readPostgresUserById(userId);
 }
 
-export async function updateUserPassword(userId, passwordHash) {
+export async function updateUserPassword(userId, passwordHash, options = {}) {
   const normalizedUserId = String(userId || "").trim();
   const normalizedPasswordHash = String(passwordHash || "").trim();
   if (!normalizedUserId || !normalizedPasswordHash) return null;
@@ -2035,6 +2045,7 @@ export async function updateUserPassword(userId, passwordHash) {
         ? {
             ...candidate,
             password: normalizedPasswordHash,
+            ...(options.mustChangePassword === undefined ? {} : { mustChangePassword: Boolean(options.mustChangePassword) }),
             updatedAt: new Date().toISOString(),
           }
         : candidate,

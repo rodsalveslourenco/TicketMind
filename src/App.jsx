@@ -28,7 +28,7 @@ import CentralServicesPage from "./pages/CentralServicesPage";
 function App() {
   const { isAuthenticated, user } = useAuth();
   const { navigationSections, permissionCatalog } = useAppData();
-  const homePath = getUserHomePath(user, navigationSections, permissionCatalog);
+  const homePath = user?.mustChangePassword ? "/app/profile" : getUserHomePath(user, navigationSections, permissionCatalog);
 
   return (
     <Routes>

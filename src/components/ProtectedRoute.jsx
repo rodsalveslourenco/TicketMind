@@ -16,6 +16,10 @@ function ProtectedRoute({ children, requiredPermissions = [], moduleKey = "" }) 
     return <Navigate replace state={{ from: location }} to="/login" />;
   }
 
+  if (user?.mustChangePassword && location.pathname !== "/app/profile") {
+    return <Navigate replace to="/app/profile" />;
+  }
+
   if (moduleKey && !canAccessModule(user, moduleKey, permissionCatalog)) {
     return <Navigate replace to={getUserHomePath(user, navigationSections, permissionCatalog)} />;
   }

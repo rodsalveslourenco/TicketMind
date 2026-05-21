@@ -138,6 +138,10 @@ function summarizeCriticalStateChanges(previousState = {}, nextState = {}) {
       push({ kind: "user_password", targetId: userId, label: nextUser.email || nextUser.name || userId });
     }
 
+    if (Boolean(previousUser.mustChangePassword) !== Boolean(nextUser.mustChangePassword)) {
+      push({ kind: "user_password", targetId: userId, label: nextUser.email || nextUser.name || userId });
+    }
+
     if (
       String(previousUser.permissionProfileId || "") !== String(nextUser.permissionProfileId || "") ||
       normalizeValue(previousUser.permissions || {}) !== normalizeValue(nextUser.permissions || {}) ||
@@ -219,18 +223,20 @@ function protectIncomingUsers(previousState = {}, nextState = {}) {
     const nextPassword = String(nextUser.password || "");
 
     if (previousUser) {
+      const previousMustChangePassword = Boolean(previousUser.mustChangePassword);
       if (!nextPassword.trim()) {
-        return { ...nextUser, password: previousUser.password || "" };
+        return { ...nextUser, password: previousUser.password || "", mustChangePassword: Boolean(nextUser.mustChangePassword ?? previousMustChangePassword) };
       }
       if (nextPassword === String(previousUser.password || "")) {
-        return nextUser;
+        return { ...nextUser, mustChangePassword: Boolean(nextUser.mustChangePassword ?? previousMustChangePassword) };
       }
-      return { ...nextUser, password: hashPassword(nextPassword) };
+      return { ...nextUser, password: hashPassword(nextPassword), mustChangePassword: Boolean(nextUser.mustChangePassword) };
     }
 
     return {
       ...nextUser,
       password: nextPassword.trim() ? hashPassword(nextPassword) : "",
+      mustChangePassword: Boolean(nextUser.mustChangePassword),
     };
   });
 }
@@ -539,7 +545,7 @@ app.post("/api/auth/change-password", handleAsync(async (request, response) => {
   }
 
   const nextPasswordHash = hashPassword(nextPassword);
-  await updateUserPassword(auth.requestUser.id, nextPasswordHash);
+  await updateUserPassword(auth.requestUser.id, nextPasswordHash, { mustChangePassword: false });
   const persistedUser = await readUserById(auth.requestUser.id);
   if (!persistedUser) {
     response.status(500).json({ error: "Nao foi possivel atualizar a senha." });
@@ -646,7 +652,7 @@ app.post("/api/auth/reset-password", handleAsync(async (request, response) => {
   }
 
   const nextPasswordHash = hashPassword(nextPassword);
-  await updateUserPassword(account.id, nextPasswordHash);
+  await updateUserPassword(account.id, nextPasswordHash, { mustChangePassword: false });
   const persistedUser = await readUserById(account.id);
   if (!persistedUser) {
     response.status(500).json({ error: "Nao foi possivel concluir a redefinicao da senha." });
