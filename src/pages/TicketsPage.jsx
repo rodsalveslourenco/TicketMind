@@ -2361,6 +2361,8 @@ function TicketsPage() {
               </div>
 
               <fieldset disabled={isDetailLocked} style={{ border: 0, margin: 0, minInlineSize: 0, padding: 0 }}>
+              <div className="ticket-glpi-layout">
+              <aside className="ticket-glpi-sidebar">
 
               <section className="ticket-inline-panel">
                 <div className="ticket-inline-panel-head">
@@ -2868,6 +2870,9 @@ function TicketsPage() {
                 </section>
               ) : null}
 
+              </aside>
+              <div className="ticket-glpi-main">
+
               <section className="ticket-attachment-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
@@ -3182,6 +3187,8 @@ function TicketsPage() {
                 )}
               </section>
 
+              </div>
+              </div>
               </fieldset>
 
             </form>

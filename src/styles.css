@@ -753,7 +753,7 @@ textarea:focus {
 }
 
 .ticket-modal-large {
-  width: min(1100px, 100%);
+  width: min(1320px, 100%);
 }
 
 .ticket-modal-header {
@@ -761,6 +761,50 @@ textarea:focus {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.ticket-glpi-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.92fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.ticket-glpi-main {
+  order: 1;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.ticket-glpi-sidebar {
+  order: 2;
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
+.ticket-glpi-sidebar > .ticket-inline-panel,
+.ticket-glpi-sidebar > .ticket-attachment-panel,
+.ticket-glpi-sidebar > .glpi-info-strip,
+.ticket-glpi-sidebar > .field-block,
+.ticket-glpi-sidebar > .detail-grid {
+  margin-bottom: 0;
+}
+
+.ticket-glpi-sidebar .glpi-info-strip,
+.ticket-glpi-sidebar .detail-grid,
+.ticket-glpi-sidebar .field-block,
+.ticket-glpi-sidebar .ticket-link-strip,
+.ticket-glpi-sidebar .ticket-technician-suggestions {
+  background: rgba(247, 250, 252, 0.92);
+}
+
+.ticket-glpi-main .ticket-attachment-panel {
+  margin-bottom: 0;
 }
 
 .glpi-ticket-form,
@@ -1960,7 +2004,8 @@ textarea:focus {
 
 @media (max-width: 980px) {
   .kanban-grid,
-  .metric-grid-hero {
+  .metric-grid-hero,
+  .ticket-glpi-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1984,6 +2029,12 @@ textarea:focus {
 
   .user-grid-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ticket-glpi-sidebar,
+  .ticket-glpi-main {
+    order: initial;
+    position: static;
   }
 }
 
