@@ -545,6 +545,13 @@ export const defaultEmailServiceSettings = {
 export const defaultServiceCenterSettings = {
   enabled: false,
   departments: {},
+  publicIntake: {
+    enabled: false,
+    accessToken: "",
+    portalTitle: "Abrir chamado externo",
+    portalDescription: "Canal controlado para abertura de chamados sem login no TicketMind.",
+    updatedAt: "",
+  },
   triagePanelVisible: true,
   routingRules: [],
   slaPolicies: [],

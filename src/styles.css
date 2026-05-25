@@ -5386,3 +5386,253 @@ textarea:focus {
     min-width: 0;
   }
 }
+
+.topbar-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.mobile-nav-toggle,
+.sidebar-backdrop {
+  display: none;
+}
+
+.mobile-nav-toggle {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.mobile-nav-toggle span {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #16344f;
+}
+
+.public-ticket-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at top left, rgba(31, 79, 123, 0.12), transparent 36%),
+    linear-gradient(180deg, #f6f8fb 0%, #e7edf5 100%);
+}
+
+.public-ticket-card {
+  width: min(980px, 100%);
+  display: grid;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.public-ticket-hero {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.public-ticket-hero h1 {
+  margin: 0;
+  font-size: clamp(1.55rem, 3vw, 2.35rem);
+  line-height: 1.05;
+}
+
+.public-ticket-hero p,
+.public-intake-preview span,
+.public-ticket-success span {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.public-ticket-form {
+  margin-bottom: 0;
+}
+
+.public-ticket-success {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(47, 122, 82, 0.2);
+  border-radius: 14px;
+  background: rgba(232, 248, 239, 0.95);
+}
+
+.public-intake-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 280px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.public-intake-qr-card {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background: #fff;
+  text-align: center;
+}
+
+.public-intake-qr {
+  width: min(220px, 100%);
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  padding: 0.55rem;
+}
+
+.public-intake-settings-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-inline-box {
+  min-height: 44px;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7fafc;
+}
+
+@media (max-width: 1100px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topbar-actions,
+  .toolbar.density-toggle {
+    width: 100%;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .user-badge {
+    width: 100%;
+  }
+
+  .public-intake-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .ticket-modal,
+  .ticket-modal-large {
+    width: 100%;
+    max-height: calc(100vh - 1.2rem);
+  }
+
+  .ticket-glpi-layout,
+  .public-ticket-grid,
+  .public-intake-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-glpi-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 0.75rem;
+  }
+
+  .workspace {
+    padding: 0;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    border: 0;
+    background: rgba(15, 23, 42, 0.38);
+  }
+
+  .mobile-nav-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    width: min(320px, calc(100vw - 2rem));
+    height: 100vh;
+    transform: translateX(calc(-100% - 1rem));
+    transition: transform 0.22s ease;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .topbar,
+  .app-footer,
+  .board-card,
+  .ticket-modal {
+    border-radius: 16px;
+  }
+
+  .topbar-actions .ghost-button,
+  .topbar-actions .filter-pill {
+    flex: 1 1 140px;
+  }
+
+  .glpi-toolbar,
+  .ticket-modal-header,
+  .settings-card-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ticket-inline-compose,
+  .ticket-row-compact,
+  .ticket-row-main-compact,
+  .ticket-row-headerline {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-inline-actions {
+    justify-content: flex-start;
+    padding: 0 0.62rem 0.62rem;
+  }
+
+  .ticket-modal-backdrop {
+    padding: 0.6rem;
+  }
+
+  .ticket-modal,
+  .ticket-modal-large {
+    padding: 0.9rem;
+    max-height: calc(100vh - 1.2rem);
+  }
+
+  .public-ticket-shell {
+    padding: 0.75rem;
+  }
+
+  .public-ticket-card {
+    padding: 1rem;
+  }
+}

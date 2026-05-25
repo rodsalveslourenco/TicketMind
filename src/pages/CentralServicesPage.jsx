@@ -6,6 +6,7 @@ import { getDepartmentColorStyle, normalizeDepartmentColor } from "../data/depar
 import { hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
 import { exportRowsWithFormat, getExportFormatLabel } from "../lib/export";
+import { toQrCodeDataUrl } from "../lib/qrcode";
 
 const defaultForm = {
   code: "",
@@ -36,11 +37,18 @@ function formatDateTime(value) {
   }).format(parsed);
 }
 
+function generateAccessToken() {
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 function CentralServicesPage() {
   const { user } = useAuth();
   const {
     departments,
     pushToast,
+    savePublicIntakeSettings,
     saveServiceCenterAutomation,
     saveServiceCenterDepartment,
     serviceCenter,
@@ -63,6 +71,13 @@ function CentralServicesPage() {
     statusReasonRules: "{}",
     emailIntake: "{}",
   });
+  const [publicIntakeDraft, setPublicIntakeDraft] = useState({
+    enabled: false,
+    accessToken: "",
+    portalTitle: "Abrir chamado externo",
+    portalDescription: "Canal controlado para abertura de chamados sem login no TicketMind.",
+  });
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
 
   const canView = hasAnyPermission(user, ["service_center_manage", "service_center_departments_manage", "users_manage_permissions", "users_admin"]);
   const canManage = hasAnyPermission(user, ["service_center_departments_manage", "service_center_departments_toggle", "service_center_manage", "users_manage_permissions", "users_admin"]);
@@ -125,6 +140,45 @@ function CentralServicesPage() {
       emailIntake: JSON.stringify(serviceCenter?.emailIntake || {}, null, 2),
     });
   }, [serviceCenter]);
+
+  useEffect(() => {
+    setPublicIntakeDraft({
+      enabled: Boolean(serviceCenter?.publicIntake?.enabled),
+      accessToken: String(serviceCenter?.publicIntake?.accessToken || "").trim(),
+      portalTitle: String(serviceCenter?.publicIntake?.portalTitle || "Abrir chamado externo").trim() || "Abrir chamado externo",
+      portalDescription:
+        String(
+          serviceCenter?.publicIntake?.portalDescription ||
+            "Canal controlado para abertura de chamados sem login no TicketMind.",
+        ).trim() || "Canal controlado para abertura de chamados sem login no TicketMind.",
+    });
+  }, [serviceCenter?.publicIntake]);
+
+  const publicRequestLink = useMemo(() => {
+    if (!publicIntakeDraft.accessToken) return "";
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}/#/public/request/${publicIntakeDraft.accessToken}`;
+  }, [publicIntakeDraft.accessToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function renderQrCode() {
+      if (!publicRequestLink) {
+        setQrCodeDataUrl("");
+        return;
+      }
+      try {
+        const dataUrl = await toQrCodeDataUrl(publicRequestLink);
+        if (!cancelled) setQrCodeDataUrl(dataUrl);
+      } catch {
+        if (!cancelled) setQrCodeDataUrl("");
+      }
+    }
+    renderQrCode();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicRequestLink]);
 
   if (!canView) {
     return <Navigate replace to="/app/dashboard" />;
@@ -255,6 +309,42 @@ function CentralServicesPage() {
     } catch (error) {
       pushToast("JSON invalido", error instanceof Error ? error.message : "Revise a configuracao.", "warning");
     }
+  };
+
+  const handleGenerateAccessToken = () => {
+    setPublicIntakeDraft((current) => ({
+      ...current,
+      enabled: true,
+      accessToken: generateAccessToken(),
+    }));
+  };
+
+  const handleCopyPublicLink = async () => {
+    if (!publicRequestLink) {
+      pushToast("Link indisponivel", "Gere ou informe um token para o canal externo.", "warning");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(publicRequestLink);
+      pushToast("Link copiado", "O link externo foi copiado para a area de transferencia.");
+    } catch {
+      pushToast("Falha ao copiar", "Copie o link manualmente pelo campo abaixo.", "warning");
+    }
+  };
+
+  const handleSavePublicIntake = () => {
+    const accessToken = String(publicIntakeDraft.accessToken || "").trim();
+    if (publicIntakeDraft.enabled && !accessToken) {
+      pushToast("Token obrigatorio", "Gere um token antes de habilitar o canal externo.", "warning");
+      return;
+    }
+    savePublicIntakeSettings({
+      enabled: publicIntakeDraft.enabled,
+      accessToken,
+      portalTitle: publicIntakeDraft.portalTitle,
+      portalDescription: publicIntakeDraft.portalDescription,
+    });
+    pushToast("Canal externo salvo", "Link privado e QR Code atualizados.");
   };
 
   const handleExportCentral = (format = "csv") => {
@@ -458,6 +548,74 @@ function CentralServicesPage() {
             </button>
           </div>
         ) : null}
+      </section>
+
+      <section className="board-card glpi-panel settings-stack">
+        <div className="settings-card-head">
+          <div>
+            <h2>Canal externo de chamados</h2>
+            <span>Gera um link privado com token longo e QR Code para abertura sem autenticacao.</span>
+          </div>
+        </div>
+        <div className="glpi-form-grid public-intake-settings-grid">
+          <label className="field-block field-full">
+            <span>Titulo do portal</span>
+            <input
+              onChange={(event) => setPublicIntakeDraft((current) => ({ ...current, portalTitle: event.target.value }))}
+              value={publicIntakeDraft.portalTitle}
+            />
+          </label>
+          <label className="field-block field-full">
+            <span>Descricao do portal</span>
+            <textarea
+              onChange={(event) => setPublicIntakeDraft((current) => ({ ...current, portalDescription: event.target.value }))}
+              rows={4}
+              value={publicIntakeDraft.portalDescription}
+            />
+          </label>
+          <label className="field-block field-span-2">
+            <span>Token secreto</span>
+            <input
+              onChange={(event) => setPublicIntakeDraft((current) => ({ ...current, accessToken: event.target.value.trim() }))}
+              value={publicIntakeDraft.accessToken}
+            />
+          </label>
+          <div className="field-block">
+            <span>Estado</span>
+            <label className="inline-toggle settings-inline-box">
+              <input
+                checked={publicIntakeDraft.enabled}
+                onChange={(event) => setPublicIntakeDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                type="checkbox"
+              />
+              <span>{publicIntakeDraft.enabled ? "Canal externo ativo" : "Canal externo pausado"}</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="ticket-create-actions compact-actions">
+          <button className="ghost-button interactive-button" onClick={handleGenerateAccessToken} type="button">
+            Gerar novo token
+          </button>
+          <button className="ghost-button interactive-button" onClick={handleCopyPublicLink} type="button">
+            Copiar link
+          </button>
+          <button className="primary-button interactive-button" onClick={handleSavePublicIntake} type="button">
+            Salvar canal externo
+          </button>
+        </div>
+
+        <div className="public-intake-preview">
+          <div className="settings-placeholder-panel">
+            <strong>Link privado do formulario</strong>
+            <input readOnly value={publicRequestLink || "Gere um token para montar o link externo."} />
+            <span>Esse link nao aparece na navegacao. Ele so funciona para quem receber a URL com o token correto.</span>
+          </div>
+          <div className="public-intake-qr-card">
+            <strong>QR Code</strong>
+            {qrCodeDataUrl ? <img alt="QR Code do canal externo" className="public-intake-qr" src={qrCodeDataUrl} /> : <span>Gere um token para visualizar o QR Code.</span>}
+          </div>
+        </div>
       </section>
 
       {showModal ? (

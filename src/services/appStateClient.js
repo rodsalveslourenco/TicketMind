@@ -19,6 +19,18 @@ export async function createTicketRequest(payload) {
   return envelope?.data || null;
 }
 
+export async function loadPublicIntake(accessToken) {
+  return requestJson(`/api/public/intake/${encodeURIComponent(accessToken)}`);
+}
+
+export async function createPublicTicketRequest(accessToken, payload) {
+  const envelope = await requestJson(`/api/public/intake/${encodeURIComponent(accessToken)}/tickets`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return envelope?.data || null;
+}
+
 export async function sendNotificationTestRequest(payload) {
   return requestJson("/api/notifications/test", {
     method: "POST",

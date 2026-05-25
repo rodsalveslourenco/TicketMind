@@ -116,6 +116,7 @@ function AppLayout() {
       return defaultExpandedSections;
     }
   });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const groupedNavigation = useMemo(
     () =>
@@ -141,13 +142,32 @@ function AppLayout() {
     window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(expandedSections));
   }, [expandedSections]);
 
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const previousOverflow = document.body.style.overflow;
+    if (mobileSidebarOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = previousOverflow || "";
+    }
+    return () => {
+      document.body.style.overflow = previousOverflow || "";
+    };
+  }, [mobileSidebarOpen]);
+
   const toggleSection = (sectionKey) => {
     setExpandedSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }));
   };
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {mobileSidebarOpen ? <button aria-label="Fechar menu" className="sidebar-backdrop" onClick={() => setMobileSidebarOpen(false)} type="button" /> : null}
+
+      <aside className={`sidebar${mobileSidebarOpen ? " is-open" : ""}`}>
         <div className="brand-panel">
           <div className="brand-mark">
             <img alt="Wega Marine" className="brand-mark-image" src={wegaLogo} />
@@ -203,6 +223,16 @@ function AppLayout() {
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-copy">
+            <button
+              aria-label="Abrir navegacao"
+              className="mobile-nav-toggle interactive-button"
+              onClick={() => setMobileSidebarOpen((current) => !current)}
+              type="button"
+            >
+              <span />
+              <span />
+              <span />
+            </button>
             <h1>{currentPage?.label || "Dashboard"}</h1>
           </div>
           <div className="topbar-actions">

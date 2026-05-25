@@ -25,6 +25,7 @@ import EmailLayoutsPage from "./pages/EmailLayoutsPage";
 import PermissionProfilesPage from "./pages/PermissionProfilesPage";
 import CentralServicesPage from "./pages/CentralServicesPage";
 import TeamsPage from "./pages/TeamsPage";
+import PublicTicketRequestPage from "./pages/PublicTicketRequestPage";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
@@ -38,6 +39,7 @@ function App() {
         path="/login"
       />
       <Route element={<ResetPasswordPage />} path="/reset-password" />
+      <Route element={<PublicTicketRequestPage />} path="/public/request/:accessToken" />
       <Route
         element={
           <ProtectedRoute>

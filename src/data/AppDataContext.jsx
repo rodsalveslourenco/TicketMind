@@ -302,6 +302,24 @@ function sanitizeEmailIntakeConfig(payload = {}, currentConfig = {}) {
   };
 }
 
+function sanitizePublicIntakeConfig(payload = {}, currentConfig = {}) {
+  const nextConfig = payload && typeof payload === "object" ? payload : {};
+  return {
+    enabled: nextConfig.enabled !== undefined ? Boolean(nextConfig.enabled) : Boolean(currentConfig.enabled),
+    accessToken: String(nextConfig.accessToken || currentConfig.accessToken || "").trim(),
+    portalTitle:
+      String(nextConfig.portalTitle || currentConfig.portalTitle || defaultServiceCenterSettings.publicIntake.portalTitle).trim() ||
+      defaultServiceCenterSettings.publicIntake.portalTitle,
+    portalDescription:
+      String(
+        nextConfig.portalDescription ||
+          currentConfig.portalDescription ||
+          defaultServiceCenterSettings.publicIntake.portalDescription,
+      ).trim() || defaultServiceCenterSettings.publicIntake.portalDescription,
+    updatedAt: String(nextConfig.updatedAt || currentConfig.updatedAt || new Date().toISOString()).trim(),
+  };
+}
+
 function hydrateDepartments(storedDepartments) {
   return (Array.isArray(storedDepartments) ? storedDepartments : [])
     .map((department) => ({
@@ -366,6 +384,7 @@ function hydrateServiceCenter(storedConfig, departments = []) {
     ...rawConfig,
     enabled: Boolean(rawConfig.enabled),
     departments: departmentsConfig,
+    publicIntake: sanitizePublicIntakeConfig(rawConfig.publicIntake, defaultServiceCenterSettings.publicIntake),
     triagePanelVisible: rawConfig.triagePanelVisible !== false,
     routingRules: (Array.isArray(rawConfig.routingRules) ? rawConfig.routingRules : [])
       .map((rule) => sanitizeRoutingRulePayload(rule, rule))
@@ -2459,6 +2478,10 @@ export function AppDataProvider({ children }) {
             payload.emailIntake !== undefined
               ? sanitizeEmailIntakeConfig(payload.emailIntake, currentServiceCenter.emailIntake)
               : currentServiceCenter.emailIntake,
+          publicIntake:
+            payload.publicIntake !== undefined
+              ? sanitizePublicIntakeConfig(payload.publicIntake, currentServiceCenter.publicIntake)
+              : currentServiceCenter.publicIntake,
           updatedAt: new Date().toISOString(),
         },
       };
@@ -2530,11 +2553,40 @@ export function AppDataProvider({ children }) {
             payload.emailIntake !== undefined
               ? sanitizeEmailIntakeConfig(payload.emailIntake, currentServiceCenter.emailIntake)
               : currentServiceCenter.emailIntake,
+          publicIntake:
+            payload.publicIntake !== undefined
+              ? sanitizePublicIntakeConfig(payload.publicIntake, currentServiceCenter.publicIntake)
+              : currentServiceCenter.publicIntake,
           updatedAt: nowIso,
         },
       };
     });
     return true;
+  };
+
+  const savePublicIntakeSettings = (payload = {}) => {
+    if (!hasAnyPermission(user, ["service_center_manage", "users_manage_permissions", "users_admin"])) return null;
+    let savedConfig = null;
+    applyState((current) => {
+      const currentServiceCenter = current.serviceCenter || defaultServiceCenterSettings;
+      savedConfig = sanitizePublicIntakeConfig(
+        {
+          ...currentServiceCenter.publicIntake,
+          ...payload,
+          updatedAt: new Date().toISOString(),
+        },
+        currentServiceCenter.publicIntake,
+      );
+      return {
+        ...current,
+        serviceCenter: {
+          ...currentServiceCenter,
+          publicIntake: savedConfig,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+    return savedConfig;
   };
 
   const saveServiceCenterDepartmentConfig = (departmentId, payload = {}) => {
@@ -3393,6 +3445,7 @@ export function AppDataProvider({ children }) {
       deleteTeam,
       updateServiceCenterSettings,
       saveServiceCenterAutomation,
+      savePublicIntakeSettings,
       saveServiceCenterDepartmentConfig,
       saveServiceCenterDepartment,
       addAsset,

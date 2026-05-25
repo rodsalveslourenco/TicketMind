@@ -27,10 +27,12 @@ import {
 } from "./security.js";
 import { buildActorFromUser, collectStateAuditLogs, createSystemLog, getRequestOrigin } from "./systemLogs.js";
 import { createV1Router } from "./api/routes/v1.js";
+import { buildEnvelope } from "./api/envelope.js";
 import * as stateRepository from "./repositories/stateRepository.js";
 import { createStateService } from "./services/stateService.js";
 import { createTicketService } from "./services/ticketService.js";
 import { createCollectionService } from "./services/collectionService.js";
+import { buildPublicIntakeBootstrap, createPublicTicket, getPublicIntakeConfig, isValidPublicIntakeToken } from "./publicIntake.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,6 +102,13 @@ function buildPublicAppUrl(request, pathName = "") {
   const host = String(request.headers["x-forwarded-host"] || request.headers.host || "").split(",")[0].trim();
   if (!host) return "";
   return `${protocol}://${host}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+}
+
+function buildPublicHashUrl(request, hashPath = "") {
+  const appBaseUrl = buildPublicAppUrl(request, "");
+  const normalizedHashPath = String(hashPath || "").trim().replace(/^#?\/?/, "");
+  if (!appBaseUrl) return "";
+  return normalizedHashPath ? `${appBaseUrl}/#/${normalizedHashPath}` : `${appBaseUrl}/#/`;
 }
 
 function mapById(items = []) {
@@ -752,6 +761,89 @@ app.post("/api/notifications/test", handleAsync(async (request, response) => {
       error: error instanceof Error ? error.message : "Falha ao testar envio de email.",
     });
   }
+}));
+
+app.get("/api/public/intake/:accessToken", handleAsync(async (request, response) => {
+  const state = await readState();
+  const accessToken = String(request.params.accessToken || "").trim();
+  if (!isValidPublicIntakeToken(state, accessToken)) {
+    response.status(404).json({ error: "Canal externo nao encontrado." });
+    return;
+  }
+
+  const bootstrap = buildPublicIntakeBootstrap(state);
+  response.json(
+    buildEnvelope(
+      {
+        apiVersion: "v1",
+        payloadVersion: state.payloadVersion,
+        schemaVersion: state.schemaVersion,
+        domain: "public_intake",
+        publicLink: buildPublicHashUrl(request, `public/request/${accessToken}`),
+      },
+      bootstrap,
+    ),
+  );
+}));
+
+app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, response) => {
+  const state = await readState();
+  const accessToken = String(request.params.accessToken || "").trim();
+  if (!isValidPublicIntakeToken(state, accessToken)) {
+    response.status(404).json({ error: "Canal externo nao encontrado." });
+    return;
+  }
+
+  const publicIntake = getPublicIntakeConfig(state);
+  if (!publicIntake.enabled) {
+    response.status(403).json({ error: "Abertura externa desativada." });
+    return;
+  }
+
+  const { ticket, nextState } = createPublicTicket(state, request.body || {});
+  const persistedState = await writeState(nextState);
+
+  await insertSystemLog(
+    createSystemLog({
+      userName: ticket.requester || "Portal externo",
+      userDepartment: ticket.department || "",
+      module: "tickets",
+      eventType: "abertura_externa",
+      description: `Chamado externo ${ticket.id} aberto sem autenticacao.`,
+      origin: getRequestOrigin(request),
+      status: "sucesso",
+      metadata: {
+        ticketId: ticket.id,
+        requesterEmail: ticket.requesterEmail || "",
+        departmentId: ticket.departmentId || "",
+      },
+    }),
+  );
+
+  void processTicketNotifications({
+    previousState: state,
+    nextState: persistedState,
+    persistState: writeState,
+    baseUrl: process.env.APP_PUBLIC_URL || buildPublicAppUrl(request, ""),
+  }).catch((error) => {
+    console.error("public notification processing failed", error);
+  });
+
+  const persistedTicket =
+    (persistedState.tickets || []).find((candidate) => String(candidate.id || "").trim() === String(ticket.id || "").trim()) || ticket;
+
+  response.status(201).json(
+    buildEnvelope(
+      {
+        apiVersion: "v1",
+        payloadVersion: persistedState.payloadVersion,
+        schemaVersion: persistedState.schemaVersion,
+        domain: "tickets",
+        created: true,
+      },
+      persistedTicket,
+    ),
+  );
 }));
 
 app.use(express.static(distPath));

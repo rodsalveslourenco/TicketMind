@@ -2,5 +2,6 @@ node_modules/
 dist/
 *.log
 data/*.sqlite
+data/logs/
 .tmp-db-test/
 .tmp-central-smoke/
