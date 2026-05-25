@@ -32,7 +32,7 @@ jobs:
 
   deploy-render:
     needs: validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,6 +46,16 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check Render secrets
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "Render secrets are not configured for this repository."
+            exit 1
+          fi
 
       - name: Trigger Render deploy
         env:
