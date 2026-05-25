@@ -32,7 +32,13 @@ import * as stateRepository from "./repositories/stateRepository.js";
 import { createStateService } from "./services/stateService.js";
 import { createTicketService } from "./services/ticketService.js";
 import { createCollectionService } from "./services/collectionService.js";
-import { buildPublicIntakeBootstrap, createPublicTicket, getPublicIntakeConfig, isValidPublicIntakeToken } from "./publicIntake.js";
+import {
+  buildPublicIntakeBootstrap,
+  createPublicTicket,
+  getPublicIntakeConfig,
+  isValidPublicIntakeToken,
+  lookupPublicRequester,
+} from "./publicIntake.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -786,6 +792,28 @@ app.get("/api/public/intake/:accessToken", handleAsync(async (request, response)
   );
 }));
 
+app.get("/api/public/intake/:accessToken/requester", handleAsync(async (request, response) => {
+  const state = await readState();
+  const accessToken = String(request.params.accessToken || "").trim();
+  if (!isValidPublicIntakeToken(state, accessToken)) {
+    response.status(404).json({ error: "Canal externo nao encontrado." });
+    return;
+  }
+
+  const requesterSnapshot = lookupPublicRequester(state, String(request.query.email || "").trim());
+  response.json(
+    buildEnvelope(
+      {
+        apiVersion: "v1",
+        payloadVersion: state.payloadVersion,
+        schemaVersion: state.schemaVersion,
+        domain: "public_requester_lookup",
+      },
+      requesterSnapshot,
+    ),
+  );
+}));
+
 app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, response) => {
   const state = await readState();
   const accessToken = String(request.params.accessToken || "").trim();
@@ -800,7 +828,7 @@ app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, 
     return;
   }
 
-  const { ticket, nextState } = createPublicTicket(state, request.body || {});
+  const { ticket, nextState, requesterUser, createdPreRegistration } = createPublicTicket(state, request.body || {});
   const persistedState = await writeState(nextState);
 
   await insertSystemLog(
@@ -816,6 +844,8 @@ app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, 
         ticketId: ticket.id,
         requesterEmail: ticket.requesterEmail || "",
         departmentId: ticket.departmentId || "",
+        requesterUserId: requesterUser?.id || "",
+        createdPreRegistration: Boolean(createdPreRegistration),
       },
     }),
   );
@@ -840,8 +870,12 @@ app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, 
         schemaVersion: persistedState.schemaVersion,
         domain: "tickets",
         created: true,
+        createdPreRegistration: Boolean(createdPreRegistration),
       },
-      persistedTicket,
+      {
+        ...persistedTicket,
+        requesterDirectoryStatus: createdPreRegistration ? "pre_registered" : "known_requester",
+      },
     ),
   );
 }));

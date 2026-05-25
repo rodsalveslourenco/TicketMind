@@ -74,6 +74,7 @@ function CentralServicesPage() {
   const [publicIntakeDraft, setPublicIntakeDraft] = useState({
     enabled: false,
     accessToken: "",
+    defaultDepartmentId: "",
     portalTitle: "Abrir chamado externo",
     portalDescription: "Canal controlado para abertura de chamados sem login no TicketMind.",
   });
@@ -145,6 +146,7 @@ function CentralServicesPage() {
     setPublicIntakeDraft({
       enabled: Boolean(serviceCenter?.publicIntake?.enabled),
       accessToken: String(serviceCenter?.publicIntake?.accessToken || "").trim(),
+      defaultDepartmentId: String(serviceCenter?.publicIntake?.defaultDepartmentId || "").trim(),
       portalTitle: String(serviceCenter?.publicIntake?.portalTitle || "Abrir chamado externo").trim() || "Abrir chamado externo",
       portalDescription:
         String(
@@ -341,6 +343,7 @@ function CentralServicesPage() {
     savePublicIntakeSettings({
       enabled: publicIntakeDraft.enabled,
       accessToken,
+      defaultDepartmentId: publicIntakeDraft.defaultDepartmentId,
       portalTitle: publicIntakeDraft.portalTitle,
       portalDescription: publicIntakeDraft.portalDescription,
     });
@@ -558,6 +561,22 @@ function CentralServicesPage() {
           </div>
         </div>
         <div className="glpi-form-grid public-intake-settings-grid">
+          <label className="field-block">
+            <span>Departamento padrao do portal</span>
+            <select
+              onChange={(event) => setPublicIntakeDraft((current) => ({ ...current, defaultDepartmentId: event.target.value }))}
+              value={publicIntakeDraft.defaultDepartmentId}
+            >
+              <option value="">Primeiro departamento habilitado</option>
+              {departmentRows
+                .filter((department) => department.active && department.acceptsTickets && department.showInRequestPortal)
+                .map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+            </select>
+          </label>
           <label className="field-block field-full">
             <span>Titulo do portal</span>
             <input

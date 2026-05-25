@@ -548,6 +548,7 @@ export const defaultServiceCenterSettings = {
   publicIntake: {
     enabled: false,
     accessToken: "",
+    defaultDepartmentId: "",
     portalTitle: "Abrir chamado externo",
     portalDescription: "Canal controlado para abertura de chamados sem login no TicketMind.",
     updatedAt: "",

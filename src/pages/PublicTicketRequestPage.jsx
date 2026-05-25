@@ -1,22 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { createPublicTicketRequest, loadPublicIntake } from "../services/appStateClient";
+import { createPublicTicketRequest, loadPublicIntake, lookupPublicRequester } from "../services/appStateClient";
 
 const defaultForm = {
-  requesterName: "",
   requesterEmail: "",
-  departmentId: "",
   title: "",
   type: "Incidente",
-  priority: "Media",
   urgency: "Media",
-  impact: "Media",
-  category: "Geral",
-  location: "",
   description: "",
-  approvalAmount: "",
-  projectId: "",
-  assetId: "",
   attachments: [],
 };
 
@@ -56,8 +47,15 @@ function PublicTicketRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [successTicket, setSuccessTicket] = useState(null);
-  const [bootstrap, setBootstrap] = useState({ portal: null, departments: [], projects: [], assets: [] });
+  const [bootstrap, setBootstrap] = useState({ portal: null, defaults: {} });
   const [form, setForm] = useState(defaultForm);
+  const [requesterSnapshot, setRequesterSnapshot] = useState({
+    requesterName: "",
+    hasRegisteredUser: false,
+    hasPreRegisteredUser: false,
+    previousTickets: [],
+  });
+  const [requesterLookupLoading, setRequesterLookupLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,12 +66,7 @@ function PublicTicketRequestPage() {
       try {
         const payload = await loadPublicIntake(accessToken);
         if (cancelled) return;
-        const nextBootstrap = payload?.data || { portal: null, departments: [], projects: [], assets: [] };
-        setBootstrap(nextBootstrap);
-        setForm((current) => ({
-          ...current,
-          departmentId: current.departmentId || nextBootstrap.departments?.[0]?.id || "",
-        }));
+        setBootstrap(payload?.data || { portal: null, defaults: {} });
       } catch (requestError) {
         if (!cancelled) {
           setError(requestError instanceof Error ? requestError.message : "Nao foi possivel carregar o canal externo.");
@@ -90,15 +83,62 @@ function PublicTicketRequestPage() {
     };
   }, [accessToken]);
 
-  const activeProjects = useMemo(
-    () => (Array.isArray(bootstrap.projects) ? bootstrap.projects : []).filter((project) => normalizeText(project.status) !== "encerrado"),
-    [bootstrap.projects],
-  );
+  useEffect(() => {
+    const normalizedEmail = String(form.requesterEmail || "").trim().toLowerCase();
+    if (!normalizedEmail.includes("@")) {
+      setRequesterSnapshot({
+        requesterName: "",
+        hasRegisteredUser: false,
+        hasPreRegisteredUser: false,
+        previousTickets: [],
+      });
+      setRequesterLookupLoading(false);
+      return undefined;
+    }
 
-  const activeAssets = useMemo(
-    () => (Array.isArray(bootstrap.assets) ? bootstrap.assets : []).filter((asset) => !["baixado", "excluido"].includes(normalizeText(asset.status))),
-    [bootstrap.assets],
-  );
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setRequesterLookupLoading(true);
+        const payload = await lookupPublicRequester(accessToken, normalizedEmail);
+        if (!cancelled) {
+          setRequesterSnapshot(payload?.data || {
+            requesterName: "",
+            hasRegisteredUser: false,
+            hasPreRegisteredUser: false,
+            previousTickets: [],
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setRequesterSnapshot({
+            requesterName: "",
+            hasRegisteredUser: false,
+            hasPreRegisteredUser: false,
+            previousTickets: [],
+          });
+        }
+      } finally {
+        if (!cancelled) setRequesterLookupLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [accessToken, form.requesterEmail]);
+
+  const knownRequesterLabel = useMemo(() => {
+    if (!requesterSnapshot.requesterName) return "";
+    if (requesterSnapshot.hasRegisteredUser) {
+      return `Cadastro encontrado para ${requesterSnapshot.requesterName}.`;
+    }
+    if (requesterSnapshot.hasPreRegisteredUser) {
+      return `Pre-cadastro ja existente para ${requesterSnapshot.requesterName}.`;
+    }
+    return `Nao encontramos cadastro para esse e-mail. Um pre-cadastro sera criado automaticamente.`;
+  }, [requesterSnapshot]);
 
   const updateField = (field) => (event) => {
     const value = event?.target?.value ?? "";
@@ -124,14 +164,18 @@ function PublicTicketRequestPage() {
     setError("");
     try {
       const ticket = await createPublicTicketRequest(accessToken, {
-        ...form,
-        approvalAmount: Number(form.approvalAmount) || 0,
+        requesterEmail: form.requesterEmail,
+        title: form.title,
+        type: form.type,
+        urgency: form.urgency,
+        description: form.description,
+        attachments: form.attachments,
       });
       setSuccessTicket(ticket);
-      setForm({
+      setForm((current) => ({
         ...defaultForm,
-        departmentId: bootstrap.departments?.[0]?.id || "",
-      });
+        requesterEmail: current.requesterEmail,
+      }));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Nao foi possivel abrir o chamado.");
     } finally {
@@ -172,144 +216,114 @@ function PublicTicketRequestPage() {
         {successTicket ? (
           <div className="public-ticket-success">
             <strong>Chamado aberto com sucesso: {successTicket.id}</strong>
-            <span>Guarde esse numero para acompanhamento interno da equipe.</span>
+            <span>
+              {successTicket.requesterDirectoryStatus === "pre_registered"
+                ? "O e-mail informado foi pre-cadastrado automaticamente para acompanhamento futuro."
+                : "O chamado foi vinculado ao cadastro ja existente desse e-mail."}
+            </span>
           </div>
         ) : null}
 
         {error ? <div className="form-alert">{error}</div> : null}
 
-        <form className="glpi-ticket-form public-ticket-form" onSubmit={handleSubmit}>
-          <div className="glpi-form-grid public-ticket-grid">
-            <label className="field-block">
-              <span>Seu nome</span>
-              <input onChange={updateField("requesterName")} required value={form.requesterName} />
-            </label>
-            <label className="field-block">
-              <span>Seu e-mail</span>
-              <input onChange={updateField("requesterEmail")} required type="email" value={form.requesterEmail} />
-            </label>
-            <label className="field-block">
-              <span>Departamento</span>
-              <select disabled={!bootstrap.departments.length} onChange={updateField("departmentId")} required={bootstrap.departments.length > 0} value={form.departmentId}>
-                <option value="">{bootstrap.departments.length ? "Selecione" : "Canal geral"}</option>
-                {bootstrap.departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-block field-full">
-              <span>Titulo</span>
-              <input onChange={updateField("title")} placeholder="Resuma o problema ou solicitacao" required value={form.title} />
-            </label>
-
-            <label className="field-block">
-              <span>Tipo</span>
-              <select onChange={updateField("type")} value={form.type}>
-                <option>Incidente</option>
-                <option>Requisicao</option>
-                <option>Problema</option>
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Prioridade</span>
-              <select onChange={updateField("priority")} value={form.priority}>
-                <option>Baixa</option>
-                <option>Media</option>
-                <option>Alta</option>
-                <option>Critica</option>
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Urgencia</span>
-              <select onChange={updateField("urgency")} value={form.urgency}>
-                <option>Baixa</option>
-                <option>Media</option>
-                <option>Alta</option>
-                <option>Critica</option>
-              </select>
-            </label>
-
-            <label className="field-block">
-              <span>Impacto</span>
-              <select onChange={updateField("impact")} value={form.impact}>
-                <option>Baixa</option>
-                <option>Media</option>
-                <option>Alta</option>
-                <option>Critica</option>
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Categoria</span>
-              <input onChange={updateField("category")} value={form.category} />
-            </label>
-            <label className="field-block">
-              <span>Localizacao</span>
-              <input onChange={updateField("location")} value={form.location} />
-            </label>
-
-            {normalizeText(form.type) === "requisicao" ? (
-              <label className="field-block">
-                <span>Valor para aprovacao</span>
-                <input min="0" onChange={updateField("approvalAmount")} step="0.01" type="number" value={form.approvalAmount} />
+        <div className="public-ticket-grid-layout">
+          <form className="glpi-ticket-form public-ticket-form" onSubmit={handleSubmit}>
+            <div className="glpi-form-grid public-ticket-grid">
+              <label className="field-block field-full">
+                <span>Seu e-mail</span>
+                <input onChange={updateField("requesterEmail")} required type="email" value={form.requesterEmail} />
               </label>
+
+              {requesterLookupLoading ? <div className="public-ticket-lookup-note">Consultando historico desse e-mail...</div> : null}
+              {!requesterLookupLoading && knownRequesterLabel ? <div className="public-ticket-lookup-note">{knownRequesterLabel}</div> : null}
+
+              <label className="field-block">
+                <span>Urgencia</span>
+                <select onChange={updateField("urgency")} value={form.urgency}>
+                  <option>Baixa</option>
+                  <option>Media</option>
+                  <option>Alta</option>
+                  <option>Critica</option>
+                </select>
+              </label>
+
+              <label className="field-block">
+                <span>Tipo</span>
+                <select onChange={updateField("type")} value={form.type}>
+                  <option>Incidente</option>
+                  <option>Requisicao</option>
+                  <option>Problema</option>
+                </select>
+              </label>
+
+              <label className="field-block field-full">
+                <span>Titulo</span>
+                <input onChange={updateField("title")} placeholder="Resuma o problema ou solicitacao" required value={form.title} />
+              </label>
+
+              <label className="field-block field-full">
+                <span>Descricao</span>
+                <textarea onChange={updateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." required value={form.description} />
+              </label>
+
+              <label className="field-block field-full">
+                <span>Anexos</span>
+                <input multiple onChange={handleAttachments} type="file" />
+              </label>
+            </div>
+
+            {form.attachments.length ? (
+              <div className="attachment-list">
+                {form.attachments.map((attachment) => (
+                  <div className="attachment-item" key={attachment.id}>
+                    <div>
+                      <strong>{attachment.name}</strong>
+                      <span>{formatBytes(attachment.size)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : null}
 
-            <label className="field-block">
-              <span>Projeto vinculado</span>
-              <select onChange={updateField("projectId")} value={form.projectId}>
-                <option value="">Nao vincular</option>
-                {activeProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field-block">
-              <span>Ativo vinculado</span>
-              <select onChange={updateField("assetId")} value={form.assetId}>
-                <option value="">Nao vincular</option>
-                {activeAssets.map((asset) => (
-                  <option key={asset.id} value={asset.id}>
-                    {asset.assetTag ? `${asset.assetTag} - ${asset.name}` : asset.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-block field-full">
-              <span>Descricao</span>
-              <textarea onChange={updateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." required value={form.description} />
-            </label>
-
-            <label className="field-block field-full">
-              <span>Anexos</span>
-              <input multiple onChange={handleAttachments} type="file" />
-            </label>
-          </div>
-
-          {form.attachments.length ? (
-            <div className="attachment-list">
-              {form.attachments.map((attachment) => (
-                <div className="attachment-item" key={attachment.id}>
-                  <div>
-                    <strong>{attachment.name}</strong>
-                    <span>{formatBytes(attachment.size)}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="ticket-create-actions">
+              <button className="primary-button interactive-button" disabled={submitting} type="submit">
+                {submitting ? "Abrindo..." : "Abrir chamado"}
+              </button>
             </div>
-          ) : null}
+          </form>
 
-          <div className="ticket-create-actions">
-            <button className="primary-button interactive-button" disabled={submitting} type="submit">
-              {submitting ? "Abrindo..." : "Abrir chamado"}
-            </button>
-          </div>
-        </form>
+          <section className="board-card public-ticket-history-panel">
+            <div className="public-ticket-history-head">
+              <strong>Chamados anteriores desse e-mail</strong>
+              <span>{requesterSnapshot.previousTickets?.length ? `${requesterSnapshot.previousTickets.length} encontrado(s)` : "Nenhum chamado encontrado ainda"}</span>
+            </div>
+            {requesterSnapshot.previousTickets?.length ? (
+              <div className="public-ticket-history-list">
+                {requesterSnapshot.previousTickets.map((ticket) => (
+                  <article className="public-ticket-history-item" key={ticket.id}>
+                    <div>
+                      <strong>{ticket.id}</strong>
+                      <h3>{ticket.title}</h3>
+                    </div>
+                    <div className="ticket-row-badges">
+                      <span className="badge badge-neutral">{ticket.status}</span>
+                      <span className="badge badge-neutral">{ticket.urgency || ticket.priority}</span>
+                    </div>
+                    <div className="ticket-row-meta">
+                      <span>{ticket.type}</span>
+                      <span>{ticket.openedAtLabel}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <strong>Nenhum historico para esse e-mail.</strong>
+                <span>Assim que houver chamados anteriores, eles aparecerao aqui para consulta rapida.</span>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );

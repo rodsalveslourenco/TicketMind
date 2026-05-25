@@ -23,6 +23,10 @@ export async function loadPublicIntake(accessToken) {
   return requestJson(`/api/public/intake/${encodeURIComponent(accessToken)}`);
 }
 
+export async function lookupPublicRequester(accessToken, email) {
+  return requestJson(`/api/public/intake/${encodeURIComponent(accessToken)}/requester?email=${encodeURIComponent(email)}`);
+}
+
 export async function createPublicTicketRequest(accessToken, payload) {
   const envelope = await requestJson(`/api/public/intake/${encodeURIComponent(accessToken)}/tickets`, {
     method: "POST",

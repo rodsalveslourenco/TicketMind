@@ -1,8 +1,10 @@
 import {
-  computePriorityFromMatrix,
+  buildEmptyPermissions,
+  getRolePermissions,
+} from "../src/data/permissions.js";
+import {
   createApprovalHistoryEntry,
   createHistoryEntry,
-  formatDateLabel,
   formatTimestampLabel,
   normalizeFollowUps,
   normalizePriorityLabel,
@@ -19,11 +21,18 @@ import {
   resolveApprovalWorkflow,
 } from "../src/data/ticketAutomation.js";
 
+const requesterPermissions = getRolePermissions("Solicitante Interno");
+const emptyPermissions = buildEmptyPermissions();
+
 const checklistByType = {
   incidente: ["Registrar impacto", "Validar ambiente afetado", "Executar diagnostico inicial", "Retornar proximo passo ao solicitante"],
   requisicao: ["Validar dados do solicitante", "Conferir aprovacao necessaria", "Executar atendimento solicitado", "Registrar evidencia de entrega"],
   problema: ["Relacionar causa raiz", "Mapear recorrencia", "Definir acao corretiva", "Documentar prevencao futura"],
 };
+
+function normalizeCollection(items = []) {
+  return Array.isArray(items) ? items.filter(Boolean) : [];
+}
 
 function computeSlaFromMinutes(minutes) {
   const normalized = Number(minutes) || 0;
@@ -46,20 +55,6 @@ function getServiceCenterDepartmentConfig(serviceCenter = {}, departmentId = "")
   return serviceCenter?.departments?.[normalizedDepartmentId] || {};
 }
 
-function buildTypeCode(type) {
-  const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
-  return typeCodeMap[normalizeText(type)] || "TCK";
-}
-
-function buildNextTicketId(tickets = [], type = "Incidente") {
-  const nextNumber = (normalizeCollection(tickets).length + 2049).toString().padStart(4, "0");
-  return `${buildTypeCode(type)}-${nextNumber}`;
-}
-
-function normalizeCollection(items = []) {
-  return Array.isArray(items) ? items.filter(Boolean) : [];
-}
-
 function filterPublicDepartments(state = {}) {
   return normalizeCollection(state.departments).filter((department) => {
     const config = getServiceCenterDepartmentConfig(state.serviceCenter || {}, department.id);
@@ -72,11 +67,107 @@ function filterPublicDepartments(state = {}) {
   });
 }
 
+function buildTypeCode(type) {
+  const typeCodeMap = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
+  return typeCodeMap[normalizeText(type)] || "TCK";
+}
+
+function buildNextTicketId(tickets = [], type = "Incidente") {
+  const nextNumber = (normalizeCollection(tickets).length + 2049).toString().padStart(4, "0");
+  return `${buildTypeCode(type)}-${nextNumber}`;
+}
+
+function buildNextUserId(users = []) {
+  return `u-ext-${normalizeCollection(users).length + 1}-${Date.now().toString(36)}`;
+}
+
+function deriveNameFromEmail(email = "") {
+  const localPart = String(email || "").trim().split("@")[0] || "Solicitante externo";
+  return localPart
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "Solicitante externo";
+}
+
+function toMinimalPreviousTicket(ticket = {}) {
+  return {
+    id: ticket.id || "",
+    title: ticket.title || "",
+    type: ticket.type || "",
+    status: ticket.status || "",
+    urgency: ticket.urgency || "",
+    priority: ticket.priority || "",
+    source: ticket.source || "",
+    openedAtLabel: ticket.openedAtLabel || ticket.openedAt || "",
+    updatedAt: ticket.updatedAt || ticket.updatedAtIso || "",
+  };
+}
+
+function findRequesterUserByEmail(state = {}, email = "") {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  return normalizeCollection(state.users).find((candidate) => String(candidate.email || "").trim().toLowerCase() === normalizedEmail) || null;
+}
+
+function resolveDefaultDepartment(state = {}, user = null) {
+  const publicDepartments = filterPublicDepartments(state);
+  if (!publicDepartments.length) return null;
+
+  const configuredDepartmentId = String(state.serviceCenter?.publicIntake?.defaultDepartmentId || "").trim();
+  if (configuredDepartmentId) {
+    const configuredDepartment = publicDepartments.find((department) => department.id === configuredDepartmentId) || null;
+    if (configuredDepartment) return configuredDepartment;
+  }
+
+  const requesterDepartmentId = String(user?.departmentId || "").trim();
+  if (requesterDepartmentId) {
+    const requesterDepartment = publicDepartments.find((department) => department.id === requesterDepartmentId) || null;
+    if (requesterDepartment) return requesterDepartment;
+  }
+
+  const requesterDepartmentName = normalizeText(user?.department || "");
+  if (requesterDepartmentName) {
+    const requesterDepartment = publicDepartments.find((department) => normalizeText(department.name) === requesterDepartmentName) || null;
+    if (requesterDepartment) return requesterDepartment;
+  }
+
+  return publicDepartments[0] || null;
+}
+
+function buildPreRegisteredUser(state = {}, email = "", department = null) {
+  const nowIso = new Date().toISOString();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  return {
+    id: buildNextUserId(state.users),
+    name: deriveNameFromEmail(normalizedEmail),
+    email: normalizedEmail,
+    role: "Solicitante Interno",
+    team: "Portal externo",
+    departmentId: String(department?.id || "").trim(),
+    department: String(department?.name || "").trim(),
+    status: "Pre-cadastro",
+    password: "",
+    passwordReveal: "",
+    mustChangePassword: true,
+    permissionProfileId: "profile-requester",
+    permissions: { ...requesterPermissions },
+    additionalPermissions: { ...emptyPermissions },
+    restrictedPermissions: {},
+    externalIntake: true,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+}
+
 export function sanitizePublicIntakeConfig(payload = {}, currentConfig = {}) {
   const nowIso = new Date().toISOString();
   return {
     enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(currentConfig.enabled),
     accessToken: String(payload.accessToken || currentConfig.accessToken || "").trim(),
+    defaultDepartmentId: String(payload.defaultDepartmentId || currentConfig.defaultDepartmentId || "").trim(),
     portalTitle: String(payload.portalTitle || currentConfig.portalTitle || "Abrir chamado externo").trim() || "Abrir chamado externo",
     portalDescription:
       String(
@@ -99,13 +190,7 @@ export function isValidPublicIntakeToken(state = {}, accessToken = "") {
 
 export function buildPublicIntakeBootstrap(state = {}) {
   const config = getPublicIntakeConfig(state);
-  const departments = filterPublicDepartments(state);
-  const projects = normalizeCollection(state.projects).filter(
-    (project) => !["encerrado", "excluido"].includes(normalizeText(project.status || "")),
-  );
-  const assets = normalizeCollection(state.assets).filter(
-    (asset) => !["baixado", "excluido"].includes(normalizeText(asset.status || "")),
-  );
+  const publicDepartments = filterPublicDepartments(state);
 
   return {
     portal: {
@@ -113,83 +198,107 @@ export function buildPublicIntakeBootstrap(state = {}) {
       portalTitle: config.portalTitle,
       portalDescription: config.portalDescription,
     },
-    departments: departments.map((department) => ({
-      id: department.id,
-      code: department.code || "",
-      name: department.name || "",
-      color: department.color || "",
-    })),
-    projects: projects.map((project) => ({
-      id: project.id,
-      name: project.name || "",
-      status: project.status || "",
-    })),
-    assets: assets.map((asset) => ({
-      id: asset.id,
-      name: asset.name || "",
-      assetTag: asset.assetTag || "",
-      serial: asset.serial || "",
-      status: asset.status || "",
-    })),
+    defaults: {
+      defaultDepartmentId: String(config.defaultDepartmentId || "").trim(),
+      defaultDepartmentName: publicDepartments.find((department) => department.id === String(config.defaultDepartmentId || "").trim())?.name || "",
+    },
+  };
+}
+
+export function lookupPublicRequester(state = {}, email = "") {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) {
+    return {
+      email: "",
+      requesterName: "",
+      hasRegisteredUser: false,
+      hasPreRegisteredUser: false,
+      previousTickets: [],
+    };
+  }
+
+  const matchedUser = findRequesterUserByEmail(state, normalizedEmail);
+  const previousTickets = normalizeCollection(state.tickets)
+    .filter((ticket) => String(ticket.requesterEmail || "").trim().toLowerCase() === normalizedEmail)
+    .slice()
+    .sort((left, right) => new Date(right.openedAt || 0).getTime() - new Date(left.openedAt || 0).getTime())
+    .slice(0, 12)
+    .map(toMinimalPreviousTicket);
+
+  return {
+    email: normalizedEmail,
+    requesterName: String(matchedUser?.name || deriveNameFromEmail(normalizedEmail)).trim(),
+    hasRegisteredUser: Boolean(matchedUser && normalizeText(matchedUser.status || "Ativo") === "ativo"),
+    hasPreRegisteredUser: Boolean(matchedUser && normalizeText(matchedUser.status || "") === "pre-cadastro"),
+    previousTickets,
   };
 }
 
 export function createPublicTicket(state = {}, payload = {}) {
   const currentTickets = normalizeCollection(state.tickets);
+  const currentUsers = normalizeCollection(state.users);
   const nowIso = new Date().toISOString();
   const openedAt = nowIso;
   const type = String(payload.type || "Incidente").trim() || "Incidente";
-  const priority = normalizePriorityLabel(payload.priority || computePriorityFromMatrix(payload.urgency, payload.impact));
-  const serviceCenterEnabled = Boolean(state.serviceCenter?.enabled);
-  const publicDepartments = filterPublicDepartments(state);
-  const targetDepartment = publicDepartments.find((department) => department.id === String(payload.departmentId || "").trim()) || null;
-
-  if (serviceCenterEnabled && !targetDepartment) {
-    throw new Error("Selecione um departamento habilitado para abertura externa.");
+  const requesterEmail = String(payload.requesterEmail || "").trim().toLowerCase();
+  const urgency = normalizePriorityLabel(payload.urgency || "Media");
+  const impact = urgency;
+  const priority = normalizePriorityLabel(payload.priority || urgency);
+  const matchedUser = findRequesterUserByEmail(state, requesterEmail);
+  const targetDepartment = resolveDefaultDepartment(state, matchedUser);
+  if (!requesterEmail || !String(payload.title || "").trim() || !String(payload.description || "").trim()) {
+    throw new Error("Preencha e-mail, titulo e descricao para abrir o chamado.");
   }
 
-  const watcherDetails = normalizeWatcherDetails(payload.watcherDetails || [], state.users || [], payload.watchers || "");
+  const requesterUser = matchedUser || buildPreRegisteredUser(state, requesterEmail, targetDepartment);
+  const nextUsers = matchedUser
+    ? currentUsers
+    : [requesterUser, ...currentUsers];
+
+  const watcherDetails = normalizeWatcherDetails(payload.watcherDetails || [], nextUsers, payload.watchers || "");
   const routedPayload = applyAdvancedRoutingRules(
     {
       ...payload,
       type,
       priority,
+      urgency,
+      impact,
       category: String(payload.category || "Geral").trim() || "Geral",
       location: String(payload.location || "").trim(),
       title: String(payload.title || "").trim(),
       description: String(payload.description || "").trim(),
       source: "Portal externo",
-      departmentId: String(targetDepartment?.id || payload.departmentId || "").trim(),
-      department: String(targetDepartment?.name || payload.department || "").trim(),
+      departmentId: String(targetDepartment?.id || "").trim(),
+      department: String(targetDepartment?.name || "").trim(),
       queue: String(payload.queue || targetDepartment?.name || "Service Desk").trim(),
     },
     state.serviceCenter?.routingRules || [],
-    state.users || [],
+    nextUsers,
     { hidden: state.serviceCenter?.triagePanelVisible === false },
   );
 
   const approvalBase = resolveApprovalWorkflow(
     {
       ...routedPayload,
-      approvalAmount: Number(payload.approvalAmount) || 0,
+      approvalAmount: 0,
     },
     state.serviceCenter?.approvalRules || [],
     state.serviceCenter?.approverDelegations || [],
-    state.users || [],
-    String(payload.approvalApproverId || "").trim(),
+    nextUsers,
+    "",
   );
 
   const approval = approvalBase.required
     ? {
         ...approvalBase,
         requestedAt: nowIso,
-        requestedById: "",
-        requestedByName: String(payload.requesterName || "").trim() || "Portal externo",
+        requestedById: requesterUser.id || "",
+        requestedByName: requesterUser.name || "Portal externo",
         history: [
           createApprovalHistoryEntry({
             action: "requested",
-            actorId: "",
-            actorName: String(payload.requesterName || "").trim() || "Portal externo",
+            actorId: requesterUser.id || "",
+            actorName: requesterUser.name || "Portal externo",
             reason: "",
             stepName: approvalBase.steps?.[0]?.name || "Etapa 1",
             approverName: approvalBase.currentApproverName || "",
@@ -212,41 +321,33 @@ export function createPublicTicket(state = {}, payload = {}) {
   const initialStatus = approval.required && approval.status === "pending" ? "Aguardando aprovacao" : "Aberto";
   const slaSettings = resolveTicketSlaSettings({
     openedAt,
-    dueDate: payload.dueDate || "",
+    dueDate: "",
     slaTargetMinutes: payload.slaTargetMinutes,
     fallbackMinutes: 240,
     nowIso,
   });
   const slaTargetMinutes = slaSettings.slaTargetMinutes;
   const initialResponseTargetMinutes = Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25));
-  const project = normalizeCollection(state.projects).find((candidate) => candidate.id === String(payload.projectId || "").trim()) || null;
-  const asset = normalizeCollection(state.assets).find((candidate) => candidate.id === String(payload.assetId || "").trim()) || null;
   const ticketId = buildNextTicketId(currentTickets, type);
-  const requesterName = String(payload.requesterName || payload.requester || "").trim();
-  const requesterEmail = String(payload.requesterEmail || "").trim().toLowerCase();
-
-  if (!requesterName || !requesterEmail || !String(payload.title || "").trim() || !String(payload.description || "").trim()) {
-    throw new Error("Preencha nome, email, titulo e descricao para abrir o chamado.");
-  }
 
   const ticket = {
     id: ticketId,
     title: String(payload.title || "").trim(),
     type,
     priority,
-    urgency: String(payload.urgency || priority).trim() || priority,
-    impact: String(payload.impact || priority).trim() || priority,
+    urgency,
+    impact,
     status: initialStatus,
-    requester: requesterName,
-    requesterId: "",
+    requester: requesterUser.name || deriveNameFromEmail(requesterEmail),
+    requesterId: requesterUser.id || "",
     requesterEmail,
     assignee: "",
     queue: routedPayload.queue,
     departmentId: String(targetDepartment?.id || "").trim(),
     department: routedPayload.department,
-    category: routedPayload.category,
+    category: "Geral",
     source: "Portal externo",
-    location: String(payload.location || "").trim(),
+    location: "",
     sla: computeSlaFromMinutes(slaTargetMinutes),
     slaTargetMinutes,
     slaDeadlineAt: slaSettings.slaDeadlineAt,
@@ -257,8 +358,8 @@ export function createPublicTicket(state = {}, payload = {}) {
     updatedAtIso: nowIso,
     openedAt,
     openedAtLabel: formatTimestampLabel(openedAt),
-    dueDate: payload.dueDate || "",
-    dueDateLabel: payload.dueDate ? formatDateLabel(payload.dueDate) : "",
+    dueDate: "",
+    dueDateLabel: "",
     description: String(payload.description || "").trim(),
     resolutionNotes: "",
     reopenReason: "",
@@ -270,32 +371,33 @@ export function createPublicTicket(state = {}, payload = {}) {
     followUps: normalizeFollowUps(payload.followUps),
     subtasks: normalizeTicketSubtasks(payload.subtasks),
     checklistItems: normalizeTicketChecklist(payload.checklistItems?.length ? payload.checklistItems : buildChecklistTemplate(type)),
-    approvalAmount: Number(payload.approvalAmount) || 0,
+    approvalAmount: 0,
     approval,
     triage: routedPayload.triage || {},
     history: [
       createHistoryEntry({
         type: "created",
-        actorId: "",
-        actorName: requesterName || "Portal externo",
-        message: "Chamado aberto via portal externo",
+        actorId: requesterUser.id || "",
+        actorName: requesterUser.name || "Portal externo",
+        message: matchedUser ? "Chamado aberto via portal externo" : "Chamado aberto via portal externo com pre-cadastro automatico",
         metadata: {
           status: initialStatus,
           departmentId: targetDepartment?.id || "",
           department: targetDepartment?.name || "",
           queue: routedPayload.queue || "Service Desk",
-          approvalAmount: Number(payload.approvalAmount) || 0,
           slaOrigin: "public_portal",
           channel: "external_request_portal",
+          requesterEmail,
+          createdPreRegistration: !matchedUser,
         },
         createdAt: nowIso,
       }),
     ],
-    knowledgeArticleIds: Array.isArray(payload.knowledgeArticleIds) ? payload.knowledgeArticleIds : [],
-    projectId: project?.id || "",
-    projectName: project?.name || "",
-    assetId: asset?.id || "",
-    assetName: asset?.assetTag || asset?.name || "",
+    knowledgeArticleIds: [],
+    projectId: "",
+    projectName: "",
+    assetId: "",
+    assetName: "",
     reopenCategory: "",
     pauseReason: "",
     waitingReason: "",
@@ -312,8 +414,11 @@ export function createPublicTicket(state = {}, payload = {}) {
 
   return {
     ticket,
+    requesterUser,
+    createdPreRegistration: !matchedUser,
     nextState: {
       ...state,
+      users: nextUsers,
       tickets: [ticket, ...currentTickets],
     },
   };

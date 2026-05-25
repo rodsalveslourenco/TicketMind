@@ -307,6 +307,7 @@ function sanitizePublicIntakeConfig(payload = {}, currentConfig = {}) {
   return {
     enabled: nextConfig.enabled !== undefined ? Boolean(nextConfig.enabled) : Boolean(currentConfig.enabled),
     accessToken: String(nextConfig.accessToken || currentConfig.accessToken || "").trim(),
+    defaultDepartmentId: String(nextConfig.defaultDepartmentId || currentConfig.defaultDepartmentId || "").trim(),
     portalTitle:
       String(nextConfig.portalTitle || currentConfig.portalTitle || defaultServiceCenterSettings.publicIntake.portalTitle).trim() ||
       defaultServiceCenterSettings.publicIntake.portalTitle,
