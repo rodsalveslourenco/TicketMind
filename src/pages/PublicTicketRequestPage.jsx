@@ -69,6 +69,18 @@ function PublicTicketRequestPage() {
     previousTickets: [],
   });
   const [requesterLookupLoading, setRequesterLookupLoading] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const resetForm = (bootstrapData = bootstrap) => {
+    setForm({
+      ...defaultForm,
+      destinationDepartmentId:
+        bootstrapData?.defaults?.defaultDepartmentId ||
+        bootstrapData?.destinationDepartments?.[0]?.id ||
+        "",
+    });
+    setFileInputKey((current) => current + 1);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +91,9 @@ function PublicTicketRequestPage() {
       try {
         const payload = await loadPublicIntake(accessToken);
         if (cancelled) return;
-        setBootstrap(payload?.data || { portal: null, defaults: {} });
+        const nextBootstrap = payload?.data || { portal: null, defaults: {} };
+        setBootstrap(nextBootstrap);
+        resetForm(nextBootstrap);
       } catch (requestError) {
         if (!cancelled) {
           setError(requestError instanceof Error ? requestError.message : "Nao foi possivel carregar o canal externo.");
@@ -152,21 +166,6 @@ function PublicTicketRequestPage() {
   }, [accessToken, form.requesterEmail]);
 
   useEffect(() => {
-    setForm((current) => {
-      const nextDestinationDepartmentId =
-        current.destinationDepartmentId ||
-        bootstrap.defaults?.defaultDepartmentId ||
-        bootstrap.destinationDepartments?.[0]?.id ||
-        "";
-      if (nextDestinationDepartmentId === current.destinationDepartmentId) return current;
-      return {
-        ...current,
-        destinationDepartmentId: nextDestinationDepartmentId,
-      };
-    });
-  }, [bootstrap.defaults, bootstrap.destinationDepartments]);
-
-  useEffect(() => {
     if (!String(form.requesterEmail || "").trim().includes("@")) return;
     setForm((current) => ({
       ...current,
@@ -223,14 +222,16 @@ function PublicTicketRequestPage() {
         attachments: form.attachments,
       });
       setSuccessTicket(ticket);
-      setForm((current) => ({
-        ...defaultForm,
-        requesterEmail: current.requesterEmail,
-        requesterName: current.requesterName,
-        requesterDepartmentId: current.requesterDepartmentId,
-        requesterLocation: current.requesterLocation,
-        destinationDepartmentId: current.destinationDepartmentId || bootstrap.defaults?.defaultDepartmentId || bootstrap.destinationDepartments?.[0]?.id || "",
-      }));
+      resetForm();
+      setRequesterSnapshot({
+        requesterName: "",
+        requesterDepartmentId: "",
+        requesterDepartment: "",
+        requesterLocation: "",
+        hasRegisteredUser: false,
+        hasPreRegisteredUser: false,
+        previousTickets: [],
+      });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Nao foi possivel abrir o chamado.");
     } finally {
@@ -267,17 +268,6 @@ function PublicTicketRequestPage() {
           <h1>{bootstrap.portal?.portalTitle || "Abrir chamado externo"}</h1>
           <p>{bootstrap.portal?.portalDescription || "Use este formulario para registrar uma solicitacao sem login."}</p>
         </div>
-
-        {successTicket ? (
-          <div className="public-ticket-success">
-            <strong>Chamado aberto com sucesso: {successTicket.id}</strong>
-            <span>
-              {successTicket.requesterDirectoryStatus === "pre_registered"
-                ? "O e-mail informado foi pre-cadastrado automaticamente para acompanhamento futuro."
-                : "O chamado foi vinculado ao cadastro ja existente desse e-mail."}
-            </span>
-          </div>
-        ) : null}
 
         {error ? <div className="form-alert">{error}</div> : null}
 
@@ -368,7 +358,7 @@ function PublicTicketRequestPage() {
 
               <label className="field-block field-full">
                 <span>Anexos</span>
-                <input multiple onChange={handleAttachments} type="file" />
+                <input key={fileInputKey} multiple onChange={handleAttachments} type="file" />
               </label>
             </div>
 
@@ -426,6 +416,37 @@ function PublicTicketRequestPage() {
           </section>
         </div>
       </div>
+
+      {successTicket ? (
+        <div className="ticket-modal-backdrop" onClick={() => setSuccessTicket(null)} role="presentation">
+          <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="public-ticket-success-title">
+            <div className="ticket-modal-header">
+              <div>
+                <h2 id="public-ticket-success-title">Chamado aberto com sucesso</h2>
+                <p>
+                  O chamado <strong>{successTicket.id}</strong> foi registrado com sucesso.
+                </p>
+              </div>
+              <button className="ghost-button compact-button interactive-button" onClick={() => setSuccessTicket(null)} type="button">
+                Fechar
+              </button>
+            </div>
+            <div className="settings-placeholder-panel">
+              <strong>Numero do chamado: {successTicket.id}</strong>
+              <span>
+                {successTicket.requesterDirectoryStatus === "pre_registered"
+                  ? "O solicitante foi pre-cadastrado automaticamente para acompanhamento futuro."
+                  : "O chamado foi vinculado ao cadastro existente do solicitante."}
+              </span>
+            </div>
+            <div className="ticket-create-actions compact-actions">
+              <button className="primary-button interactive-button" onClick={() => setSuccessTicket(null)} type="button">
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
