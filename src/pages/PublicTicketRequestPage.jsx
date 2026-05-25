@@ -293,12 +293,12 @@ function PublicTicketRequestPage() {
               {!requesterLookupLoading && knownRequesterLabel ? <div className="public-ticket-lookup-note">{knownRequesterLabel}</div> : null}
 
               <label className="field-block">
-                <span>Nome da pessoa</span>
+                <span>Nome do solicitante</span>
                 <input onChange={updateField("requesterName")} placeholder="Nome completo" required value={form.requesterName} />
               </label>
 
               <label className="field-block">
-                <span>Departamento da pessoa</span>
+                <span>Departamento</span>
                 <select onChange={updateField("requesterDepartmentId")} required value={form.requesterDepartmentId}>
                   <option value="">Selecione</option>
                   {(bootstrap.requesterDepartments || []).map((department) => (
@@ -310,7 +310,7 @@ function PublicTicketRequestPage() {
               </label>
 
               <label className="field-block">
-                <span>Local da pessoa</span>
+                <span>Local</span>
                 <input
                   list="public-request-locations"
                   onChange={updateField("requesterLocation")}
