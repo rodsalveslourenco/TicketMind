@@ -101,6 +101,8 @@ function toMinimalPreviousTicket(ticket = {}) {
     urgency: ticket.urgency || "",
     priority: ticket.priority || "",
     source: ticket.source || "",
+    department: ticket.department || "",
+    location: ticket.location || "",
     openedAtLabel: ticket.openedAtLabel || ticket.openedAt || "",
     updatedAt: ticket.updatedAt || ticket.updatedAtIso || "",
   };
@@ -112,37 +114,52 @@ function findRequesterUserByEmail(state = {}, email = "") {
   return normalizeCollection(state.users).find((candidate) => String(candidate.email || "").trim().toLowerCase() === normalizedEmail) || null;
 }
 
-function resolveDefaultDepartment(state = {}, user = null) {
+function resolveDepartmentById(departments = [], departmentId = "") {
+  const normalizedDepartmentId = String(departmentId || "").trim();
+  if (!normalizedDepartmentId) return null;
+  return departments.find((department) => String(department.id || "").trim() === normalizedDepartmentId) || null;
+}
+
+function resolveDepartmentByName(departments = [], departmentName = "") {
+  const normalizedDepartmentName = normalizeText(departmentName);
+  if (!normalizedDepartmentName) return null;
+  return departments.find((department) => normalizeText(department.name) === normalizedDepartmentName) || null;
+}
+
+function resolveDefaultDepartment(state = {}, user = null, preferredDepartmentId = "") {
   const publicDepartments = filterPublicDepartments(state);
   if (!publicDepartments.length) return null;
 
+  const preferredDepartment = resolveDepartmentById(publicDepartments, preferredDepartmentId);
+  if (preferredDepartment) return preferredDepartment;
+
   const configuredDepartmentId = String(state.serviceCenter?.publicIntake?.defaultDepartmentId || "").trim();
   if (configuredDepartmentId) {
-    const configuredDepartment = publicDepartments.find((department) => department.id === configuredDepartmentId) || null;
+    const configuredDepartment = resolveDepartmentById(publicDepartments, configuredDepartmentId);
     if (configuredDepartment) return configuredDepartment;
   }
 
   const requesterDepartmentId = String(user?.departmentId || "").trim();
   if (requesterDepartmentId) {
-    const requesterDepartment = publicDepartments.find((department) => department.id === requesterDepartmentId) || null;
+    const requesterDepartment = resolveDepartmentById(publicDepartments, requesterDepartmentId);
     if (requesterDepartment) return requesterDepartment;
   }
 
   const requesterDepartmentName = normalizeText(user?.department || "");
   if (requesterDepartmentName) {
-    const requesterDepartment = publicDepartments.find((department) => normalizeText(department.name) === requesterDepartmentName) || null;
+    const requesterDepartment = resolveDepartmentByName(publicDepartments, requesterDepartmentName);
     if (requesterDepartment) return requesterDepartment;
   }
 
   return publicDepartments[0] || null;
 }
 
-function buildPreRegisteredUser(state = {}, email = "", department = null) {
+function buildPreRegisteredUser(state = {}, email = "", department = null, requesterName = "") {
   const nowIso = new Date().toISOString();
   const normalizedEmail = String(email || "").trim().toLowerCase();
   return {
     id: buildNextUserId(state.users),
-    name: deriveNameFromEmail(normalizedEmail),
+    name: String(requesterName || deriveNameFromEmail(normalizedEmail)).trim() || deriveNameFromEmail(normalizedEmail),
     email: normalizedEmail,
     role: "Solicitante Interno",
     team: "Portal externo",
@@ -191,6 +208,22 @@ export function isValidPublicIntakeToken(state = {}, accessToken = "") {
 export function buildPublicIntakeBootstrap(state = {}) {
   const config = getPublicIntakeConfig(state);
   const publicDepartments = filterPublicDepartments(state);
+  const activeDepartments = normalizeCollection(state.departments)
+    .filter((department) => normalizeText(department.status || "Ativo") === "ativo")
+    .map((department) => ({
+      id: String(department.id || "").trim(),
+      name: String(department.name || "").trim(),
+      code: String(department.code || "").trim(),
+    }));
+  const activeLocations = normalizeCollection(state.locations)
+    .filter((location) => normalizeText(location.status || "Ativo") === "ativo")
+    .map((location) => ({
+      id: String(location.id || "").trim(),
+      name: String(location.name || "").trim(),
+      code: String(location.code || "").trim(),
+      departmentId: String(location.departmentId || "").trim(),
+      department: String(location.department || "").trim(),
+    }));
 
   return {
     portal: {
@@ -202,6 +235,13 @@ export function buildPublicIntakeBootstrap(state = {}) {
       defaultDepartmentId: String(config.defaultDepartmentId || "").trim(),
       defaultDepartmentName: publicDepartments.find((department) => department.id === String(config.defaultDepartmentId || "").trim())?.name || "",
     },
+    requesterDepartments: activeDepartments,
+    destinationDepartments: publicDepartments.map((department) => ({
+      id: String(department.id || "").trim(),
+      name: String(department.name || "").trim(),
+      code: String(department.code || "").trim(),
+    })),
+    locations: activeLocations,
   };
 }
 
@@ -211,6 +251,9 @@ export function lookupPublicRequester(state = {}, email = "") {
     return {
       email: "",
       requesterName: "",
+      requesterDepartmentId: "",
+      requesterDepartment: "",
+      requesterLocation: "",
       hasRegisteredUser: false,
       hasPreRegisteredUser: false,
       previousTickets: [],
@@ -224,10 +267,14 @@ export function lookupPublicRequester(state = {}, email = "") {
     .sort((left, right) => new Date(right.openedAt || 0).getTime() - new Date(left.openedAt || 0).getTime())
     .slice(0, 12)
     .map(toMinimalPreviousTicket);
+  const latestPreviousTicket = previousTickets[0] || null;
 
   return {
     email: normalizedEmail,
     requesterName: String(matchedUser?.name || deriveNameFromEmail(normalizedEmail)).trim(),
+    requesterDepartmentId: String(matchedUser?.departmentId || "").trim(),
+    requesterDepartment: String(matchedUser?.department || "").trim(),
+    requesterLocation: String(latestPreviousTicket?.location || "").trim(),
     hasRegisteredUser: Boolean(matchedUser && normalizeText(matchedUser.status || "Ativo") === "ativo"),
     hasPreRegisteredUser: Boolean(matchedUser && normalizeText(matchedUser.status || "") === "pre-cadastro"),
     previousTickets,
@@ -237,20 +284,37 @@ export function lookupPublicRequester(state = {}, email = "") {
 export function createPublicTicket(state = {}, payload = {}) {
   const currentTickets = normalizeCollection(state.tickets);
   const currentUsers = normalizeCollection(state.users);
+  const allDepartments = normalizeCollection(state.departments);
   const nowIso = new Date().toISOString();
   const openedAt = nowIso;
   const type = String(payload.type || "Incidente").trim() || "Incidente";
   const requesterEmail = String(payload.requesterEmail || "").trim().toLowerCase();
+  const requesterName = String(payload.requesterName || "").trim();
+  const requesterLocation = String(payload.requesterLocation || "").trim();
   const urgency = normalizePriorityLabel(payload.urgency || "Media");
   const impact = urgency;
   const priority = normalizePriorityLabel(payload.priority || urgency);
   const matchedUser = findRequesterUserByEmail(state, requesterEmail);
-  const targetDepartment = resolveDefaultDepartment(state, matchedUser);
-  if (!requesterEmail || !String(payload.title || "").trim() || !String(payload.description || "").trim()) {
-    throw new Error("Preencha e-mail, titulo e descricao para abrir o chamado.");
+  const requesterDepartment =
+    resolveDepartmentById(allDepartments, payload.requesterDepartmentId) ||
+    resolveDepartmentByName(allDepartments, payload.requesterDepartment) ||
+    resolveDepartmentById(allDepartments, matchedUser?.departmentId) ||
+    resolveDepartmentByName(allDepartments, matchedUser?.department) ||
+    null;
+  const targetDepartment = resolveDefaultDepartment(state, matchedUser, payload.destinationDepartmentId);
+  if (
+    !requesterEmail ||
+    !requesterName ||
+    !requesterDepartment ||
+    !requesterLocation ||
+    !targetDepartment ||
+    !String(payload.title || "").trim() ||
+    !String(payload.description || "").trim()
+  ) {
+    throw new Error("Preencha nome, e-mail, departamento, local, departamento de destino, titulo e descricao para abrir o chamado.");
   }
 
-  const requesterUser = matchedUser || buildPreRegisteredUser(state, requesterEmail, targetDepartment);
+  const requesterUser = matchedUser || buildPreRegisteredUser(state, requesterEmail, requesterDepartment, requesterName);
   const nextUsers = matchedUser
     ? currentUsers
     : [requesterUser, ...currentUsers];
@@ -264,7 +328,7 @@ export function createPublicTicket(state = {}, payload = {}) {
       urgency,
       impact,
       category: String(payload.category || "Geral").trim() || "Geral",
-      location: String(payload.location || "").trim(),
+      location: requesterLocation,
       title: String(payload.title || "").trim(),
       description: String(payload.description || "").trim(),
       source: "Portal externo",
@@ -338,16 +402,18 @@ export function createPublicTicket(state = {}, payload = {}) {
     urgency,
     impact,
     status: initialStatus,
-    requester: requesterUser.name || deriveNameFromEmail(requesterEmail),
+    requester: requesterName || requesterUser.name || deriveNameFromEmail(requesterEmail),
     requesterId: requesterUser.id || "",
     requesterEmail,
+    requesterDepartmentId: String(requesterDepartment?.id || "").trim(),
+    requesterDepartment: String(requesterDepartment?.name || "").trim(),
     assignee: "",
     queue: routedPayload.queue,
-    departmentId: String(targetDepartment?.id || "").trim(),
-    department: routedPayload.department,
+    departmentId: String(routedPayload.departmentId || targetDepartment?.id || "").trim(),
+    department: String(routedPayload.department || targetDepartment?.name || "").trim(),
     category: "Geral",
     source: "Portal externo",
-    location: "",
+    location: requesterLocation,
     sla: computeSlaFromMinutes(slaTargetMinutes),
     slaTargetMinutes,
     slaDeadlineAt: slaSettings.slaDeadlineAt,
@@ -382,12 +448,15 @@ export function createPublicTicket(state = {}, payload = {}) {
         message: matchedUser ? "Chamado aberto via portal externo" : "Chamado aberto via portal externo com pre-cadastro automatico",
         metadata: {
           status: initialStatus,
-          departmentId: targetDepartment?.id || "",
-          department: targetDepartment?.name || "",
+          departmentId: routedPayload.departmentId || targetDepartment?.id || "",
+          department: routedPayload.department || targetDepartment?.name || "",
           queue: routedPayload.queue || "Service Desk",
           slaOrigin: "public_portal",
           channel: "external_request_portal",
           requesterEmail,
+          requesterDepartmentId: requesterDepartment?.id || "",
+          requesterDepartment: requesterDepartment?.name || "",
+          requesterLocation,
           createdPreRegistration: !matchedUser,
         },
         createdAt: nowIso,

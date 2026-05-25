@@ -4,6 +4,10 @@ import { createPublicTicketRequest, loadPublicIntake, lookupPublicRequester } fr
 
 const defaultForm = {
   requesterEmail: "",
+  requesterName: "",
+  requesterDepartmentId: "",
+  requesterLocation: "",
+  destinationDepartmentId: "",
   title: "",
   type: "Incidente",
   urgency: "Media",
@@ -47,10 +51,19 @@ function PublicTicketRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [successTicket, setSuccessTicket] = useState(null);
-  const [bootstrap, setBootstrap] = useState({ portal: null, defaults: {} });
+  const [bootstrap, setBootstrap] = useState({
+    portal: null,
+    defaults: {},
+    requesterDepartments: [],
+    destinationDepartments: [],
+    locations: [],
+  });
   const [form, setForm] = useState(defaultForm);
   const [requesterSnapshot, setRequesterSnapshot] = useState({
     requesterName: "",
+    requesterDepartmentId: "",
+    requesterDepartment: "",
+    requesterLocation: "",
     hasRegisteredUser: false,
     hasPreRegisteredUser: false,
     previousTickets: [],
@@ -88,6 +101,9 @@ function PublicTicketRequestPage() {
     if (!normalizedEmail.includes("@")) {
       setRequesterSnapshot({
         requesterName: "",
+        requesterDepartmentId: "",
+        requesterDepartment: "",
+        requesterLocation: "",
         hasRegisteredUser: false,
         hasPreRegisteredUser: false,
         previousTickets: [],
@@ -104,6 +120,9 @@ function PublicTicketRequestPage() {
         if (!cancelled) {
           setRequesterSnapshot(payload?.data || {
             requesterName: "",
+            requesterDepartmentId: "",
+            requesterDepartment: "",
+            requesterLocation: "",
             hasRegisteredUser: false,
             hasPreRegisteredUser: false,
             previousTickets: [],
@@ -113,6 +132,9 @@ function PublicTicketRequestPage() {
         if (!cancelled) {
           setRequesterSnapshot({
             requesterName: "",
+            requesterDepartmentId: "",
+            requesterDepartment: "",
+            requesterLocation: "",
             hasRegisteredUser: false,
             hasPreRegisteredUser: false,
             previousTickets: [],
@@ -128,6 +150,31 @@ function PublicTicketRequestPage() {
       window.clearTimeout(timeoutId);
     };
   }, [accessToken, form.requesterEmail]);
+
+  useEffect(() => {
+    setForm((current) => {
+      const nextDestinationDepartmentId =
+        current.destinationDepartmentId ||
+        bootstrap.defaults?.defaultDepartmentId ||
+        bootstrap.destinationDepartments?.[0]?.id ||
+        "";
+      if (nextDestinationDepartmentId === current.destinationDepartmentId) return current;
+      return {
+        ...current,
+        destinationDepartmentId: nextDestinationDepartmentId,
+      };
+    });
+  }, [bootstrap.defaults, bootstrap.destinationDepartments]);
+
+  useEffect(() => {
+    if (!String(form.requesterEmail || "").trim().includes("@")) return;
+    setForm((current) => ({
+      ...current,
+      requesterName: current.requesterName || requesterSnapshot.requesterName || "",
+      requesterDepartmentId: current.requesterDepartmentId || requesterSnapshot.requesterDepartmentId || "",
+      requesterLocation: current.requesterLocation || requesterSnapshot.requesterLocation || "",
+    }));
+  }, [form.requesterEmail, requesterSnapshot]);
 
   const knownRequesterLabel = useMemo(() => {
     if (!requesterSnapshot.requesterName) return "";
@@ -165,6 +212,10 @@ function PublicTicketRequestPage() {
     try {
       const ticket = await createPublicTicketRequest(accessToken, {
         requesterEmail: form.requesterEmail,
+        requesterName: form.requesterName,
+        requesterDepartmentId: form.requesterDepartmentId,
+        requesterLocation: form.requesterLocation,
+        destinationDepartmentId: form.destinationDepartmentId,
         title: form.title,
         type: form.type,
         urgency: form.urgency,
@@ -175,6 +226,10 @@ function PublicTicketRequestPage() {
       setForm((current) => ({
         ...defaultForm,
         requesterEmail: current.requesterEmail,
+        requesterName: current.requesterName,
+        requesterDepartmentId: current.requesterDepartmentId,
+        requesterLocation: current.requesterLocation,
+        destinationDepartmentId: current.destinationDepartmentId || bootstrap.defaults?.defaultDepartmentId || bootstrap.destinationDepartments?.[0]?.id || "",
       }));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Nao foi possivel abrir o chamado.");
@@ -236,6 +291,51 @@ function PublicTicketRequestPage() {
 
               {requesterLookupLoading ? <div className="public-ticket-lookup-note">Consultando historico desse e-mail...</div> : null}
               {!requesterLookupLoading && knownRequesterLabel ? <div className="public-ticket-lookup-note">{knownRequesterLabel}</div> : null}
+
+              <label className="field-block">
+                <span>Nome da pessoa</span>
+                <input onChange={updateField("requesterName")} placeholder="Nome completo" required value={form.requesterName} />
+              </label>
+
+              <label className="field-block">
+                <span>Departamento da pessoa</span>
+                <select onChange={updateField("requesterDepartmentId")} required value={form.requesterDepartmentId}>
+                  <option value="">Selecione</option>
+                  {(bootstrap.requesterDepartments || []).map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-block">
+                <span>Local da pessoa</span>
+                <input
+                  list="public-request-locations"
+                  onChange={updateField("requesterLocation")}
+                  placeholder="Ex.: Matriz"
+                  required
+                  value={form.requesterLocation}
+                />
+                <datalist id="public-request-locations">
+                  {(bootstrap.locations || []).map((location) => (
+                    <option key={location.id || location.name} value={location.name} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label className="field-block">
+                <span>Departamento de destino</span>
+                <select onChange={updateField("destinationDepartmentId")} required value={form.destinationDepartmentId}>
+                  <option value="">Selecione</option>
+                  {(bootstrap.destinationDepartments || []).map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <label className="field-block">
                 <span>Urgencia</span>
@@ -310,7 +410,8 @@ function PublicTicketRequestPage() {
                       <span className="badge badge-neutral">{ticket.urgency || ticket.priority}</span>
                     </div>
                     <div className="ticket-row-meta">
-                      <span>{ticket.type}</span>
+                      <span>{ticket.type} | {ticket.department || "Sem departamento"}</span>
+                      <span>{ticket.location || "Sem local"}</span>
                       <span>{ticket.openedAtLabel}</span>
                     </div>
                   </article>
