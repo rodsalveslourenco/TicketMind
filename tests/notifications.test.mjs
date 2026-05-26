@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { analyzeTicketWithAI } from "../server/aiTicketInsights.js";
 import {
   buildPasswordRecoveryForwardMessage,
   buildTicketCreatedForwardMessage,
@@ -66,6 +67,16 @@ test("ticket created forwarding contains the full operational form for TI", () =
     attachments: [{ name: "foto.png" }],
     checklistItems: [{ id: "1", label: "Validar cabo" }],
     followUps: [{ id: "1", message: "Aberto pelo portal" }],
+    aiAnalysis: {
+      summary: "Solicitante relata falha de comunicacao em impressora critica da recepcao.",
+      operationalRisk: "alto",
+      suggestedPriority: "Alta",
+      suggestedQueue: "Service Desk",
+      requesterSentiment: "urgente",
+      behaviorSignals: ["incidente recorrente em perifericos"],
+      recommendedActions: ["Validar conectividade", "Checar fila de impressao"],
+      confidence: 0.82,
+    },
   };
 
   const message = buildTicketCreatedForwardMessage(ticket, { users: [] }, "https://ticketmind.example", ["gestor@empresa.com.br"]);
@@ -82,6 +93,9 @@ test("ticket created forwarding contains the full operational form for TI", () =
   assert.match(message.text, /Anexos: 1/);
   assert.match(message.text, /Checklist inicial: 1/);
   assert.match(message.text, /Follow-ups iniciais: 1/);
+  assert.match(message.text, /Analise da IA:/);
+  assert.match(message.text, /Resumo: Solicitante relata falha de comunicacao/);
+  assert.match(message.text, /Acoes recomendadas: Validar conectividade; Checar fila de impressao/);
   assert.match(message.text, /Destinatarios originais previstos: gestor@empresa\.com\.br/);
 });
 
@@ -114,4 +128,16 @@ test("ticket created rule ignores requester email when disabled", () => {
   );
 
   assert.deepEqual(recipients, ["gestor@empresa.com.br"]);
+});
+
+test("AI ticket analysis is skipped without OpenAI key", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+
+  try {
+    const result = await analyzeTicketWithAI({ id: "INC-1", title: "Teste" }, { tickets: [] });
+    assert.equal(result, null);
+  } finally {
+    if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+  }
 });

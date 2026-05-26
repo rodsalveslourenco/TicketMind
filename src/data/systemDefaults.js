@@ -518,6 +518,11 @@ export const defaultEmailPlaceholders = [
   { key: "link_chamado", label: "Link do chamado" },
   { key: "aprovador_atual", label: "Aprovador atual" },
   { key: "sla_aprovacao", label: "SLA de aprovacao" },
+  { key: "ia_resumo", label: "Resumo da IA" },
+  { key: "ia_risco", label: "Risco operacional da IA" },
+  { key: "ia_prioridade_sugerida", label: "Prioridade sugerida pela IA" },
+  { key: "ia_fila_sugerida", label: "Fila sugerida pela IA" },
+  { key: "ia_acoes", label: "Acoes recomendadas pela IA" },
 ];
 
 export const defaultSmtpSettings = {

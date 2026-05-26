@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { hasAnyPermission } from "../src/data/permissions.js";
+import { analyzeTicketWithAI } from "./aiTicketInsights.js";
 import { decryptSecret, encryptSecret } from "./security.js";
 
 const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
@@ -85,6 +86,24 @@ function buildForwardingTextNotice(recipients = []) {
 
 function buildPreformattedHtml(text, extraHtml = "") {
   return `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${String(text || "")}</pre>${extraHtml}`;
+}
+
+function formatAiAnalysisText(aiAnalysis = null) {
+  if (!aiAnalysis || typeof aiAnalysis !== "object") return "";
+  const actions = Array.isArray(aiAnalysis.recommendedActions) ? aiAnalysis.recommendedActions : [];
+  const signals = Array.isArray(aiAnalysis.behaviorSignals) ? aiAnalysis.behaviorSignals : [];
+  return [
+    "",
+    "Analise da IA:",
+    `Resumo: ${aiAnalysis.summary || ""}`,
+    `Risco operacional: ${aiAnalysis.operationalRisk || ""}`,
+    `Prioridade sugerida: ${aiAnalysis.suggestedPriority || ""}`,
+    `Fila sugerida: ${aiAnalysis.suggestedQueue || ""}`,
+    `Sentimento do solicitante: ${aiAnalysis.requesterSentiment || ""}`,
+    `Sinais de comportamento: ${signals.join("; ") || ""}`,
+    `Acoes recomendadas: ${actions.join("; ") || ""}`,
+    `Confianca: ${Math.round((Number(aiAnalysis.confidence) || 0) * 100)}%`,
+  ].join("\n");
 }
 
 export function buildPasswordRecoveryForwardMessage({
@@ -180,6 +199,9 @@ export function buildTicketCreatedForwardMessage(ticket = {}, state = {}, baseUr
     `Link do chamado: ${placeholders.link_chamado || ""}`,
   ];
 
+  const aiAnalysisText = formatAiAnalysisText(ticket.aiAnalysis);
+  if (aiAnalysisText) lines.push(aiAnalysisText);
+
   const forwardingNotice = buildForwardingTextNotice(intendedRecipients);
   const text = `${lines.join("\n")}${forwardingNotice}`;
   return {
@@ -255,6 +277,11 @@ function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
     evento: String(eventLabel || ""),
     aprovador_atual: String(ticket.approval?.currentApproverName || ticket.approval?.approverName || ""),
     sla_aprovacao: String(ticket.approval?.dueAt || "").trim(),
+    ia_resumo: String(ticket.aiAnalysis?.summary || ""),
+    ia_risco: String(ticket.aiAnalysis?.operationalRisk || ""),
+    ia_prioridade_sugerida: String(ticket.aiAnalysis?.suggestedPriority || ""),
+    ia_fila_sugerida: String(ticket.aiAnalysis?.suggestedQueue || ""),
+    ia_acoes: Array.isArray(ticket.aiAnalysis?.recommendedActions) ? ticket.aiAnalysis.recommendedActions.join("; ") : "",
   };
 }
 
@@ -499,7 +526,8 @@ export async function sendPasswordRecoveryEmail(
 
 export async function processTicketNotifications({ previousState, nextState, persistState, baseUrl }) {
   const rules = Array.isArray(nextState.notificationRules) ? nextState.notificationRules.filter((rule) => rule.active) : [];
-  if (!rules.length) return;
+  const shouldForwardCreatedTickets = Boolean(getOperationsMailboxRecipients().length);
+  if (!rules.length && !shouldForwardCreatedTickets) return;
 
   const eventsMap = new Map((nextState.notificationEvents || []).map((event) => [event.key, event]));
   const layoutsMap = new Map((nextState.emailLayouts || []).map((layout) => [layout.id, layout]));
@@ -507,13 +535,36 @@ export async function processTicketNotifications({ previousState, nextState, per
   const nextTickets = new Map((nextState?.tickets || []).map((ticket) => [ticket.id, ticket]));
   const existingLogKeys = new Set((nextState.notificationLogs || []).map((log) => log.dedupeKey).filter(Boolean));
   const nextLogs = [...(nextState.notificationLogs || [])];
+  const nextTicketsList = Array.isArray(nextState.tickets) ? [...nextState.tickets] : [];
+  let ticketsChanged = false;
 
-  for (const nextTicket of nextTickets.values()) {
+  const replaceTicket = (ticket) => {
+    const index = nextTicketsList.findIndex((candidate) => String(candidate.id || "") === String(ticket.id || ""));
+    if (index !== -1) {
+      nextTicketsList[index] = ticket;
+      ticketsChanged = true;
+    }
+  };
+
+  for (const originalNextTicket of nextTickets.values()) {
+    let nextTicket = originalNextTicket;
     const previousTicket = previousTickets.get(nextTicket.id) || null;
     const changes = resolveEventChanges(previousTicket, nextTicket);
     const createdDeliveryKey = `ticket_created_operational:${nextTicket.id}:${nextTicket.openedAt || nextTicket.updatedAtIso || nextTicket.id}`;
 
-    if (!previousTicket && !existingLogKeys.has(createdDeliveryKey) && getOperationsMailboxRecipients().length) {
+    if (!previousTicket && !nextTicket.aiAnalysis) {
+      try {
+        const aiAnalysis = await analyzeTicketWithAI(nextTicket, nextState);
+        if (aiAnalysis) {
+          nextTicket = { ...nextTicket, aiAnalysis };
+          replaceTicket(nextTicket);
+        }
+      } catch (error) {
+        console.error("ticket AI analysis failed", error);
+      }
+    }
+
+    if (!previousTicket && !existingLogKeys.has(createdDeliveryKey) && shouldForwardCreatedTickets) {
       try {
         const method = await deliverEmail(nextState, buildTicketCreatedForwardMessage(nextTicket, nextState, baseUrl));
         nextLogs.unshift(
@@ -604,9 +655,10 @@ export async function processTicketNotifications({ previousState, nextState, per
     }
   }
 
-  if (persistState && JSON.stringify(nextLogs) !== JSON.stringify(nextState.notificationLogs || [])) {
+  if (persistState && (ticketsChanged || JSON.stringify(nextLogs) !== JSON.stringify(nextState.notificationLogs || []))) {
     await persistState({
       ...nextState,
+      tickets: ticketsChanged ? nextTicketsList : nextState.tickets,
       notificationLogs: nextLogs.slice(0, 200),
     });
   }

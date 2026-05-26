@@ -157,6 +157,8 @@ Variaveis aceitas:
 - `DB_PATH`: caminho completo do arquivo SQLite
 - `DATABASE_URL`: ativa Postgres
 - `OPERATIONS_FORWARD_EMAIL`: caixa operacional usada para recuperacao de senha e copia obrigatoria de abertura de chamado. Padrao `ti@wegamarine.com.br`
+- `OPENAI_API_KEY`: ativa analise de IA para chamados recem-abertos
+- `OPENAI_TICKET_MODEL`: modelo usado na analise de chamados. Padrao `gpt-5-mini`
 
 ## Comportamento de notificacoes operacionais
 
@@ -168,6 +170,8 @@ Alguns fluxos foram fixados para uma caixa operacional unica com o objetivo de p
 - quando existe um usuario ativo correspondente, o link de redefinicao e incluido no corpo do e-mail enviado para a caixa operacional
 - toda abertura de chamado gera uma copia operacional completa para `ti@wegamarine.com.br`
 - essa copia operacional lista os dados relevantes do chamado: id, titulo, descricao, solicitante, email, prioridade, tipo, fila, departamento, categoria, localizacao, SLA, projeto, ativo, anexos, checklist e link
+- quando `OPENAI_API_KEY` estiver configurada, a abertura tambem gera uma analise de IA com resumo, risco operacional, fila/prioridade sugerida, sinais de comportamento e acoes recomendadas
+- a analise de IA e salva no chamado em `aiAnalysis` e fica disponivel nos layouts de e-mail pelos placeholders `{{ia_resumo}}`, `{{ia_risco}}`, `{{ia_prioridade_sugerida}}`, `{{ia_fila_sugerida}}` e `{{ia_acoes}}`
 - as regras normais de notificacao do sistema continuam existindo; a copia operacional de abertura de chamado e adicional e nao substitui os demais destinatarios configurados
 
 ### Modo Render / Postgres
