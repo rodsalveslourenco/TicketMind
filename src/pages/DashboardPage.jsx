@@ -16,6 +16,11 @@ function percent(value, total) {
   return Math.round((value / total) * 100);
 }
 
+function clampPercent(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 100);
+}
+
 function formatMonthLabel(date) {
   return new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date).replace(".", "");
 }
@@ -170,7 +175,15 @@ function DashboardPage() {
     const status = normalizeText(ticket.status);
     return status === "aguardando aprovacao" || status === "aguardando usuario";
   }).length;
-  const slaCompliance = openTickets ? Number((((openTickets - overdueTickets) / openTickets) * 100).toFixed(1)) : 100;
+  const slaCompliance = openTickets ? clampPercent(Number((((openTickets - overdueTickets) / openTickets) * 100).toFixed(1))) : 100;
+  const resolutionRate = totalTickets ? percent(resolvedTickets, totalTickets) : 0;
+  const activeFilterCount = [
+    periodFilter !== "90",
+    queueFilter !== "Todas",
+    assigneeFilter !== "Todos",
+    Boolean(search),
+    periodFilter === "custom" && (customStartDate || customEndDate),
+  ].filter(Boolean).length;
 
   const dashboardKpis = [
     { label: "Total", value: totalTickets, detail: `${openTickets} em fluxo | ${resolvedTickets} resolvidos`, tone: "neutral" },
@@ -529,9 +542,17 @@ function DashboardPage() {
               <span>SLA atual</span>
               <strong>{slaCompliance}%</strong>
             </article>
+            <article className="dashboard-status-card dashboard-status-card-success">
+              <span>Resolucao</span>
+              <strong>{resolutionRate}%</strong>
+            </article>
             <article className="dashboard-status-card">
               <span>CSAT</span>
               <strong>{summary.csat}/5</strong>
+            </article>
+            <article className={criticalOpen ? "dashboard-status-card dashboard-status-card-danger" : "dashboard-status-card"}>
+              <span>Criticos abertos</span>
+              <strong>{criticalOpen}</strong>
             </article>
             <article className="dashboard-status-card">
               <span>1 resposta</span>
@@ -1041,6 +1062,11 @@ function DashboardPage() {
           <button className="filter-pill interactive-button dashboard-reset-button" onClick={resetFilters} type="button">
             Limpar filtros
           </button>
+        </div>
+        <div className="dashboard-filter-summary" aria-live="polite">
+          <strong>{totalTickets} chamados no recorte atual</strong>
+          <span>{activeFilterCount ? `${activeFilterCount} filtro(s) aplicado(s)` : "Visao padrao dos ultimos 90 dias"}</span>
+          <span>{slaCompliance}% no SLA | {resolutionRate}% resolvidos | {criticalOpen} criticos abertos</span>
         </div>
         {hiddenWidgetDefs.length ? (
           <div className="board-card compact-record-card">
