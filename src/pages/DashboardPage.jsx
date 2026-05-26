@@ -377,6 +377,79 @@ function DashboardPage() {
       }));
   }, [filteredTickets]);
 
+  const taskMetrics = useMemo(() => {
+    const tasks = filteredTickets.flatMap((ticket) =>
+      (Array.isArray(ticket.subtasks) ? ticket.subtasks : []).map((task) => ({
+        ...task,
+        ticketId: ticket.id,
+        ticketTitle: ticket.title,
+        ticketPriority: ticket.priority,
+        ticketStatus: ticket.status,
+        assignee: task.ownerName || ticket.assignee || "Sem responsavel",
+      })),
+    );
+    const completed = tasks.filter((task) => normalizeText(task.status) === "concluida").length;
+    const pending = tasks.length - completed;
+    const unassigned = tasks.filter((task) => !normalizeText(task.ownerName)).length;
+    const ticketsWithTasks = filteredTickets.filter((ticket) => Array.isArray(ticket.subtasks) && ticket.subtasks.length).length;
+    const ticketsWithPendingTasks = filteredTickets.filter((ticket) =>
+      (Array.isArray(ticket.subtasks) ? ticket.subtasks : []).some((task) => normalizeText(task.status) !== "concluida"),
+    ).length;
+
+    return {
+      tasks,
+      total: tasks.length,
+      completed,
+      pending,
+      unassigned,
+      ticketsWithTasks,
+      ticketsWithPendingTasks,
+      completionRate: tasks.length ? percent(completed, tasks.length) : 0,
+    };
+  }, [filteredTickets]);
+
+  const taskStatusItems = useMemo(() => {
+    const items = [
+      { label: "Pendentes", value: taskMetrics.pending, tone: "warning" },
+      { label: "Concluidas", value: taskMetrics.completed, tone: "success" },
+      { label: "Sem responsavel", value: taskMetrics.unassigned, tone: "danger" },
+    ];
+    const maxValue = Math.max(...items.map((item) => item.value), 1);
+    return items.map((item) => ({
+      ...item,
+      percentage: percent(item.value, taskMetrics.total),
+      width: Math.max((item.value / maxValue) * 100, item.value ? 18 : 0),
+    }));
+  }, [taskMetrics]);
+
+  const taskOwnerItems = useMemo(() => {
+    const grouped = taskMetrics.tasks.reduce((accumulator, task) => {
+      const owner = String(task.assignee || "Sem responsavel").trim() || "Sem responsavel";
+      if (!accumulator[owner]) {
+        accumulator[owner] = { label: owner, total: 0, pending: 0, completed: 0 };
+      }
+      accumulator[owner].total += 1;
+      if (normalizeText(task.status) === "concluida") accumulator[owner].completed += 1;
+      else accumulator[owner].pending += 1;
+      return accumulator;
+    }, {});
+    return Object.values(grouped).sort((left, right) => right.pending - left.pending || right.total - left.total).slice(0, 6);
+  }, [taskMetrics.tasks]);
+
+  const pendingTaskTickets = useMemo(
+    () =>
+      filteredTickets
+        .map((ticket) => ({
+          ticket,
+          pending: (Array.isArray(ticket.subtasks) ? ticket.subtasks : []).filter((task) => normalizeText(task.status) !== "concluida").length,
+          total: Array.isArray(ticket.subtasks) ? ticket.subtasks.length : 0,
+        }))
+        .filter((item) => item.pending)
+        .sort((left, right) => right.pending - left.pending)
+        .slice(0, 5),
+    [filteredTickets],
+  );
+
   const actionTickets = useMemo(
     () =>
       filteredTickets
@@ -475,6 +548,7 @@ function DashboardPage() {
     { id: "priority", title: "Distribuicao por prioridade", category: "SLA e criticidade" },
     { id: "volume", title: "Volume por periodo", category: "Volume por periodo" },
     { id: "performance", title: "Performance dos tecnicos", category: "Performance dos tecnicos" },
+    { id: "tasks", title: "Tarefas dos chamados", category: "Tarefas dos chamados" },
     { id: "departmentIndicators", title: "Indicadores por departamento", category: "Performance dos tecnicos" },
     { id: "technicianIndicators", title: "Indicadores por tecnico", category: "Performance dos tecnicos" },
     { id: "actions", title: "Chamados que exigem acao", category: "Visao geral dos chamados" },
@@ -755,7 +829,7 @@ function DashboardPage() {
               Ocultar
             </button>
           </div>
-          <div className="dashboard-performance-table">
+          <div className="dashboard-performance-table dashboard-table-6">
             <div className="dashboard-performance-head">
               <span>Tecnico</span>
               <span>Chamados</span>
@@ -779,6 +853,95 @@ function DashboardPage() {
       );
     }
 
+    if (widgetId === "tasks") {
+      return (
+        <section className="board-card dashboard-tasks-card" key={widgetId}>
+          <div className="card-heading dashboard-widget-heading">
+            <div>
+              <h2>Tarefas dos chamados</h2>
+              <span>Subtarefas tecnicas vinculadas aos chamados filtrados</span>
+            </div>
+            <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
+              Ocultar
+            </button>
+          </div>
+          <div className="dashboard-kpi-strip dashboard-task-kpi-strip">
+            <article className="dashboard-kpi-card dashboard-kpi-card-highlight">
+              <span>Tarefas</span>
+              <strong>{taskMetrics.total}</strong>
+              <small>{taskMetrics.ticketsWithTasks} chamado(s) com subtarefas</small>
+            </article>
+            <article className="dashboard-kpi-card dashboard-kpi-card-warning">
+              <span>Pendentes</span>
+              <strong>{taskMetrics.pending}</strong>
+              <small>{taskMetrics.ticketsWithPendingTasks} chamado(s) com pendencia</small>
+            </article>
+            <article className="dashboard-kpi-card dashboard-kpi-card-success">
+              <span>Concluidas</span>
+              <strong>{taskMetrics.completed}</strong>
+              <small>{taskMetrics.completionRate}% de conclusao</small>
+            </article>
+            <article className={taskMetrics.unassigned ? "dashboard-kpi-card dashboard-kpi-card-danger" : "dashboard-kpi-card"}>
+              <span>Sem responsavel</span>
+              <strong>{taskMetrics.unassigned}</strong>
+              <small>Precisam de dono tecnico</small>
+            </article>
+          </div>
+          <div className="split-grid split-grid-wide dashboard-task-grid">
+            <div className="dashboard-chart-list">
+              <strong className="dashboard-section-title">Status das tarefas</strong>
+              {taskStatusItems.map((item) => (
+                <div className="dashboard-chart-row dashboard-chart-row-compact" key={item.label}>
+                  <div className="dashboard-chart-label">
+                    <strong>{item.label}</strong>
+                    <span>{item.value} tarefa(s)</span>
+                  </div>
+                  <div className="dashboard-bar-track">
+                    <div className={`dashboard-bar-fill dashboard-bar-fill-task-${item.tone}`} style={{ width: `${item.width}%` }} />
+                  </div>
+                  <strong className="dashboard-chart-value">{item.percentage}%</strong>
+                </div>
+              ))}
+            </div>
+            <div className="dashboard-performance-table dashboard-table-4">
+              <div className="dashboard-performance-head">
+                <span>Responsavel</span>
+                <span>Total</span>
+                <span>Pendentes</span>
+                <span>Concluidas</span>
+              </div>
+              {taskOwnerItems.length ? (
+                taskOwnerItems.map((item) => (
+                  <div className="dashboard-performance-row" key={item.label}>
+                    <strong>{item.label}</strong>
+                    <span>{item.total}</span>
+                    <span>{item.pending}</span>
+                    <span>{item.completed}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="dashboard-empty-state">Nenhuma subtarefa tecnica no recorte atual.</div>
+              )}
+            </div>
+          </div>
+          {pendingTaskTickets.length ? (
+            <div className="dashboard-task-ticket-list">
+              <strong className="dashboard-section-title">Chamados com mais tarefas pendentes</strong>
+              {pendingTaskTickets.map(({ ticket, pending, total }) => (
+                <article className="dashboard-task-ticket" key={ticket.id}>
+                  <div>
+                    <strong>{ticket.id}</strong>
+                    <span>{ticket.title}</span>
+                  </div>
+                  <span>{pending}/{total} pendente(s)</span>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      );
+    }
+
     if (widgetId === "departmentIndicators") {
       return (
         <section className="board-card" key={widgetId}>
@@ -791,7 +954,7 @@ function DashboardPage() {
               Ocultar
             </button>
           </div>
-          <div className="dashboard-performance-table">
+          <div className="dashboard-performance-table dashboard-table-5">
             <div className="dashboard-performance-head">
               <span>Departamento</span>
               <span>Total</span>
@@ -825,7 +988,7 @@ function DashboardPage() {
               Ocultar
             </button>
           </div>
-          <div className="dashboard-performance-table">
+          <div className="dashboard-performance-table dashboard-table-5">
             <div className="dashboard-performance-head">
               <span>Tecnico</span>
               <span>Total</span>
@@ -925,7 +1088,7 @@ function DashboardPage() {
               Ocultar
             </button>
           </div>
-          <div className="dashboard-performance-table">
+          <div className="dashboard-performance-table dashboard-table-4">
             <div className="dashboard-performance-head">
               <span>Indicador</span>
               <span>Atual</span>
@@ -962,7 +1125,7 @@ function DashboardPage() {
             </button>
           </div>
           <div className="split-grid split-grid-wide">
-            <div className="dashboard-performance-table">
+            <div className="dashboard-performance-table dashboard-table-3">
               <div className="dashboard-performance-head">
                 <span>Projetos</span>
                 <span>Status</span>
@@ -976,7 +1139,7 @@ function DashboardPage() {
                 </div>
               )) : <div className="dashboard-empty-state">Nenhum projeto critico no horizonte imediato.</div>}
             </div>
-            <div className="dashboard-performance-table">
+            <div className="dashboard-performance-table dashboard-table-3">
               <div className="dashboard-performance-head">
                 <span>Acoes</span>
                 <span>Tipo</span>
