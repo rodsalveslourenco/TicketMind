@@ -3666,31 +3666,39 @@ textarea:focus {
 .dashboard-monthly-chart {
   align-items: end;
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   min-height: 260px;
 }
 
 .dashboard-month-column {
   display: grid;
-  gap: 0.6rem;
-  grid-template-rows: auto 1fr auto;
+  gap: 0.5rem;
+  grid-template-rows: 50px 1fr auto;
+  justify-items: stretch;
 }
 
 .dashboard-month-metrics {
+  align-content: end;
   display: grid;
-  gap: 0.12rem;
+  gap: 0.08rem;
+  min-height: 50px;
+  text-align: center;
 }
 
 .dashboard-month-metrics strong {
   color: var(--text);
   font-size: 1.1rem;
+  line-height: 1.1;
 }
 
 .dashboard-month-metrics span,
 .dashboard-month-label {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.74rem;
+  line-height: 1.1;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .dashboard-month-bar-shell {
@@ -3729,6 +3737,7 @@ textarea:focus {
 
 .dashboard-month-label {
   font-weight: 700;
+  text-align: center;
   text-transform: capitalize;
 }
 

@@ -799,7 +799,7 @@ function DashboardPage() {
                   <article className="dashboard-month-column" key={item.key}>
                     <div className="dashboard-month-metrics">
                       <strong>{item.total}</strong>
-                      <span>{item.resolved} resolvidos</span>
+                      <span aria-label={`${item.resolved} resolvidos`}>{item.resolved} resolv.</span>
                     </div>
                     <div className="dashboard-month-bar-shell">
                       <div className="dashboard-month-bar-track">
