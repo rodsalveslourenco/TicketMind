@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildPasswordRecoveryForwardMessage,
   buildTicketCreatedForwardMessage,
+  resolveNotificationRecipients,
 } from "../server/notifications.js";
 
 test("password recovery always routes to TI and keeps submitted email in body", () => {
@@ -82,4 +83,35 @@ test("ticket created forwarding contains the full operational form for TI", () =
   assert.match(message.text, /Checklist inicial: 1/);
   assert.match(message.text, /Follow-ups iniciais: 1/);
   assert.match(message.text, /Destinatarios originais previstos: gestor@empresa\.com\.br/);
+});
+
+test("ticket created rule can include requester email", () => {
+  const recipients = resolveNotificationRecipients(
+    {
+      requesterEmail: "solicitante@empresa.com.br",
+      watcherDetails: [{ email: "observador@empresa.com.br", eventKeys: ["ticket_created"] }],
+    },
+    {
+      includeRequesterEmail: true,
+      externalEmails: ["gestor@empresa.com.br"],
+      recipientUserIds: ["u1"],
+    },
+    {
+      users: [{ id: "u1", email: "tecnico@empresa.com.br" }],
+    },
+    "ticket_created",
+  );
+
+  assert.deepEqual(recipients.sort(), ["gestor@empresa.com.br", "observador@empresa.com.br", "solicitante@empresa.com.br", "tecnico@empresa.com.br"].sort());
+});
+
+test("ticket created rule ignores requester email when disabled", () => {
+  const recipients = resolveNotificationRecipients(
+    { requesterEmail: "solicitante@empresa.com.br" },
+    { includeRequesterEmail: false, externalEmails: ["gestor@empresa.com.br"], recipientUserIds: [] },
+    { users: [] },
+    "ticket_created",
+  );
+
+  assert.deepEqual(recipients, ["gestor@empresa.com.br"]);
 });

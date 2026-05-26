@@ -770,6 +770,7 @@ function hydrateNotificationRules(storedRules, notificationEvents) {
       id: String(rule.id || "").trim(),
       eventKey: validEventKeys.has(rule.eventKey) ? rule.eventKey : "",
       active: rule.active !== false,
+      includeRequesterEmail: Boolean(rule.includeRequesterEmail),
       recipientUserIds: Array.isArray(rule.recipientUserIds) ? rule.recipientUserIds.filter(Boolean) : [],
       externalEmails: Array.isArray(rule.externalEmails)
         ? rule.externalEmails.filter(Boolean)
@@ -3287,6 +3288,7 @@ export function AppDataProvider({ children }) {
       const sanitizedPayload = {
         eventKey: String(payload.eventKey || "").trim(),
         active: payload.active !== false,
+        includeRequesterEmail: Boolean(payload.includeRequesterEmail),
         recipientUserIds: Array.isArray(payload.recipientUserIds) ? payload.recipientUserIds.filter(Boolean) : [],
         externalEmails: Array.isArray(payload.externalEmails)
           ? payload.externalEmails.filter(Boolean)

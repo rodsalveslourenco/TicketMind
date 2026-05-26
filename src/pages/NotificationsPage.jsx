@@ -10,6 +10,7 @@ function buildRuleDraft(eventKey, existingRule) {
     id: existingRule?.id || "",
     eventKey,
     active: existingRule?.active !== false,
+    includeRequesterEmail: Boolean(existingRule?.includeRequesterEmail),
     recipientUserIds: Array.isArray(existingRule?.recipientUserIds) ? existingRule.recipientUserIds : [],
     externalEmails: Array.isArray(existingRule?.externalEmails)
       ? existingRule.externalEmails.join(", ")
@@ -19,7 +20,7 @@ function buildRuleDraft(eventKey, existingRule) {
 }
 
 function resolveRuleStatus(ruleDraft) {
-  const hasRecipients = Boolean(ruleDraft.recipientUserIds.length || String(ruleDraft.externalEmails || "").trim());
+  const hasRecipients = Boolean(ruleDraft.includeRequesterEmail || ruleDraft.recipientUserIds.length || String(ruleDraft.externalEmails || "").trim());
   const hasLayout = Boolean(String(ruleDraft.layoutId || "").trim());
   if (!ruleDraft.active) return "Pausada";
   if (hasRecipients && hasLayout) return "Pronta";
@@ -364,6 +365,15 @@ function NotificationsPage() {
                       placeholder="email1@dominio.com, email2@dominio.com"
                       value={draft.externalEmails}
                     />
+                  </label>
+                  <label className="permission-card field-span-2">
+                    <input
+                      checked={Boolean(draft.includeRequesterEmail)}
+                      disabled={!canManage}
+                      onChange={(event) => updateRuleDraft(eventItem.key, (current) => ({ ...current, includeRequesterEmail: event.target.checked }))}
+                      type="checkbox"
+                    />
+                    <span>Notificar solicitante do chamado</span>
                   </label>
                 </div>
 

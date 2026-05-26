@@ -265,6 +265,12 @@ function getRecipients(rule, state) {
   return Array.from(new Set([...userEmails, ...parseEmails(rule?.externalEmails)]));
 }
 
+function getRequesterRecipient(ticket, rule) {
+  if (!rule?.includeRequesterEmail) return [];
+  const requesterEmail = String(ticket?.requesterEmail || "").trim().toLowerCase();
+  return requesterEmail ? [requesterEmail] : [];
+}
+
 function getWatcherRecipients(ticket, eventKey) {
   return Array.from(
     new Set(
@@ -274,6 +280,10 @@ function getWatcherRecipients(ticket, eventKey) {
         .filter(Boolean),
     ),
   );
+}
+
+export function resolveNotificationRecipients(ticket, rule, state, eventKey) {
+  return Array.from(new Set([...getRequesterRecipient(ticket, rule), ...getRecipients(rule, state), ...getWatcherRecipients(ticket, eventKey)]));
 }
 
 function getApprovalReminderRecipients(ticket, rule, state) {
@@ -538,7 +548,7 @@ export async function processTicketNotifications({ previousState, nextState, per
       const rule = rules.find((candidate) => candidate.eventKey === change.key);
       if (!rule) continue;
 
-      const recipients = Array.from(new Set([...getRecipients(rule, nextState), ...getWatcherRecipients(nextTicket, change.key)]));
+      const recipients = resolveNotificationRecipients(nextTicket, rule, nextState, change.key);
       if (!recipients.length) continue;
 
       const eventLabel = eventsMap.get(change.key)?.label || change.key;
