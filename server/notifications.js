@@ -311,13 +311,16 @@ function getEnvGraphSettings() {
 function resolveGraphConfig(stateOrPayload = {}) {
   const envSettings = getEnvGraphSettings();
   const settings = stateOrPayload?.emailServiceSettings || {};
-  const provider = String(settings.provider || envSettings.provider || process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
-  const fromEmail = String(settings.fromEmail || envSettings.fromEmail || "").trim();
-  const clientSecret = safeDecryptSecret(settings.apiKey || "") || envSettings.clientSecret || "";
+  const envProvider = String(envSettings.provider || process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
+  const provider = String(envProvider || settings.provider || "").trim().toLowerCase();
+  const preferEnvGraph = isGraphRequested({ provider: envProvider });
+  const fromEmail = String(preferEnvGraph ? envSettings.fromEmail || settings.fromEmail : settings.fromEmail || envSettings.fromEmail || "").trim();
+  const storedClientSecret = safeDecryptSecret(settings.apiKey || "");
+  const clientSecret = preferEnvGraph ? envSettings.clientSecret || storedClientSecret : storedClientSecret || envSettings.clientSecret || "";
   return {
     provider,
-    tenantId: String(settings.tenantId || envSettings.tenantId || "").trim(),
-    clientId: String(settings.clientId || envSettings.clientId || "").trim(),
+    tenantId: String(preferEnvGraph ? envSettings.tenantId || settings.tenantId : settings.tenantId || envSettings.tenantId || "").trim(),
+    clientId: String(preferEnvGraph ? envSettings.clientId || settings.clientId : settings.clientId || envSettings.clientId || "").trim(),
     clientSecret,
     fromEmail,
     fromName: String(settings.fromName || envSettings.fromName || "").trim(),
