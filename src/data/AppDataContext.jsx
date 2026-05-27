@@ -1186,7 +1186,7 @@ function buildExecutiveAgenda({ tickets = [], projects = [] }) {
     .filter((ticket) => isOpenTicketStatus(ticket.status) && normalizeText(ticket.priority) === "critica")
     .slice(0, 6);
   const pendingApprovals = tickets
-    .filter((ticket) => normalizeText(ticket.approval?.status) === "pending")
+    .filter((ticket) => isOpenTicketStatus(ticket.status) && normalizeText(ticket.approval?.status) === "pending")
     .slice(0, 6);
   const pendingActions = tickets
     .filter((ticket) => isOpenTicketStatus(ticket.status) && (ticket.unassigned || ticket.isOverdue || ticket.dueSoon))
@@ -1871,13 +1871,27 @@ export function AppDataProvider({ children }) {
               createdAt: nowIso,
             }),
           );
+          if (normalizeText(effectiveStatus) === "em andamento" && String(updates.progressNote || "").trim()) {
+            historyEntries.push(
+              createHistoryEntry({
+                type: "progress_note",
+                actorId: user?.id,
+                actorName: user?.name || "Sistema",
+                message: `Observacao de andamento: ${String(updates.progressNote || "").trim()}`,
+                createdAt: nowIso,
+              }),
+            );
+          }
           if (normalizeText(effectiveStatus) === "resolvido") {
             historyEntries.push(
               createHistoryEntry({
                 type: "resolved",
                 actorId: user?.id,
                 actorName: user?.name || "Sistema",
-                message: "Chamado resolvido",
+                message: updates.completionAttachments?.length
+                  ? `Chamado resolvido com ${updates.completionAttachments.length} anexo(s) de conclusao`
+                  : "Chamado resolvido",
+                metadata: { attachments: Array.isArray(updates.completionAttachments) ? updates.completionAttachments : [] },
                 createdAt: nowIso,
               }),
             );

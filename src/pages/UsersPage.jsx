@@ -684,7 +684,7 @@ function UsersPage() {
                 </label>
                 <label className={`field-block${detailDirtyFields.name ? " is-dirty" : ""}`}>
                   <span>Nome</span>
-                  <input onChange={updateField("name")} value={form.name} />
+                  <input onChange={updateField("name")} required value={form.name} />
                 </label>
                 <label className={`field-block${detailDirtyFields.email ? " is-dirty" : ""}`}>
                   <span>Email / Login</span>
@@ -693,7 +693,7 @@ function UsersPage() {
                 <label className="field-block">
                   <span>Senha inicial</span>
                   <div className="user-password-row">
-                    <input onChange={updateField("password")} type={canRevealPasswords && revealedUserIds.includes("new-user") ? "text" : "password"} value={form.password} />
+                    <input onChange={updateField("password")} required type={canRevealPasswords && revealedUserIds.includes("new-user") ? "text" : "password"} value={form.password} />
                     {canRevealPasswords ? (
                       <button
                         className="ghost-link interactive-button"
@@ -728,7 +728,7 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Perfil de permissao</span>
-                  <select onChange={updateProfileField} value={form.permissionProfileId}>
+                  <select onChange={updateProfileField} required value={form.permissionProfileId}>
                     <option value="">Selecione</option>
                     {activeProfiles.map((profile) => (
                       <option key={profile.id} value={profile.id}>
@@ -830,7 +830,7 @@ function UsersPage() {
                 </label>
                 <label className="field-block">
                   <span>Nome</span>
-                  <input disabled={!canEditUsers} onChange={updateField("name")} value={form.name} />
+                  <input disabled={!canEditUsers} onChange={updateField("name")} required value={form.name} />
                 </label>
                 <label className="field-block">
                   <span>Email / Login</span>
@@ -882,7 +882,7 @@ function UsersPage() {
                 </label>
                 <label className={`field-block${detailDirtyFields.permissionProfileId ? " is-dirty" : ""}`}>
                   <span>Perfil de permissao</span>
-                  <select disabled={!canManagePermissions} onChange={updateProfileField} value={form.permissionProfileId}>
+                  <select disabled={!canManagePermissions} onChange={updateProfileField} required value={form.permissionProfileId}>
                     <option value="">Selecione</option>
                     {permissionProfiles.map((profile) => (
                       <option key={profile.id} value={profile.id}>

@@ -889,6 +889,13 @@ textarea:focus {
   font-weight: 700;
 }
 
+.field-block.is-required > span:first-child::after,
+.field-block:has(input[required], select[required], textarea[required]) > span:first-child::after {
+  content: " *";
+  color: #dc2626;
+  font-weight: 800;
+}
+
 .requester-stamp {
   display: grid;
   gap: 0.2rem;

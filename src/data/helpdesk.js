@@ -559,7 +559,7 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   const unassigned = isTicketUnassigned(ticket);
   const criticalWaitingTechnician = normalizeText(ticket.priority) === "critica" && unassigned && isOpenTicketStatus(ticket.status);
   const approvalDueAt = ticket.approval?.dueAt ? new Date(ticket.approval.dueAt).getTime() : null;
-  const approvalPending = normalizeText(ticket.approval?.status) === "pending";
+  const approvalPending = isOpenTicketStatus(ticket.status) && normalizeText(ticket.approval?.status) === "pending";
   const approvalRemainingMinutes = approvalDueAt ? Math.round((approvalDueAt - now) / 60000) : null;
   const approvalDueSoon = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes >= 0 && approvalRemainingMinutes <= 60;
   const approvalOverdue = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes < 0;

@@ -296,7 +296,7 @@ function DepartmentsPage() {
                 </label>
                 <label className="field-block field-full">
                   <span>Nome do departamento</span>
-                  <input onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} value={form.name} />
+                  <input onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required value={form.name} />
                 </label>
               </div>
               <div className="ticket-create-actions compact-actions">

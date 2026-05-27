@@ -300,7 +300,7 @@ function LocationsPage() {
                 </label>
                 <label className="field-block field-span-2">
                   <span>Nome da localizacao</span>
-                  <input onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} value={form.name} />
+                  <input onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required value={form.name} />
                 </label>
                 <label className="field-block field-span-2">
                   <span>Departamento</span>

@@ -688,7 +688,7 @@ function AssetsPage() {
               </div>
 
               <div className="glpi-form-grid compact-form-grid">
-                <label className="field-block">
+                <label className="field-block is-required">
                   <span>Tipo</span>
                   <select disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("type")} value={form.type}>
                     {assetTypeOptions.filter((type) => type !== "Outros").map((type) => (
@@ -696,7 +696,7 @@ function AssetsPage() {
                     ))}
                   </select>
                 </label>
-                <label className="field-block">
+                <label className="field-block is-required">
                   <span>Marca</span>
                   <div className="inline-field-actions">
                     <CatalogAutocomplete
@@ -780,9 +780,9 @@ function AssetsPage() {
                 </label>
                 <label className="field-block field-full">
                   <span>Nome</span>
-                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("name")} value={form.name} />
+                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("name")} required value={form.name} />
                 </label>
-                <label className="field-block">
+                <label className="field-block is-required">
                   <span>Usuário</span>
                   <UserAutocomplete
                     disabled={!canLinkAssetUsers && Boolean(editingId)}
@@ -835,7 +835,7 @@ function AssetsPage() {
                 </label>
                 <label className="field-block">
                   <span>Número de série</span>
-                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("serial")} value={form.serial} />
+                  <input disabled={!canEditAsset && Boolean(editingId)} onChange={updateField("serial")} required value={form.serial} />
                 </label>
                 <label className="field-block">
                   <span>Patrimonio</span>

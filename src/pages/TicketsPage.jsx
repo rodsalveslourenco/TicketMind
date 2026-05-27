@@ -320,6 +320,9 @@ function TicketsPage() {
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [timelineFilter, setTimelineFilter] = useState("all");
   const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [progressNoteRequest, setProgressNoteRequest] = useState(null);
+  const [progressNoteText, setProgressNoteText] = useState("");
+  const [completionAttachments, setCompletionAttachments] = useState([]);
   const [activeDetailWorkspace, setActiveDetailWorkspace] = useState("");
   const [showTriagePanel, setShowTriagePanel] = useState(() => Boolean(getModulePreference("tickets", "showTriagePanel", true)));
   const [analystPreviewMode, setAnalystPreviewMode] = useState(() => Boolean(getModulePreference("tickets", "analystPreviewMode", true)));
@@ -328,6 +331,7 @@ function TicketsPage() {
   );
   const createInputRef = useRef(null);
   const detailInputRef = useRef(null);
+  const completionInputRef = useRef(null);
   const watcherBoxRef = useRef(null);
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
@@ -462,6 +466,7 @@ function TicketsPage() {
       type: entry.type || "evento",
       createdAt: entry.createdAt || "",
       createdAtLabel: entry.createdAtLabel || "",
+      attachments: Array.isArray(entry.metadata?.attachments) ? entry.metadata.attachments : [],
     }));
 
     const followUpEntries = visibleFollowUps.map((entry) => ({
@@ -843,6 +848,7 @@ function TicketsPage() {
       setDetailForm(null);
       setFollowUpDraft("");
       setSubtaskDraft("");
+      setCompletionAttachments([]);
       return;
     }
 
@@ -894,6 +900,7 @@ function TicketsPage() {
     setApprovalReason(detailTicket.approval?.decisionReason || "");
     setTimelineFilter("all");
     setSubtaskDraft("");
+    setCompletionAttachments([]);
     setActiveDetailWorkspace("");
   }, [detailTicket]);
 
@@ -1014,6 +1021,14 @@ function TicketsPage() {
     if (!nextFiles.length) return;
     const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
     setCreateForm((current) => ({ ...current, attachments: [...current.attachments, ...attachments] }));
+    event.target.value = "";
+  };
+
+  const handleCompletionAttachments = async (event) => {
+    const nextFiles = Array.from(event.target.files || []);
+    if (!nextFiles.length) return;
+    const attachments = await Promise.all(nextFiles.map(readFileAsDataUrl));
+    setCompletionAttachments((current) => [...current, ...attachments]);
     event.target.value = "";
   };
 
@@ -1154,7 +1169,7 @@ function TicketsPage() {
       return;
     }
 
-    updateTicket(detailTicket.id, {
+    const updates = {
       ...detailForm,
       slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
       dueDate: detailForm.dueDate || "",
@@ -1174,7 +1189,13 @@ function TicketsPage() {
         activeAssetOptions.find((asset) => asset.id === detailForm.assetId)?.name ||
         detailForm.assetName ||
         "",
-    });
+    };
+    if (normalizeText(detailTicket.status) !== "em andamento" && normalizeText(updates.status) === "em andamento") {
+      setProgressNoteRequest({ ticketId: detailTicket.id, updates, successTitle: "Chamado atualizado", successMessage: detailForm.title });
+      setProgressNoteText("");
+      return;
+    }
+    updateTicket(detailTicket.id, updates);
     pushToast("Chamado atualizado", detailForm.title);
     if (normalizeText(detailForm.status) === "resolvido") {
       handleCloseTicketDetail();
@@ -1239,12 +1260,16 @@ function TicketsPage() {
       return;
     }
 
+    const nextAttachments = completionAttachments.length ? [...(detailTicket.attachments || []), ...completionAttachments] : detailTicket.attachments || [];
     updateTicket(detailTicket.id, {
       status: "Resolvido",
       resolutionNotes: detailForm.resolutionNotes.trim(),
       slaTargetMinutes: Math.max(15, Number(detailForm.slaTargetMinutes) || Number(detailTicket.slaTargetMinutes) || 240),
+      attachments: nextAttachments,
+      completionAttachments,
     });
     pushToast("Chamado finalizado", detailForm.title);
+    setCompletionAttachments([]);
     handleCloseTicketDetail();
   };
 
@@ -1294,6 +1319,27 @@ function TicketsPage() {
     });
     setFollowUpDraft("");
     pushToast("Macro aplicada", macro.label);
+  };
+
+  const requestProgressNote = ({ ticketId, updates, successTitle = "Chamado atualizado", successMessage = "" }) => {
+    setProgressNoteRequest({ ticketId, updates, successTitle, successMessage });
+    setProgressNoteText("");
+  };
+
+  const handleConfirmProgressNote = () => {
+    if (!progressNoteRequest) return;
+    const trimmedNote = progressNoteText.trim();
+    if (!trimmedNote) {
+      pushToast("Observacao obrigatoria", "Informe uma observacao para mover o chamado para Em andamento.", "warning");
+      return;
+    }
+    updateTicket(progressNoteRequest.ticketId, {
+      ...progressNoteRequest.updates,
+      progressNote: trimmedNote,
+    });
+    pushToast(progressNoteRequest.successTitle, progressNoteRequest.successMessage || "Status alterado para Em andamento.");
+    setProgressNoteRequest(null);
+    setProgressNoteText("");
   };
 
   const handleToggleChecklistItem = (checklistItemId) => {
@@ -1456,13 +1502,22 @@ function TicketsPage() {
     }
 
     if (action === "assignSelf") {
-      updateTicket(detailTicket.id, { ...detailForm, assignee: user?.name || detailForm.assignee, status: ["aberto", "reaberto"].includes(normalizeText(detailForm.status)) ? "Em andamento" : detailForm.status });
+      const updates = { ...detailForm, assignee: user?.name || detailForm.assignee, status: ["aberto", "reaberto"].includes(normalizeText(detailForm.status)) ? "Em andamento" : detailForm.status };
+      if (normalizeText(detailTicket.status) !== "em andamento" && normalizeText(updates.status) === "em andamento") {
+        requestProgressNote({ ticketId: detailTicket.id, updates, successTitle: "Atalho aplicado", successMessage: "Chamado assumido por voce." });
+        return;
+      }
+      updateTicket(detailTicket.id, updates);
       pushToast("Atalho aplicado", "Chamado assumido por voce.");
       return;
     }
     if (action === "start") {
-      updateTicket(detailTicket.id, { ...detailForm, status: "Em andamento" });
-      pushToast("Atalho aplicado", "Chamado movido para em andamento.");
+      requestProgressNote({
+        ticketId: detailTicket.id,
+        updates: { ...detailForm, status: "Em andamento" },
+        successTitle: "Atalho aplicado",
+        successMessage: "Chamado movido para em andamento.",
+      });
       return;
     }
     if (action === "wait") {
@@ -1502,17 +1557,26 @@ function TicketsPage() {
     }
 
     if (action === "assignSelf" && canAssignTicket) {
-      updateTicket(ticket.id, {
+      const updates = {
         assignee: user?.name || ticket.assignee,
         status: ["aberto", "reaberto"].includes(normalizeText(ticket.status)) ? "Em andamento" : ticket.status,
-      });
+      };
+      if (normalizeText(ticket.status) !== "em andamento" && normalizeText(updates.status) === "em andamento") {
+        requestProgressNote({ ticketId: ticket.id, updates, successTitle: "Atalho aplicado", successMessage: `${ticket.id} assumido por voce.` });
+        return;
+      }
+      updateTicket(ticket.id, updates);
       pushToast("Atalho aplicado", `${ticket.id} assumido por voce.`);
       return;
     }
 
     if (action === "start" && canChangeStatus) {
-      updateTicket(ticket.id, { status: "Em andamento" });
-      pushToast("Atalho aplicado", `${ticket.id} em andamento.`);
+      requestProgressNote({
+        ticketId: ticket.id,
+        updates: { status: "Em andamento" },
+        successTitle: "Atalho aplicado",
+        successMessage: `${ticket.id} em andamento.`,
+      });
       return;
     }
 
@@ -1991,6 +2055,37 @@ function TicketsPage() {
 
       </section>
 
+      {progressNoteRequest ? (
+        <div className="ticket-modal-backdrop" onClick={() => setProgressNoteRequest(null)} role="presentation">
+          <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="ticket-modal-header">
+              <div>
+                <h2>Observacao de andamento</h2>
+                <span className="modal-subtitle">Registre o contexto antes de mover o chamado para Em andamento.</span>
+              </div>
+              <button className="ghost-button interactive-button" onClick={() => setProgressNoteRequest(null)} type="button">
+                Fechar
+              </button>
+            </div>
+            <label className="field-block field-full">
+              <span>Observacao</span>
+              <textarea
+                autoFocus
+                onChange={(event) => setProgressNoteText(event.target.value)}
+                placeholder="Ex.: chamado assumido, analise iniciada, aguardando validacao tecnica inicial."
+                required
+                value={progressNoteText}
+              />
+            </label>
+            <div className="ticket-create-actions compact-actions">
+              <button className="primary-button interactive-button" onClick={handleConfirmProgressNote} type="button">
+                Salvar e mover
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showCreateForm ? (
         <div className="ticket-modal-backdrop" onClick={handleCloseCreateModal} role="presentation">
           <div className="ticket-modal board-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
@@ -2037,7 +2132,7 @@ function TicketsPage() {
                 ) : null}
                 <label className="field-block field-full">
                   <span>Titulo</span>
-                  <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitacao em uma linha" value={createForm.title} />
+                  <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitacao em uma linha" required value={createForm.title} />
                 </label>
                 <label className="field-block">
                   <span>Prioridade</span>
@@ -2057,7 +2152,7 @@ function TicketsPage() {
                 </label>
                 <label className="field-block field-full">
                   <span>Descricao</span>
-                  <textarea onChange={updateCreateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." value={createForm.description} />
+                  <textarea onChange={updateCreateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." required value={createForm.description} />
                 </label>
                 <div className="field-block field-full">
                   <span>Anexos</span>
@@ -2442,7 +2537,7 @@ function TicketsPage() {
 
               <label className={`field-block field-full${detailDirtyFields.title ? " is-dirty" : ""}`}>
                 <span>Titulo</span>
-                <input disabled={!canEditTicket} onChange={updateDetailField("title")} value={detailForm.title} />
+                <input disabled={!canEditTicket} onChange={updateDetailField("title")} required value={detailForm.title} />
               </label>
 
               <div className="detail-grid">
@@ -2463,7 +2558,23 @@ function TicketsPage() {
                 </div>
                 <label className={`field-block${detailDirtyFields.status ? " is-dirty" : ""}`}>
                   <span>Status</span>
-                  <select disabled={!canChangeStatus} onChange={updateDetailField("status")} value={detailForm.status}>
+                  <select
+                    disabled={!canChangeStatus}
+                    onChange={(event) => {
+                      const nextStatus = event.target.value;
+                      setDetailForm((current) => ({ ...current, status: nextStatus }));
+                      if (normalizeText(detailTicket.status) !== "em andamento" && normalizeText(nextStatus) === "em andamento") {
+                        requestProgressNote({
+                          ticketId: detailTicket.id,
+                          updates: { ...detailForm, status: nextStatus },
+                          successTitle: "Status atualizado",
+                          successMessage: `${detailTicket.id} em andamento.`,
+                        });
+                      }
+                    }}
+                    required
+                    value={detailForm.status}
+                  >
                     {detailStatusOptions.map((status) => (
                       <option key={status}>{status}</option>
                     ))}
@@ -2486,6 +2597,7 @@ function TicketsPage() {
                         }));
                       }}
                       value={detailForm.departmentId || ""}
+                      required={serviceCenterEnabled}
                     >
                       <option value="">Selecione</option>
                       {selectableDepartmentOptions.map((department) => (
@@ -2505,7 +2617,7 @@ function TicketsPage() {
                 </label>
                 <label className={`field-block${detailDirtyFields.requester ? " is-dirty" : ""}`}>
                   <span>Solicitante</span>
-                  <input disabled={!canEditTicket || !canSeeAllTickets} onChange={updateDetailField("requester")} value={detailForm.requester} />
+                  <input disabled={!canEditTicket || !canSeeAllTickets} onChange={updateDetailField("requester")} required value={detailForm.requester} />
                 </label>
                 <label className={`field-block${detailDirtyFields.requesterEmail ? " is-dirty" : ""}`}>
                   <span>Email solicitante</span>
@@ -2716,7 +2828,7 @@ function TicketsPage() {
 
               <label className={`field-block field-full${detailDirtyFields.description ? " is-dirty" : ""}`}>
                 <span>Descricao</span>
-                <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} value={detailForm.description} />
+                <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} required value={detailForm.description} />
               </label>
 
               {statusRequiresPauseReason(detailForm.status, serviceCenter || {}) ? (
@@ -3008,8 +3120,37 @@ function TicketsPage() {
                 ) : null}
                 <label className={`field-block field-full${detailDirtyFields.resolutionNotes ? " is-dirty" : ""}`}>
                   <span>Solucao tecnica</span>
-                  <textarea disabled={!canRecordResolution} onChange={updateDetailField("resolutionNotes")} value={detailForm.resolutionNotes} />
+                  <textarea disabled={!canRecordResolution} onChange={updateDetailField("resolutionNotes")} required value={detailForm.resolutionNotes} />
                 </label>
+                <div className="field-block field-full">
+                  <span>Anexo de conclusao</span>
+                  <div className="attachment-toolbar glpi-subbar">
+                    <button className="ghost-button interactive-button" disabled={!canCloseTicket || isDetailResolved} onClick={() => completionInputRef.current?.click()} type="button">
+                      Anexar evidencia
+                    </button>
+                    <input hidden multiple onChange={handleCompletionAttachments} ref={completionInputRef} type="file" />
+                    <span>{completionAttachments.length ? `${completionAttachments.length} arquivo(s) para vincular ao finalizar` : "Opcional"}</span>
+                  </div>
+                  {completionAttachments.length ? (
+                    <div className="attachment-list">
+                      {completionAttachments.map((attachment) => (
+                        <div className="attachment-item attachment-item-actions" key={attachment.id}>
+                          <div>
+                            <strong>{attachment.name}</strong>
+                            <span>{formatBytes(attachment.size)}</span>
+                          </div>
+                          <button
+                            className="ghost-link danger-link interactive-button"
+                            onClick={() => setCompletionAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                            type="button"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="ticket-create-actions compact-actions">
                   {(canEditTicket || canRecordResolution) && !isDetailLocked ? (
                     <button className="primary-button interactive-button" type="submit">
@@ -3246,6 +3387,21 @@ function TicketsPage() {
                           <span>{entry.createdAtLabel}</span>
                           <span>{entry.source === "followUp" ? "acompanhamento" : entry.source === "approval" ? "aprovacao" : "auditoria"}</span>
                         </div>
+                        {entry.attachments?.length ? (
+                          <div className="attachment-list timeline-attachment-list">
+                            {entry.attachments.map((attachment) => (
+                              <div className="attachment-item attachment-item-actions" key={attachment.id}>
+                                <div>
+                                  <strong>{attachment.name}</strong>
+                                  <span>{formatBytes(attachment.size)}</span>
+                                </div>
+                                <a className="ghost-link" download={attachment.name} href={attachment.url}>
+                                  Baixar
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </article>
                     ))}
                   </div>

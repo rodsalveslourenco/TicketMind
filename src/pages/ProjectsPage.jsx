@@ -468,9 +468,9 @@ function ProjectsPage() {
                 <div className="glpi-form-grid">
                   <label className="field-block field-span-2">
                     <span>Projeto</span>
-                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("name")} value={form.name} />
+                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("name")} required value={form.name} />
                   </label>
-                  <label className="field-block">
+                  <label className="field-block is-required">
                     <span>Patrocinador</span>
                     <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("sponsor")} value={form.sponsor} />
                   </label>
@@ -499,7 +499,7 @@ function ProjectsPage() {
                   </label>
                   <label className="field-block">
                     <span>Entrega</span>
-                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("dueDate")} type="date" value={form.dueDate} />
+                    <input disabled={editingId ? !canEditProject : !canCreateProject} onChange={updateField("dueDate")} required type="date" value={form.dueDate} />
                   </label>
                   <label className="field-block field-full">
                     <span>Resumo</span>

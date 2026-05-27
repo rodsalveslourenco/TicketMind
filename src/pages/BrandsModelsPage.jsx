@@ -379,11 +379,11 @@ function BrandsModelsPage() {
                 </label>
                 <label className="field-block">
                   <span>Marca</span>
-                  <input disabled={!canEdit && editingMode !== "create"} onChange={updateField("brandName")} value={form.brandName} />
+                  <input disabled={!canEdit && editingMode !== "create"} onChange={updateField("brandName")} required value={form.brandName} />
                 </label>
                 <label className="field-block">
                   <span>Modelo</span>
-                  <input disabled={!canEdit && editingMode !== "create"} onChange={updateField("modelName")} value={form.modelName} />
+                  <input disabled={!canEdit && editingMode !== "create"} onChange={updateField("modelName")} required={editingMode !== "brand"} value={form.modelName} />
                 </label>
                 <label className="field-block">
                   <span>Status</span>
