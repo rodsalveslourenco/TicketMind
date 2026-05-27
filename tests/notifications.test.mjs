@@ -7,6 +7,7 @@ import {
   buildPasswordRecoveryForwardMessage,
   buildTicketCreatedForwardMessage,
   resolveNotificationRecipients,
+  resolveTicketCreatedForwardRecipients,
 } from "../server/notifications.js";
 
 test("password recovery always routes to TI and keeps submitted email in body", () => {
@@ -82,7 +83,7 @@ test("ticket created forwarding contains the full operational form for TI", () =
 
   const message = buildTicketCreatedForwardMessage(ticket, { users: [] }, "https://ticketmind.example", ["gestor@empresa.com.br"]);
 
-  assert.deepEqual(message.to, ["ti@wegamarine.com.br"]);
+  assert.deepEqual(message.to, ["ti@wegamarine.com.br", "marina@empresa.com.br"]);
   assert.match(message.subject, /\[TicketMind\] Abertura de chamado - INC-2050/);
   assert.match(message.text, /Titulo: Impressora sem comunicacao/);
   assert.match(message.text, /Descricao: Equipamento da recepcao nao imprime etiquetas\./);
@@ -98,6 +99,34 @@ test("ticket created forwarding contains the full operational form for TI", () =
   assert.match(message.text, /Resumo: Solicitante relata falha de comunicacao/);
   assert.match(message.text, /Acoes recomendadas: Validar conectividade; Checar fila de impressao/);
   assert.match(message.text, /Destinatarios originais previstos: gestor@empresa\.com\.br/);
+  assert.match(message.text, /Destinatarios de abertura: ti@wegamarine\.com\.br, marina@empresa\.com\.br/);
+});
+
+test("ticket created forwarding routes Facilities to Facilities and requester", () => {
+  const ticket = {
+    id: "FAC-100",
+    title: "Ar condicionado com falha",
+    requesterEmail: "solicitante@empresa.com.br",
+    department: "Facilities",
+  };
+
+  const message = buildTicketCreatedForwardMessage(ticket, { users: [] }, "https://ticketmind.example");
+
+  assert.deepEqual(message.to, ["facilities@wegamarine.com.br", "solicitante@empresa.com.br"]);
+  assert.doesNotMatch(message.to.join(","), /ti@wegamarine\.com\.br/);
+  assert.match(message.text, /Departamento: Facilities/);
+});
+
+test("ticket created forwarding sends non-routed departments only to requester", () => {
+  const recipients = resolveTicketCreatedForwardRecipients(
+    {
+      requesterEmail: "solicitante@empresa.com.br",
+      department: "Operacoes",
+    },
+    { departments: [] },
+  );
+
+  assert.deepEqual(recipients, ["solicitante@empresa.com.br"]);
 });
 
 test("ticket created rule can include requester email", () => {

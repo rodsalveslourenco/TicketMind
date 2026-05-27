@@ -157,6 +157,7 @@ Variaveis aceitas:
 - `DB_PATH`: caminho completo do arquivo SQLite
 - `DATABASE_URL`: ativa Postgres
 - `OPERATIONS_FORWARD_EMAIL`: caixa operacional usada para recuperacao de senha e copia obrigatoria de abertura de chamado. Padrao `ti@wegamarine.com.br`
+- `FACILITIES_FORWARD_EMAIL`: caixa usada para abertura de chamados destinados a Facilities. Padrao `facilities@wegamarine.com.br`
 - `OPENAI_API_KEY`: ativa analise de IA para chamados recem-abertos
 - `OPENAI_TICKET_MODEL`: modelo usado na analise de chamados. Padrao `gpt-5-mini`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`, `SMTP_SECURE`, `SMTP_REQUIRE_TLS`: configuram o envio SMTP por ambiente quando o SMTP nao estiver salvo no banco da aplicacao
@@ -172,7 +173,9 @@ Alguns fluxos foram fixados para uma caixa operacional unica com o objetivo de p
 - o e-mail digitado pelo usuario no formulario de recuperacao nao e usado como destinatario
 - o e-mail digitado no formulario aparece apenas no corpo da mensagem como dado informado
 - quando existe um usuario ativo correspondente, o link de redefinicao e incluido no corpo do e-mail enviado para a caixa operacional
-- toda abertura de chamado gera uma copia operacional completa para `ti@wegamarine.com.br`
+- toda abertura de chamado gera uma copia operacional completa para o solicitante, quando houver e-mail no chamado
+- aberturas destinadas ao departamento de TI tambem enviam copia para `ti@wegamarine.com.br`
+- aberturas destinadas ao departamento de Facilities tambem enviam copia para `facilities@wegamarine.com.br`
 - essa copia operacional lista os dados relevantes do chamado: id, titulo, descricao, solicitante, email, prioridade, tipo, fila, departamento, categoria, localizacao, SLA, projeto, ativo, anexos, checklist e link
 - quando `OPENAI_API_KEY` estiver configurada, a abertura tambem gera uma analise de IA com resumo, risco operacional, fila/prioridade sugerida, sinais de comportamento e acoes recomendadas
 - a analise de IA e salva no chamado em `aiAnalysis` e fica disponivel nos layouts de e-mail pelos placeholders `{{ia_resumo}}`, `{{ia_risco}}`, `{{ia_prioridade_sugerida}}`, `{{ia_fila_sugerida}}` e `{{ia_acoes}}`

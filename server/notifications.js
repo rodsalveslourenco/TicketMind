@@ -8,6 +8,7 @@ const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
   Number(process.env.APPROVAL_REMINDER_INTERVAL_MS) || 60 * 60 * 1000,
 );
 const OPERATIONS_FORWARD_EMAIL = String(process.env.OPERATIONS_FORWARD_EMAIL || "ti@wegamarine.com.br").trim().toLowerCase();
+const FACILITIES_FORWARD_EMAIL = String(process.env.FACILITIES_FORWARD_EMAIL || "facilities@wegamarine.com.br").trim().toLowerCase();
 const GRAPH_TOKEN_SCOPE = "https://graph.microsoft.com/.default";
 
 function safeDecryptSecret(value) {
@@ -56,6 +57,13 @@ function buildTicketLink(baseUrl, ticketId) {
 }
 
 function resolveDepartmentName(state, ticket) {
+  const directDepartment = String(ticket?.department || "").trim();
+  if (directDepartment) return directDepartment;
+  const departmentId = String(ticket?.departmentId || "").trim();
+  if (departmentId) {
+    const department = (state.departments || []).find((candidate) => String(candidate.id || "") === departmentId);
+    if (department?.name) return department.name;
+  }
   const requester = (state.users || []).find((user) => user.id === ticket.requesterId);
   return requester?.department || "";
 }
@@ -79,10 +87,32 @@ function getOperationsMailboxRecipients() {
   return OPERATIONS_FORWARD_EMAIL ? [OPERATIONS_FORWARD_EMAIL] : [];
 }
 
-function buildForwardingTextNotice(recipients = []) {
+function getTicketCreatedDepartmentRecipients(ticket = {}, state = {}) {
+  const departmentName = normalizeText(resolveDepartmentName(state, ticket));
+  if (departmentName === "ti" || departmentName === "tecnologia da informacao" || departmentName === "tecnologia") {
+    return OPERATIONS_FORWARD_EMAIL ? [OPERATIONS_FORWARD_EMAIL] : [];
+  }
+  if (departmentName === "facilities" || departmentName === "facility") {
+    return FACILITIES_FORWARD_EMAIL ? [FACILITIES_FORWARD_EMAIL] : [];
+  }
+  return [];
+}
+
+function getTicketRequesterRecipients(ticket = {}) {
+  return parseEmails(ticket.requesterEmail);
+}
+
+export function resolveTicketCreatedForwardRecipients(ticket = {}, state = {}) {
+  return Array.from(new Set([...getTicketCreatedDepartmentRecipients(ticket, state), ...getTicketRequesterRecipients(ticket)]));
+}
+
+function buildForwardingTextNotice(recipients = [], forwardingRecipients = []) {
   const originalRecipients = parseEmails(recipients);
-  if (!originalRecipients.length) return "";
-  return `\n\nDestinatarios originais previstos: ${originalRecipients.join(", ")}\nEncaminhamento operacional: ${OPERATIONS_FORWARD_EMAIL}`;
+  const operationalRecipients = parseEmails(forwardingRecipients);
+  const lines = [];
+  if (originalRecipients.length) lines.push(`Destinatarios originais previstos: ${originalRecipients.join(", ")}`);
+  if (operationalRecipients.length) lines.push(`Destinatarios de abertura: ${operationalRecipients.join(", ")}`);
+  return lines.length ? `\n\n${lines.join("\n")}` : "";
 }
 
 function buildPreformattedHtml(text, extraHtml = "") {
@@ -166,7 +196,7 @@ export function buildPasswordRecoveryForwardMessage({
 }
 
 export function buildTicketCreatedForwardMessage(ticket = {}, state = {}, baseUrl = "", intendedRecipients = []) {
-  const forwardingRecipients = getOperationsMailboxRecipients();
+  const forwardingRecipients = resolveTicketCreatedForwardRecipients(ticket, state);
   const watchers = Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((watcher) => watcher.email || watcher.name || "").filter(Boolean) : [];
   const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
   const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
@@ -207,7 +237,7 @@ export function buildTicketCreatedForwardMessage(ticket = {}, state = {}, baseUr
   const aiAnalysisText = formatAiAnalysisText(ticket.aiAnalysis);
   if (aiAnalysisText) lines.push(aiAnalysisText);
 
-  const forwardingNotice = buildForwardingTextNotice(intendedRecipients);
+  const forwardingNotice = buildForwardingTextNotice(intendedRecipients, forwardingRecipients);
   const text = `${lines.join("\n")}${forwardingNotice}`;
   return {
     to: forwardingRecipients,
@@ -726,8 +756,8 @@ export async function sendPasswordRecoveryEmail(
 
 export async function processTicketNotifications({ previousState, nextState, persistState, baseUrl }) {
   const rules = Array.isArray(nextState.notificationRules) ? nextState.notificationRules.filter((rule) => rule.active) : [];
-  const shouldForwardCreatedTickets = Boolean(getOperationsMailboxRecipients().length);
-  if (!rules.length && !shouldForwardCreatedTickets) return;
+  const hasTicketCreatedForwarding = Boolean(OPERATIONS_FORWARD_EMAIL || FACILITIES_FORWARD_EMAIL);
+  if (!rules.length && !hasTicketCreatedForwarding) return;
 
   const eventsMap = new Map((nextState.notificationEvents || []).map((event) => [event.key, event]));
   const layoutsMap = new Map((nextState.emailLayouts || []).map((layout) => [layout.id, layout]));
@@ -759,6 +789,7 @@ export async function processTicketNotifications({ previousState, nextState, per
     const failedCreatedDelivery = nextLogs.some(
       (log) => log.dedupeKey === createdDeliveryKey && normalizeText(log.status) === "falha",
     );
+    const createdForwardRecipients = resolveTicketCreatedForwardRecipients(nextTicket, nextState);
 
     if (!previousTicket && !nextTicket.aiAnalysis) {
       try {
@@ -772,14 +803,14 @@ export async function processTicketNotifications({ previousState, nextState, per
       }
     }
 
-    if (((!previousTicket && !successfulLogKeys.has(createdDeliveryKey)) || failedCreatedDelivery) && shouldForwardCreatedTickets) {
+    if (((!previousTicket && !successfulLogKeys.has(createdDeliveryKey)) || failedCreatedDelivery) && createdForwardRecipients.length) {
       try {
         const method = await deliverEmail(nextState, buildTicketCreatedForwardMessage(nextTicket, nextState, baseUrl));
         nextLogs.unshift(
           buildNotificationLogEntry({
             eventKey: "ticket_created",
             ticketId: nextTicket.id,
-            recipients: getOperationsMailboxRecipients(),
+            recipients: createdForwardRecipients,
             status: "Enviado",
             dedupeKey: createdDeliveryKey,
             subject: `[TicketMind] Abertura de chamado - ${nextTicket.id || ""}`,
@@ -791,7 +822,7 @@ export async function processTicketNotifications({ previousState, nextState, per
           buildNotificationLogEntry({
             eventKey: "ticket_created",
             ticketId: nextTicket.id,
-            recipients: getOperationsMailboxRecipients(),
+            recipients: createdForwardRecipients,
             status: "Falha",
             error: error instanceof Error ? error.message : "Falha ao enviar email operacional de abertura.",
             dedupeKey: createdDeliveryKey,
