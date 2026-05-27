@@ -6,6 +6,7 @@ import {
   buildMicrosoftGraphMailPayload,
   buildPasswordRecoveryForwardMessage,
   buildTicketCreatedForwardMessage,
+  isTicketOpenForApprovalNotification,
   resolveNotificationRecipients,
   resolveTicketCreatedForwardRecipients,
 } from "../server/notifications.js";
@@ -193,4 +194,14 @@ test("Microsoft Graph payload uses HTML body and normalized recipients", () => {
   assert.equal(payload.message.toRecipients[0].emailAddress.address, "ti@wegamarine.com.br");
   assert.equal(payload.message.from, undefined);
   assert.equal(payload.saveToSentItems, true);
+});
+
+test("approval notifications only consider active ticket statuses", () => {
+  assert.equal(isTicketOpenForApprovalNotification("Aberto"), true);
+  assert.equal(isTicketOpenForApprovalNotification("Em andamento"), true);
+  assert.equal(isTicketOpenForApprovalNotification("Aguardando aprovacao"), true);
+  assert.equal(isTicketOpenForApprovalNotification("Resolvido"), false);
+  assert.equal(isTicketOpenForApprovalNotification("Concluido"), false);
+  assert.equal(isTicketOpenForApprovalNotification("Cancelado"), false);
+  assert.equal(isTicketOpenForApprovalNotification("Fechado"), false);
 });

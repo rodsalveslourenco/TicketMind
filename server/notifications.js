@@ -40,6 +40,11 @@ function normalizeTicketStatusForMerge(status) {
   return "Aberto";
 }
 
+export function isTicketOpenForApprovalNotification(status) {
+  const normalized = normalizeText(status);
+  return Boolean(normalized && !["resolvido", "concluido", "concluida", "cancelado", "cancelada", "fechado", "fechada"].includes(normalized));
+}
+
 function parseEmails(value) {
   if (Array.isArray(value)) {
     return value.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean);
@@ -545,6 +550,7 @@ function getApprovalReminderRecipients(ticket, rule, state) {
 }
 
 function buildApprovalReminderChange(ticket, existingLogKeys, now = new Date()) {
+  if (!isTicketOpenForApprovalNotification(ticket?.status)) return null;
   if (normalizeText(ticket?.approval?.status) !== "pending") return null;
   const requestedAt = new Date(ticket?.approval?.requestedAt || ticket?.updatedAtIso || ticket?.updatedAt || ticket?.openedAt || now.toISOString());
   if (Number.isNaN(requestedAt.getTime())) return null;
@@ -591,13 +597,14 @@ function resolveEventChanges(previousTicket, nextTicket) {
   if (!previousTicket.slaBreachedAt && nextTicket.slaBreachedAt) {
     changes.push({ key: "ticket_sla_breached", signature: nextTicket.slaBreachedAt });
   }
-  if (normalizeText(previousTicket.approval?.status) !== "pending" && normalizeText(nextTicket.approval?.status) === "pending") {
+  const nextTicketAcceptsApprovalNotifications = isTicketOpenForApprovalNotification(nextTicket.status);
+  if (nextTicketAcceptsApprovalNotifications && normalizeText(previousTicket.approval?.status) !== "pending" && normalizeText(nextTicket.approval?.status) === "pending") {
     changes.push({ key: "ticket_approval_pending", signature: `${nextTicket.id}:${nextTicket.approval?.requestedAt || nextTicket.updatedAtIso}` });
   }
-  if (normalizeText(previousTicket.approval?.currentApproverId) !== normalizeText(nextTicket.approval?.currentApproverId) && normalizeText(nextTicket.approval?.status) === "pending") {
+  if (nextTicketAcceptsApprovalNotifications && normalizeText(previousTicket.approval?.currentApproverId) !== normalizeText(nextTicket.approval?.currentApproverId) && normalizeText(nextTicket.approval?.status) === "pending") {
     changes.push({ key: "ticket_approval_pending", signature: `${nextTicket.id}:${nextTicket.approval?.currentApproverId}:${nextTicket.approval?.dueAt || nextTicket.updatedAtIso}` });
   }
-  if (!previousTicket.approvalOverdueAt && nextTicket.approvalOverdueAt) {
+  if (nextTicketAcceptsApprovalNotifications && !previousTicket.approvalOverdueAt && nextTicket.approvalOverdueAt) {
     changes.push({ key: "ticket_approval_overdue", signature: `${nextTicket.id}:${nextTicket.approvalOverdueAt}` });
   }
 

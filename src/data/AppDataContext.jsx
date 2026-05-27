@@ -1124,7 +1124,7 @@ function buildApprovalReport(tickets = []) {
   const approvalTickets = tickets.filter((ticket) => ticket.approval?.required);
   return {
     summary: {
-      pending: approvalTickets.filter((ticket) => normalizeText(ticket.approval?.status) === "pending").length,
+      pending: approvalTickets.filter((ticket) => isOpenTicketStatus(ticket.status) && normalizeText(ticket.approval?.status) === "pending").length,
       approved: approvalTickets.filter((ticket) => normalizeText(ticket.approval?.status) === "approved").length,
       rejected: approvalTickets.filter((ticket) => normalizeText(ticket.approval?.status) === "rejected").length,
     },
