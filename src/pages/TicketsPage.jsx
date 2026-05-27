@@ -2131,11 +2131,11 @@ function TicketsPage() {
       </section>
 
       {progressNoteRequest ? (
-        <div className="ticket-modal-backdrop" onClick={() => setProgressNoteRequest(null)} role="presentation">
+        <div className="ticket-modal-backdrop ticket-progress-note-backdrop" onClick={() => setProgressNoteRequest(null)} role="presentation">
           <div className="ticket-modal board-card compact-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <div className="ticket-modal-header">
               <div>
-                <h2>Observacao de andamento</h2>
+                <h2>Observação de andamento</h2>
                 <span className="modal-subtitle">Registre o contexto antes de mover o chamado para Em andamento.</span>
               </div>
               <button className="ghost-button interactive-button" onClick={() => setProgressNoteRequest(null)} type="button">
@@ -2143,7 +2143,7 @@ function TicketsPage() {
               </button>
             </div>
             <label className="field-block field-full">
-              <span>Observacao</span>
+              <span>Observação</span>
               <textarea
                 autoFocus
                 onChange={(event) => setProgressNoteText(event.target.value)}

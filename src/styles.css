@@ -753,6 +753,10 @@ textarea:focus {
   backdrop-filter: blur(6px);
 }
 
+.ticket-progress-note-backdrop {
+  z-index: 120;
+}
+
 .ticket-modal {
   width: min(880px, 100%);
   max-height: calc(100vh - 2.4rem);
