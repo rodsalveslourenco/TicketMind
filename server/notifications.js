@@ -219,6 +219,10 @@ function createMailTransport(smtpSettings) {
     port: Number(smtpSettings?.port) || 587,
     secure: Boolean(smtpSettings?.secure),
     requireTLS: smtpSettings?.requireTls !== false,
+    family: Number(smtpSettings?.family) || 4,
+    connectionTimeout: Number(smtpSettings?.connectionTimeoutMs) || 45000,
+    greetingTimeout: Number(smtpSettings?.greetingTimeoutMs) || 30000,
+    socketTimeout: Number(smtpSettings?.socketTimeoutMs) || 60000,
     auth:
       smtpSettings?.username || password
         ? {
@@ -241,6 +245,10 @@ function getEnvSmtpSettings() {
     port: Number(process.env.SMTP_PORT) || 587,
     secure: String(process.env.SMTP_SECURE || "").trim().toLowerCase() === "true",
     requireTls: String(process.env.SMTP_REQUIRE_TLS || "true").trim().toLowerCase() !== "false",
+    family: Number(process.env.SMTP_FAMILY) || 4,
+    connectionTimeoutMs: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS) || 45000,
+    greetingTimeoutMs: Number(process.env.SMTP_GREETING_TIMEOUT_MS) || 30000,
+    socketTimeoutMs: Number(process.env.SMTP_SOCKET_TIMEOUT_MS) || 60000,
     username,
     password,
     fromEmail,
@@ -259,6 +267,10 @@ function resolveSmtpConfig(stateOrPayload = {}) {
     port: Number(settings.port || envSettings.port) || 587,
     secure: settings.secure !== undefined ? Boolean(settings.secure) : Boolean(envSettings.secure),
     requireTls: settings.requireTls !== undefined ? settings.requireTls !== false : envSettings.requireTls !== false,
+    family: Number(settings.family || envSettings.family) || 4,
+    connectionTimeoutMs: Number(settings.connectionTimeoutMs || envSettings.connectionTimeoutMs) || 45000,
+    greetingTimeoutMs: Number(settings.greetingTimeoutMs || envSettings.greetingTimeoutMs) || 30000,
+    socketTimeoutMs: Number(settings.socketTimeoutMs || envSettings.socketTimeoutMs) || 60000,
     username: String(settings.username || envSettings.username || "").trim(),
     password: safeDecryptSecret(settings.password || "") || envSettings.password || "",
     fromEmail: String(settings.fromEmail || envSettings.fromEmail || "").trim(),
@@ -571,7 +583,12 @@ export async function processTicketNotifications({ previousState, nextState, per
   const layoutsMap = new Map((nextState.emailLayouts || []).map((layout) => [layout.id, layout]));
   const previousTickets = new Map((previousState?.tickets || []).map((ticket) => [ticket.id, ticket]));
   const nextTickets = new Map((nextState?.tickets || []).map((ticket) => [ticket.id, ticket]));
-  const existingLogKeys = new Set((nextState.notificationLogs || []).map((log) => log.dedupeKey).filter(Boolean));
+  const successfulLogKeys = new Set(
+    (nextState.notificationLogs || [])
+      .filter((log) => normalizeText(log.status) === "enviado")
+      .map((log) => log.dedupeKey)
+      .filter(Boolean),
+  );
   const nextLogs = [...(nextState.notificationLogs || [])];
   const nextTicketsList = Array.isArray(nextState.tickets) ? [...nextState.tickets] : [];
   let ticketsChanged = false;
@@ -589,6 +606,9 @@ export async function processTicketNotifications({ previousState, nextState, per
     const previousTicket = previousTickets.get(nextTicket.id) || null;
     const changes = resolveEventChanges(previousTicket, nextTicket);
     const createdDeliveryKey = `ticket_created_operational:${nextTicket.id}:${nextTicket.openedAt || nextTicket.updatedAtIso || nextTicket.id}`;
+    const failedCreatedDelivery = nextLogs.some(
+      (log) => log.dedupeKey === createdDeliveryKey && normalizeText(log.status) === "falha",
+    );
 
     if (!previousTicket && !nextTicket.aiAnalysis) {
       try {
@@ -602,7 +622,7 @@ export async function processTicketNotifications({ previousState, nextState, per
       }
     }
 
-    if (!previousTicket && !existingLogKeys.has(createdDeliveryKey) && shouldForwardCreatedTickets) {
+    if (((!previousTicket && !successfulLogKeys.has(createdDeliveryKey)) || failedCreatedDelivery) && shouldForwardCreatedTickets) {
       try {
         const method = await deliverEmail(nextState, buildTicketCreatedForwardMessage(nextTicket, nextState, baseUrl));
         nextLogs.unshift(
@@ -630,7 +650,7 @@ export async function processTicketNotifications({ previousState, nextState, per
           }),
         );
       }
-      existingLogKeys.add(createdDeliveryKey);
+      successfulLogKeys.add(createdDeliveryKey);
     }
 
     for (const change of changes) {
@@ -654,7 +674,7 @@ export async function processTicketNotifications({ previousState, nextState, per
         placeholders,
       );
       const dedupeKey = `${change.key}:${nextTicket.id}:${change.signature}`;
-      if (existingLogKeys.has(dedupeKey)) continue;
+      if (successfulLogKeys.has(dedupeKey)) continue;
 
       try {
         const method = await deliverEmail(nextState, {
@@ -689,7 +709,7 @@ export async function processTicketNotifications({ previousState, nextState, per
         );
       }
 
-      existingLogKeys.add(dedupeKey);
+      successfulLogKeys.add(dedupeKey);
     }
   }
 
