@@ -542,9 +542,12 @@ export const defaultEmailServiceSettings = {
   provider: "",
   apiKey: "",
   hasApiKey: false,
+  tenantId: "",
+  clientId: "",
   fromEmail: "",
   fromName: "",
   deliveryMode: "smtp",
+  saveToSentItems: true,
 };
 
 export const defaultServiceCenterSettings = {

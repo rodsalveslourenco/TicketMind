@@ -160,6 +160,9 @@ Variaveis aceitas:
 - `OPENAI_API_KEY`: ativa analise de IA para chamados recem-abertos
 - `OPENAI_TICKET_MODEL`: modelo usado na analise de chamados. Padrao `gpt-5-mini`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`, `SMTP_SECURE`, `SMTP_REQUIRE_TLS`: configuram o envio SMTP por ambiente quando o SMTP nao estiver salvo no banco da aplicacao
+- `EMAIL_DELIVERY_PROVIDER=graph`: prioriza envio por Microsoft Graph antes do SMTP
+- `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_FROM_EMAIL`: configuram envio Microsoft Graph por HTTPS
+- `GRAPH_FROM_NAME`, `GRAPH_SAVE_TO_SENT_ITEMS`, `GRAPH_TIMEOUT_MS`: ajustes opcionais do envio Microsoft Graph
 
 ## Comportamento de notificacoes operacionais
 
@@ -174,6 +177,8 @@ Alguns fluxos foram fixados para uma caixa operacional unica com o objetivo de p
 - quando `OPENAI_API_KEY` estiver configurada, a abertura tambem gera uma analise de IA com resumo, risco operacional, fila/prioridade sugerida, sinais de comportamento e acoes recomendadas
 - a analise de IA e salva no chamado em `aiAnalysis` e fica disponivel nos layouts de e-mail pelos placeholders `{{ia_resumo}}`, `{{ia_risco}}`, `{{ia_prioridade_sugerida}}`, `{{ia_fila_sugerida}}` e `{{ia_acoes}}`
 - as regras normais de notificacao do sistema continuam existindo; a copia operacional de abertura de chamado e adicional e nao substitui os demais destinatarios configurados
+- quando `EMAIL_DELIVERY_PROVIDER=graph` estiver ativo, os envios usam `POST /users/{remetente}/sendMail` do Microsoft Graph; o app do Entra ID precisa ter permissao de aplicacao `Mail.Send` com consentimento de administrador para a caixa remetente
+- se o Microsoft Graph nao estiver configurado, o sistema continua tentando SMTP como fallback de compatibilidade local
 
 ### Modo Render / Postgres
 

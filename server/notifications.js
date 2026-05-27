@@ -8,6 +8,7 @@ const APPROVAL_REMINDER_INTERVAL_MS = Math.max(
   Number(process.env.APPROVAL_REMINDER_INTERVAL_MS) || 60 * 60 * 1000,
 );
 const OPERATIONS_FORWARD_EMAIL = String(process.env.OPERATIONS_FORWARD_EMAIL || "ti@wegamarine.com.br").trim().toLowerCase();
+const GRAPH_TOKEN_SCOPE = "https://graph.microsoft.com/.default";
 
 function safeDecryptSecret(value) {
   try {
@@ -86,6 +87,10 @@ function buildForwardingTextNotice(recipients = []) {
 
 function buildPreformattedHtml(text, extraHtml = "") {
   return `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${String(text || "")}</pre>${extraHtml}`;
+}
+
+function escapeGraphUserId(value) {
+  return encodeURIComponent(String(value || "").trim());
 }
 
 function formatAiAnalysisText(aiAnalysis = null) {
@@ -282,7 +287,146 @@ function isSmtpConfigured(smtpSettings = {}) {
   return Boolean(String(smtpSettings.host || "").trim() && String(smtpSettings.fromEmail || "").trim() && String(smtpSettings.password || "").trim());
 }
 
+function getEnvGraphSettings() {
+  const tenantId = String(process.env.GRAPH_TENANT_ID || process.env.MICROSOFT_GRAPH_TENANT_ID || "").trim();
+  const clientId = String(process.env.GRAPH_CLIENT_ID || process.env.MICROSOFT_GRAPH_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.GRAPH_CLIENT_SECRET || process.env.MICROSOFT_GRAPH_CLIENT_SECRET || "").trim();
+  const graphFromEmail = String(process.env.GRAPH_FROM_EMAIL || "").trim();
+  const fromEmail = String(graphFromEmail || process.env.SMTP_FROM_EMAIL || "").trim();
+  const fromName = String(process.env.GRAPH_FROM_NAME || process.env.SMTP_FROM_NAME || "").trim();
+  const provider = String(process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
+  if (!tenantId && !clientId && !clientSecret && !graphFromEmail && provider !== "graph" && provider !== "microsoft_graph") return {};
+  return {
+    provider: provider || "graph",
+    tenantId,
+    clientId,
+    clientSecret,
+    fromEmail,
+    fromName,
+    saveToSentItems: String(process.env.GRAPH_SAVE_TO_SENT_ITEMS || "true").trim().toLowerCase() !== "false",
+    timeoutMs: Number(process.env.GRAPH_TIMEOUT_MS) || 30000,
+  };
+}
+
+function resolveGraphConfig(stateOrPayload = {}) {
+  const envSettings = getEnvGraphSettings();
+  const settings = stateOrPayload?.emailServiceSettings || {};
+  const provider = String(settings.provider || envSettings.provider || process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
+  const fromEmail = String(settings.fromEmail || envSettings.fromEmail || "").trim();
+  const clientSecret = safeDecryptSecret(settings.apiKey || "") || envSettings.clientSecret || "";
+  return {
+    provider,
+    tenantId: String(settings.tenantId || envSettings.tenantId || "").trim(),
+    clientId: String(settings.clientId || envSettings.clientId || "").trim(),
+    clientSecret,
+    fromEmail,
+    fromName: String(settings.fromName || envSettings.fromName || "").trim(),
+    saveToSentItems: settings.saveToSentItems !== undefined ? settings.saveToSentItems !== false : envSettings.saveToSentItems !== false,
+    timeoutMs: Number(settings.timeoutMs || envSettings.timeoutMs) || 30000,
+  };
+}
+
+function isGraphRequested(graphSettings = {}) {
+  return ["graph", "microsoft_graph", "msgraph"].includes(String(graphSettings.provider || "").trim().toLowerCase());
+}
+
+function isGraphConfigured(graphSettings = {}) {
+  return Boolean(
+    String(graphSettings.tenantId || "").trim() &&
+      String(graphSettings.clientId || "").trim() &&
+      String(graphSettings.clientSecret || "").trim() &&
+      String(graphSettings.fromEmail || "").trim(),
+  );
+}
+
+export function buildMicrosoftGraphMailPayload(message = {}, graphSettings = {}) {
+  const recipients = parseEmails(message.to).map((address) => ({
+    emailAddress: { address },
+  }));
+  const content = String(message.html || message.text || "");
+  return {
+    message: {
+      subject: String(message.subject || ""),
+      body: {
+        contentType: message.html ? "HTML" : "Text",
+        content,
+      },
+      toRecipients: recipients,
+    },
+    saveToSentItems: graphSettings.saveToSentItems !== false,
+  };
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getMicrosoftGraphAccessToken(graphSettings) {
+  const params = new URLSearchParams({
+    client_id: graphSettings.clientId,
+    client_secret: graphSettings.clientSecret,
+    scope: GRAPH_TOKEN_SCOPE,
+    grant_type: "client_credentials",
+  });
+  const response = await fetchWithTimeout(
+    `https://login.microsoftonline.com/${encodeURIComponent(graphSettings.tenantId)}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    },
+    graphSettings.timeoutMs,
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.access_token) {
+    const detail = body.error_description || body.error?.message || body.error || response.statusText || "falha desconhecida";
+    throw new Error(`Falha ao autenticar no Microsoft Graph: ${detail}`);
+  }
+  return body.access_token;
+}
+
+async function sendWithMicrosoftGraph(graphSettings, message) {
+  const recipients = parseEmails(message.to);
+  if (!recipients.length) throw new Error("Nenhum destinatario informado para envio pelo Microsoft Graph.");
+  const accessToken = await getMicrosoftGraphAccessToken(graphSettings);
+  const response = await fetchWithTimeout(
+    `https://graph.microsoft.com/v1.0/users/${escapeGraphUserId(graphSettings.fromEmail)}/sendMail`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildMicrosoftGraphMailPayload({ ...message, to: recipients }, graphSettings)),
+    },
+    graphSettings.timeoutMs,
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const detail = body.error?.message || response.statusText || "falha desconhecida";
+    throw new Error(`Falha ao enviar e-mail pelo Microsoft Graph: ${detail}`);
+  }
+}
+
 async function deliverEmail(stateOrPayload, message) {
+  const graphSettings = resolveGraphConfig(stateOrPayload);
+  if (isGraphConfigured(graphSettings)) {
+    await sendWithMicrosoftGraph(graphSettings, message);
+    return "Microsoft Graph";
+  }
+  if (isGraphRequested(graphSettings)) {
+    throw new Error("Microsoft Graph incompleto. Defina GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET e GRAPH_FROM_EMAIL.");
+  }
+
   const smtpSettings = resolveSmtpConfig(stateOrPayload);
   if (isSmtpConfigured(smtpSettings)) {
     const transport = createMailTransport(smtpSettings);
@@ -297,7 +441,7 @@ async function deliverEmail(stateOrPayload, message) {
     return "SMTP";
   }
 
-  throw new Error("Nenhum SMTP configurado. Defina host, remetente e credenciais de envio.");
+  throw new Error("Nenhum canal de e-mail configurado. Defina Microsoft Graph ou SMTP.");
 }
 
 function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
@@ -450,6 +594,7 @@ export function prepareStateForClient(state, requestUser = null) {
   const smtpSettings = state?.smtpSettings || {};
   const envSmtpSettings = getEnvSmtpSettings();
   const emailServiceSettings = state?.emailServiceSettings || {};
+  const envGraphSettings = getEnvGraphSettings();
   const exposePasswordReveal = canExposePasswordReveal(requestUser);
   const users = Array.isArray(state?.users)
     ? state.users.map((user) => ({
@@ -476,9 +621,11 @@ export function prepareStateForClient(state, requestUser = null) {
       hasPassword: Boolean(String(smtpSettings.password || envSmtpSettings.password || "").trim()),
     },
     emailServiceSettings: {
+      ...envGraphSettings,
       ...emailServiceSettings,
       apiKey: "",
-      hasApiKey: Boolean(String(emailServiceSettings.apiKey || "").trim()),
+      clientSecret: "",
+      hasApiKey: Boolean(String(emailServiceSettings.apiKey || envGraphSettings.clientSecret || "").trim()),
     },
   };
 }

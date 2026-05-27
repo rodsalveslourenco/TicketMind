@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { analyzeTicketWithAI } from "../server/aiTicketInsights.js";
 import {
+  buildMicrosoftGraphMailPayload,
   buildPasswordRecoveryForwardMessage,
   buildTicketCreatedForwardMessage,
   resolveNotificationRecipients,
@@ -140,4 +141,27 @@ test("AI ticket analysis is skipped without OpenAI key", async () => {
   } finally {
     if (previousKey) process.env.OPENAI_API_KEY = previousKey;
   }
+});
+
+test("Microsoft Graph payload uses HTML body and normalized recipients", () => {
+  const payload = buildMicrosoftGraphMailPayload(
+    {
+      to: ["TI@WEGAMARINE.COM.BR", "gestor@wegamarine.com.br"],
+      subject: "Abertura INC-2080",
+      text: "Texto simples",
+      html: "<strong>Chamado aberto</strong>",
+    },
+    {
+      fromEmail: "centraldeservicos@wegamarine.com.br",
+      fromName: "TicketMind",
+      saveToSentItems: true,
+    },
+  );
+
+  assert.equal(payload.message.subject, "Abertura INC-2080");
+  assert.equal(payload.message.body.contentType, "HTML");
+  assert.equal(payload.message.toRecipients.length, 2);
+  assert.equal(payload.message.toRecipients[0].emailAddress.address, "ti@wegamarine.com.br");
+  assert.equal(payload.message.from, undefined);
+  assert.equal(payload.saveToSentItems, true);
 });

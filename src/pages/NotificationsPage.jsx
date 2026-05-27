@@ -37,10 +37,23 @@ function resolveSmtpHealth(settings) {
   return { label: "Configurado", tone: "success", detail: `${settings.host}:${settings.port || 587}` };
 }
 
+function resolveGraphHealth(settings = {}) {
+  const provider = String(settings.provider || "").toLowerCase();
+  const requested = ["graph", "microsoft_graph", "msgraph"].includes(provider);
+  if (!requested) return { label: "Inativo", tone: "neutral", detail: "Microsoft Graph nao selecionado." };
+  const hasCoreFields = Boolean(String(settings.tenantId || "").trim() && String(settings.clientId || "").trim() && String(settings.fromEmail || "").trim());
+  if (!hasCoreFields) return { label: "Incompleto", tone: "warning", detail: "Faltam tenant, cliente ou remetente." };
+  if (!settings.hasApiKey && !String(settings.apiKey || "").trim()) {
+    return { label: "Credencial pendente", tone: "warning", detail: "Defina o segredo do app no servidor." };
+  }
+  return { label: "Configurado", tone: "success", detail: `Graph: ${settings.fromEmail}` };
+}
+
 function NotificationsPage() {
   const { user } = useAuth();
   const {
     emailLayouts,
+    emailServiceSettings,
     notificationEvents,
     notificationLogs,
     notificationRules,
@@ -113,6 +126,8 @@ function NotificationsPage() {
   );
 
   const smtpHealth = useMemo(() => resolveSmtpHealth(smtpDraft), [smtpDraft]);
+  const graphHealth = useMemo(() => resolveGraphHealth(emailServiceSettings), [emailServiceSettings]);
+  const activeDelivery = graphHealth.label === "Configurado" ? "Microsoft Graph" : "SMTP";
   const failedLogs = useMemo(
     () => notificationLogs.filter((log) => log.status === "Falha"),
     [notificationLogs],
@@ -228,7 +243,7 @@ function NotificationsPage() {
             <span>regras prontas</span>
           </div>
           <div className="insight-chip">
-            <strong>{smtpHealth.label === "Configurado" ? "OK" : "Pendente"}</strong>
+            <strong>{graphHealth.label === "Configurado" || smtpHealth.label === "Configurado" ? "OK" : "Pendente"}</strong>
             <span>canal de envio</span>
           </div>
           <div className="insight-chip">
@@ -269,14 +284,19 @@ function NotificationsPage() {
                 <small>{smtpHealth.detail}</small>
               </div>
               <div className="dashboard-kpi-card">
+                <span>Microsoft Graph</span>
+                <strong>{graphHealth.label}</strong>
+                <small>{graphHealth.detail}</small>
+              </div>
+              <div className="dashboard-kpi-card">
                 <span>Recuperacao de senha</span>
-                <strong>{smtpHealth.label === "Configurado" ? "Disponivel" : "Bloqueada"}</strong>
-                <small>Depende do SMTP configurado.</small>
+                <strong>{graphHealth.label === "Configurado" || smtpHealth.label === "Configurado" ? "Disponivel" : "Bloqueada"}</strong>
+                <small>Depende de Graph ou SMTP configurado.</small>
               </div>
               <div className="dashboard-kpi-card">
                 <span>Canal ativo</span>
-                <strong>SMTP</strong>
-                <small>O sistema envia somente por SMTP.</small>
+                <strong>{activeDelivery}</strong>
+                <small>{activeDelivery === "Microsoft Graph" ? "Envio por HTTPS, adequado ao Render." : "Fallback de compatibilidade local."}</small>
               </div>
             </div>
           </section>
@@ -416,7 +436,15 @@ function NotificationsPage() {
             <div className="glpi-toolbar">
               <div>
                 <h2>Entrega de e-mail</h2>
-                <span>O sistema usa apenas SMTP para notificacoes e recuperacao de senha.</span>
+                <span>O sistema prioriza Microsoft Graph quando configurado e usa SMTP como fallback.</span>
+              </div>
+            </div>
+
+            <div className="dashboard-kpi-strip compact-kpi-strip">
+              <div className="dashboard-kpi-card">
+                <span>Canal preferencial</span>
+                <strong>{activeDelivery}</strong>
+                <small>{graphHealth.detail}</small>
               </div>
             </div>
 

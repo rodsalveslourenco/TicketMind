@@ -797,6 +797,7 @@ function hydrateNotificationLogs(storedLogs) {
       dedupeKey: String(log.dedupeKey || "").trim(),
       sentAt: String(log.sentAt || "").trim(),
       subject: String(log.subject || "").trim(),
+      method: String(log.method || "").trim(),
     }))
     .filter((log) => log.id);
 }
@@ -816,7 +817,7 @@ function hydrateEmailServiceSettings(storedSettings) {
     ...(storedSettings && typeof storedSettings === "object" ? storedSettings : {}),
     hasApiKey: Boolean(storedSettings?.hasApiKey),
     apiKey: "",
-    deliveryMode: "smtp",
+    deliveryMode: storedSettings?.deliveryMode || (storedSettings?.provider ? "service" : "smtp"),
   };
 }
 
