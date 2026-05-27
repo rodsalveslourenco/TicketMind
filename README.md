@@ -159,6 +159,7 @@ Variaveis aceitas:
 - `OPERATIONS_FORWARD_EMAIL`: caixa operacional usada para recuperacao de senha e copia obrigatoria de abertura de chamado. Padrao `ti@wegamarine.com.br`
 - `OPENAI_API_KEY`: ativa analise de IA para chamados recem-abertos
 - `OPENAI_TICKET_MODEL`: modelo usado na analise de chamados. Padrao `gpt-5-mini`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`, `SMTP_SECURE`, `SMTP_REQUIRE_TLS`: configuram o envio SMTP por ambiente quando o SMTP nao estiver salvo no banco da aplicacao
 
 ## Comportamento de notificacoes operacionais
 

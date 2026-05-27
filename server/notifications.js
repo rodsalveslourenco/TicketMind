@@ -229,11 +229,40 @@ function createMailTransport(smtpSettings) {
   });
 }
 
+function getEnvSmtpSettings() {
+  const host = String(process.env.SMTP_HOST || "").trim();
+  const fromEmail = String(process.env.SMTP_FROM_EMAIL || "").trim();
+  const username = String(process.env.SMTP_USERNAME || "").trim();
+  const password = String(process.env.SMTP_PASSWORD || "").trim();
+  if (!host && !fromEmail && !username && !password) return {};
+  return {
+    deliveryMode: "smtp",
+    host,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: String(process.env.SMTP_SECURE || "").trim().toLowerCase() === "true",
+    requireTls: String(process.env.SMTP_REQUIRE_TLS || "true").trim().toLowerCase() !== "false",
+    username,
+    password,
+    fromEmail,
+    fromName: String(process.env.SMTP_FROM_NAME || "").trim(),
+    hasPassword: Boolean(password),
+  };
+}
+
 function resolveSmtpConfig(stateOrPayload = {}) {
   const settings = stateOrPayload?.smtpSettings || {};
+  const envSettings = getEnvSmtpSettings();
   return {
+    ...envSettings,
     ...settings,
-    password: safeDecryptSecret(settings.password || ""),
+    host: String(settings.host || envSettings.host || "").trim(),
+    port: Number(settings.port || envSettings.port) || 587,
+    secure: settings.secure !== undefined ? Boolean(settings.secure) : Boolean(envSettings.secure),
+    requireTls: settings.requireTls !== undefined ? settings.requireTls !== false : envSettings.requireTls !== false,
+    username: String(settings.username || envSettings.username || "").trim(),
+    password: safeDecryptSecret(settings.password || "") || envSettings.password || "",
+    fromEmail: String(settings.fromEmail || envSettings.fromEmail || "").trim(),
+    fromName: String(settings.fromName || envSettings.fromName || "").trim(),
   };
 }
 
@@ -407,6 +436,7 @@ function canExposePasswordReveal(requestUser) {
 
 export function prepareStateForClient(state, requestUser = null) {
   const smtpSettings = state?.smtpSettings || {};
+  const envSmtpSettings = getEnvSmtpSettings();
   const emailServiceSettings = state?.emailServiceSettings || {};
   const exposePasswordReveal = canExposePasswordReveal(requestUser);
   const users = Array.isArray(state?.users)
@@ -421,9 +451,17 @@ export function prepareStateForClient(state, requestUser = null) {
     ...state,
     users,
     smtpSettings: {
+      ...envSmtpSettings,
       ...smtpSettings,
+      host: smtpSettings.host || envSmtpSettings.host || "",
+      port: smtpSettings.port || envSmtpSettings.port || 587,
+      secure: smtpSettings.secure !== undefined ? Boolean(smtpSettings.secure) : Boolean(envSmtpSettings.secure),
+      requireTls: smtpSettings.requireTls !== undefined ? smtpSettings.requireTls !== false : envSmtpSettings.requireTls !== false,
+      username: smtpSettings.username || envSmtpSettings.username || "",
+      fromEmail: smtpSettings.fromEmail || envSmtpSettings.fromEmail || "",
+      fromName: smtpSettings.fromName || envSmtpSettings.fromName || "",
       password: "",
-      hasPassword: Boolean(String(smtpSettings.password || "").trim()),
+      hasPassword: Boolean(String(smtpSettings.password || envSmtpSettings.password || "").trim()),
     },
     emailServiceSettings: {
       ...emailServiceSettings,
