@@ -4,7 +4,6 @@ import { useAuth } from "../auth/AuthContext";
 import wegaLogo from "../assets/logo-wega.png";
 import { canAccessModule, hasAnyPermission } from "../data/permissions";
 import { useAppData } from "../data/AppDataContext";
-import { useUiPreferences } from "../ui/UiPreferencesContext";
 
 function getInitials(name) {
   return String(name || "")
@@ -106,7 +105,6 @@ const navigationIcons = {
 function AppLayout() {
   const { user, logout } = useAuth();
   const { dismissToast, notifications, summary, navigationSections, permissionCatalog } = useAppData();
-  const { density, setDensity } = useUiPreferences();
   const location = useLocation();
   const [expandedSections, setExpandedSections] = useState(() => {
     try {
@@ -215,7 +213,8 @@ function AppLayout() {
 
         <div className="sidebar-card">
           <span className="eyebrow">Resumo operacional</span>
-          <strong>{summary.slaCompliance}% no SLA</strong>
+          <strong>{summary.slaCompliance}% {summary.slaTrend || "→"} no SLA</strong>
+          <small>meta: {summary.slaMeta || 85}% | {summary.slaPeriodLabel || "últimos 30 dias"}</small>
           <p>{summary.openTickets} chamados | {summary.activeAssets} ativos | {summary.activeProjects} projetos</p>
         </div>
       </aside>
@@ -236,22 +235,6 @@ function AppLayout() {
             <h1>{currentPage?.label || "Dashboard"}</h1>
           </div>
           <div className="topbar-actions">
-            <div className="toolbar density-toggle" role="group" aria-label="Densidade visual">
-              {[
-                ["compacta", "Compacta"],
-                ["media", "Media"],
-                ["confortavel", "Confortavel"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  className={`filter-pill interactive-button${density === value ? " is-active" : ""}`}
-                  onClick={() => setDensity(value)}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
             <NavLink className="user-badge interactive-button" to="/app/profile">
               <div className="user-avatar">
                 {user?.avatar ? <img alt={user.name} className="user-avatar-image" src={user.avatar} /> : <span>{getInitials(user?.name)}</span>}

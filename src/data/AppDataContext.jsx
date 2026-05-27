@@ -1389,6 +1389,23 @@ export function AppDataProvider({ children }) {
     const slaCompliance = visibleTickets.length
       ? Number((((visibleTickets.length - breachedTickets) / visibleTickets.length) * 100).toFixed(1))
       : 100;
+    const now = new Date();
+    const currentStart = new Date(now.getTime() - 30 * 86400000);
+    const previousStart = new Date(now.getTime() - 60 * 86400000);
+    const previousEnd = new Date(currentStart.getTime() - 1);
+    const ticketsInRange = (start, end) =>
+      visibleTickets.filter((ticket) => {
+        const openedAt = new Date(ticket.openedAt || Date.now());
+        return !Number.isNaN(openedAt.getTime()) && openedAt >= start && openedAt <= end;
+      });
+    const computeSlaRate = (items) => {
+      if (!items.length) return 100;
+      const breached = items.filter((ticket) => ticket.isOverdue || ticket.slaBreachedAt).length;
+      return Number((((items.length - breached) / items.length) * 100).toFixed(1));
+    };
+    const slaCurrentRate = computeSlaRate(ticketsInRange(currentStart, now));
+    const slaPreviousRate = computeSlaRate(ticketsInRange(previousStart, previousEnd));
+    const slaTrend = Math.abs(slaCurrentRate - slaPreviousRate) < 0.1 ? "→" : slaCurrentRate > slaPreviousRate ? "↑" : "↓";
     const firstResponseMinutes = computeAverageResponseMinutes(visibleTickets);
     const averageResolutionMinutes = computeAverageResolutionMinutes(visibleTickets);
 
@@ -1404,6 +1421,9 @@ export function AppDataProvider({ children }) {
       averageResolutionMinutes,
       csat: 4.7,
       slaCompliance,
+      slaMeta: 85,
+      slaTrend,
+      slaPeriodLabel: "últimos 30 dias",
       backlogTrend: openTickets > 12 ? -8 : -3,
     };
   }, [data, visibleTickets]);

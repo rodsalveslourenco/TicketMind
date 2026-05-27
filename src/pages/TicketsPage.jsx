@@ -42,9 +42,9 @@ const defaultCreateForm = {
 };
 
 const priorityLegend = [
-  { label: "Critico", value: "Critica", className: "priority-line-critica" },
+  { label: "Crítico", value: "Critica", className: "priority-line-critica" },
   { label: "Alto", value: "Alta", className: "priority-line-alta" },
-  { label: "Medio", value: "Media", className: "priority-line-media" },
+  { label: "Médio", value: "Media", className: "priority-line-media" },
   { label: "Baixo", value: "Baixa", className: "priority-line-baixa" },
 ];
 
@@ -91,20 +91,20 @@ const requestTypeProfiles = {
   incidente: {
     category: "Infraestrutura",
     priority: "Alta",
-    helper: "Use para indisponibilidade, falha operacional ou impacto tecnico imediato.",
-    suggestedFields: ["Localizacao", "Categoria", "Urgencia"],
+    helper: "Use para indisponibilidade, falha operacional ou impacto técnico imediato.",
+    suggestedFields: ["Localização", "Categoria", "Urgência"],
   },
   requisicao: {
     category: "Acesso",
     priority: "Media",
-    helper: "Use para acesso, liberacao, cadastro, compra ou qualquer entrega dependente de aprovacao.",
+    helper: "Use para acesso, liberação, cadastro, compra ou qualquer entrega dependente de aprovação.",
     suggestedFields: ["Aprovador", "Projeto", "Observadores"],
   },
   problema: {
-    category: "Analise de causa",
+    category: "Análise de causa",
     priority: "Alta",
-    helper: "Use para causa raiz, recorrencia e correcoes estruturais.",
-    suggestedFields: ["Projeto", "Ativo", "Descricao tecnica"],
+    helper: "Use para causa raiz, recorrência e correções estruturais.",
+    suggestedFields: ["Projeto", "Ativo", "Descrição técnica"],
   },
 };
 
@@ -135,14 +135,14 @@ const categoryFieldRules = [
 
 const TICKET_GRID_COLUMNS = [
   { key: "requester", label: "Solicitante", defaultVisible: true },
-  { key: "email", label: "Email", defaultVisible: true },
+  { key: "email", label: "E-mail", defaultVisible: false },
   { key: "category", label: "Categoria", defaultVisible: true },
   { key: "department", label: "Departamento", defaultVisible: true },
   { key: "queue", label: "Fila", defaultVisible: true },
-  { key: "urgency", label: "Urgencia", defaultVisible: true },
+  { key: "urgency", label: "Urgência", defaultVisible: true },
   { key: "openedAt", label: "Abertura", defaultVisible: true },
   { key: "source", label: "Origem", defaultVisible: false },
-  { key: "assignee", label: "Tecnico", defaultVisible: false },
+  { key: "assignee", label: "Técnico", defaultVisible: false },
 ];
 
 function readFileAsDataUrl(file) {
@@ -183,6 +183,30 @@ function getPriorityRowClass(priority) {
   return "priority-line-media";
 }
 
+function getOperationalPriorityRowClass(ticket) {
+  if (ticket?.isOverdue || normalizeText(ticket?.priority) === "critica") return "priority-line-critica";
+  return getPriorityRowClass(ticket?.priority);
+}
+
+function getPrioritySortRank(ticket) {
+  if (ticket?.isOverdue) return 0;
+  const normalized = normalizeText(ticket?.priority);
+  if (normalized === "critica") return 1;
+  if (normalized === "alta") return 2;
+  if (normalized === "media") return 3;
+  return 4;
+}
+
+function isTriageTicket(ticket) {
+  const status = normalizeText(ticket?.status);
+  return status === "aberto" || ticket?.unassigned || ticket?.criticalWaitingTechnician;
+}
+
+function isInAttendanceTicket(ticket) {
+  const status = normalizeText(ticket?.status);
+  return ["em andamento", "em atendimento", "aguardando usuario", "aguardando aprovacao", "reaberto"].includes(status);
+}
+
 function getStatusBadgeClass(status) {
   const normalized = normalizeText(status);
   if (normalized === "aberto") return "status-badge-aberto";
@@ -199,6 +223,27 @@ function getSlaTone(ticket) {
   if (ticket.isOverdue || ticket.criticalWaitingTechnician) return "status-badge-reaberto";
   if (ticket.dueSoon || ticket.unassigned) return "status-badge-aguardando";
   return "status-badge-resolvido";
+}
+
+function getOperationalSla(ticket) {
+  const deadlineValue = ticket?.slaDeadlineAt || ticket?.dueDate || "";
+  const deadline = deadlineValue ? new Date(deadlineValue).getTime() : Number.NaN;
+  if (!Number.isFinite(deadline)) {
+    return {
+      label: ticket?.slaLabel ? `SLA: ${ticket.slaLabel}` : "SLA: sem prazo",
+      className: "status-badge-aguardando",
+    };
+  }
+  const diffMs = deadline - Date.now();
+  const absoluteHours = Math.abs(diffMs) / 3600000;
+  const amount = absoluteHours < 24 ? `${Math.max(1, Math.round(absoluteHours))}h` : `${Math.max(1, Math.round(absoluteHours / 24))}d`;
+  if (diffMs < 0) {
+    return { label: `SLA: vencido há ${amount}`, className: "status-badge-reaberto" };
+  }
+  if (diffMs <= 4 * 3600000 || ticket?.dueSoon) {
+    return { label: `SLA: vence em ${amount}`, className: "status-badge-aguardando" };
+  }
+  return { label: `SLA: vence em ${amount}`, className: "status-badge-resolvido" };
 }
 
 function getFreshCreateForm() {
@@ -301,6 +346,7 @@ function TicketsPage() {
   const [savedFilterName, setSavedFilterName] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [showGridConfig, setShowGridConfig] = useState(false);
+  const [activeQueueTab, setActiveQueueTab] = useState("triage");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(getFreshCreateForm);
   const [watcherQuery, setWatcherQuery] = useState("");
@@ -324,6 +370,7 @@ function TicketsPage() {
   const [progressNoteText, setProgressNoteText] = useState("");
   const [completionAttachments, setCompletionAttachments] = useState([]);
   const [activeDetailWorkspace, setActiveDetailWorkspace] = useState("");
+  const [activeDetailTab, setActiveDetailTab] = useState("data");
   const [showTriagePanel, setShowTriagePanel] = useState(() => Boolean(getModulePreference("tickets", "showTriagePanel", true)));
   const [analystPreviewMode, setAnalystPreviewMode] = useState(() => Boolean(getModulePreference("tickets", "analystPreviewMode", true)));
   const [visibleColumns, setVisibleColumns] = useState(
@@ -670,10 +717,10 @@ function TicketsPage() {
     if (slaFilter === "Vencido") {
       currentTickets = currentTickets.filter((ticket) => ticket.isOverdue);
     }
-    if (slaFilter === "Critico sem tecnico") {
+    if (normalizeText(slaFilter) === "critico sem tecnico") {
       currentTickets = currentTickets.filter((ticket) => ticket.criticalWaitingTechnician);
     }
-    if (slaFilter === "Sem tecnico") {
+    if (normalizeText(slaFilter) === "sem tecnico") {
       currentTickets = currentTickets.filter((ticket) => ticket.unassigned);
     }
 
@@ -732,15 +779,24 @@ function TicketsPage() {
       });
     }
 
-    return currentTickets;
+    return currentTickets.slice().sort((left, right) => {
+      const rankDelta = getPrioritySortRank(left) - getPrioritySortRank(right);
+      if (rankDelta !== 0) return rankDelta;
+      const leftOpenedAt = left.openedAt ? new Date(left.openedAt).getTime() : 0;
+      const rightOpenedAt = right.openedAt ? new Date(right.openedAt).getTime() : 0;
+      return rightOpenedAt - leftOpenedAt;
+    });
   }, [advancedFilters, priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
   const triageTickets = useMemo(
-    () =>
-      filteredTickets
-        .filter((ticket) => normalizeText(ticket.status) === "aberto" || ticket.unassigned || ticket.criticalWaitingTechnician)
-        .slice(0, 6),
+    () => filteredTickets.filter(isTriageTicket),
     [filteredTickets],
   );
+  const attendanceTickets = useMemo(() => filteredTickets.filter((ticket) => isInAttendanceTicket(ticket) && !isTriageTicket(ticket)), [filteredTickets]);
+  const displayedTickets = useMemo(() => {
+    if (activeQueueTab === "triage") return triageTickets;
+    if (activeQueueTab === "attendance") return attendanceTickets;
+    return filteredTickets;
+  }, [activeQueueTab, attendanceTickets, filteredTickets, triageTickets]);
 
   const departmentIndicators = useMemo(() => {
     const grouped = filteredTickets.reduce((accumulator, ticket) => {
@@ -902,6 +958,7 @@ function TicketsPage() {
     setSubtaskDraft("");
     setCompletionAttachments([]);
     setActiveDetailWorkspace("");
+    setActiveDetailTab("data");
   }, [detailTicket]);
 
   useEffect(() => {
@@ -967,6 +1024,7 @@ function TicketsPage() {
   const updateDetailField = (field) => (event) => setDetailForm((current) => ({ ...current, [field]: event.target.value }));
   const toggleDetailWorkspace = (workspace) => {
     setActiveDetailWorkspace((current) => (current === workspace ? "" : workspace));
+    setActiveDetailTab("followup");
   };
   const updateDetailDueDateField = (event) => {
     const nextDueDate = event.target.value;
@@ -1396,6 +1454,8 @@ function TicketsPage() {
 
   const handleDeleteTicket = () => {
     if (!detailTicket) return;
+    const confirmed = window.confirm(`Excluir o chamado ${detailTicket.id}? Esta acao nao pode ser desfeita.`);
+    if (!confirmed) return;
     deleteTicket(detailTicket.id);
     handleCloseTicketDetail();
     pushToast("Chamado removido", detailTicket.title);
@@ -1634,7 +1694,6 @@ function TicketsPage() {
         <div className="glpi-toolbar ticket-list-toolbar">
           <div>
             <h2>Chamados</h2>
-            <span>Lista simples, leitura rapida e foco em prioridade, responsavel e estado atual.</span>
           </div>
           <div className="toolbar">
             <form
@@ -1662,9 +1721,6 @@ function TicketsPage() {
             <button className="ghost-button interactive-button" onClick={() => setShowFilters((current) => !current)} type="button">
               {showFilters ? "Ocultar filtros" : "Mostrar filtros"}
             </button>
-            <button className="ghost-button interactive-button" onClick={() => setShowTriagePanel((current) => !current)} type="button">
-              {showTriagePanel ? "Ocultar triagem" : "Mostrar triagem"}
-            </button>
             {canUseAnalystPreview ? (
               <button className="ghost-button interactive-button" onClick={() => setAnalystPreviewMode((current) => !current)} type="button">
                 {analystPreviewMode ? "Preview lateral ligado" : "Preview lateral desligado"}
@@ -1683,7 +1739,7 @@ function TicketsPage() {
 
         <div className="ticket-list-summary-bar">
           <div className="ticket-list-summary-copy">
-            <strong>{filteredTickets.length} chamado(s)</strong>
+            <strong>{displayedTickets.length} chamado(s)</strong>
             <span>{activeFilterCount ? `${activeFilterCount} filtro(s) ativo(s)` : "Sem filtros adicionais ativos"}</span>
           </div>
           <div className="ticket-list-summary-tags">
@@ -1692,6 +1748,24 @@ function TicketsPage() {
             {slaFilter !== "Todos" ? <span className="badge badge-neutral">{slaFilter}</span> : null}
             {search.trim() ? <span className="badge badge-neutral">Busca: {search}</span> : null}
           </div>
+        </div>
+
+        <div className="ticket-queue-tabs" role="tablist" aria-label="Filas de chamados">
+          {[
+            ["triage", "Triagem", triageTickets.length],
+            ["attendance", "Em atendimento", attendanceTickets.length],
+            ["all", "Todos", filteredTickets.length],
+          ].map(([key, label, count]) => (
+            <button
+              className={`ticket-queue-tab interactive-button${activeQueueTab === key ? " is-active" : ""}`}
+              key={key}
+              onClick={() => setActiveQueueTab(key)}
+              type="button"
+            >
+              <span>{label}</span>
+              <strong>{count}</strong>
+            </button>
+          ))}
         </div>
 
         {normalizeText(search).length >= 2 ? (
@@ -1757,11 +1831,11 @@ function TicketsPage() {
           </div>
         ) : null}
 
-        {serviceCenter?.triagePanelVisible !== false && showTriagePanel && triageTickets.length ? (
+        {false && serviceCenter?.triagePanelVisible !== false && showTriagePanel && triageTickets.length ? (
           <div className="ticket-inline-panel ticket-triage-panel">
             <div className="ticket-inline-panel-head">
               <strong>Fila de triagem</strong>
-              <span>Chamados abertos, sem responsavel ou com atencao imediata para despacho rapido.</span>
+              <span>Chamados abertos, sem responsável ou com atenção imediata para despacho rápido.</span>
             </div>
             <div className="ticket-triage-list">
               {triageTickets.map((ticket) => (
@@ -1793,7 +1867,7 @@ function TicketsPage() {
             <strong>Contexto visivel na lista</strong>
             <span>Escolha quais informacoes complementares aparecem em cada linha deste modulo.</span>
             <div className="permissions-inline users-grid-config">
-              {TICKET_GRID_COLUMNS.map((column) => (
+              {TICKET_GRID_COLUMNS.filter((column) => column.key !== "email").map((column) => (
                 <label className="inline-toggle" key={column.key}>
                   <input
                     checked={visibleColumns.includes(column.key)}
@@ -1813,7 +1887,7 @@ function TicketsPage() {
             <div className="dashboard-filter-grid">
               <label>
                 <span>Busca global</span>
-                <input className="toolbar-search" onChange={(event) => handleSearchChange(event.target.value)} placeholder="Numero, usuario, email, tecnico, status, prioridade, titulo ou descricao" value={search} />
+                <input className="toolbar-search" onChange={(event) => handleSearchChange(event.target.value)} placeholder="Número, usuário, e-mail, técnico, status, prioridade, título ou descrição" value={search} />
               </label>
               <label>
                 <span>Status</span>
@@ -1839,8 +1913,8 @@ function TicketsPage() {
                   <option>Todos</option>
                   <option>Vence em 1h</option>
                   <option>Vencido</option>
-                  <option>Critico sem tecnico</option>
-                  <option>Sem tecnico</option>
+                  <option>Crítico sem técnico</option>
+                  <option>Sem técnico</option>
                 </select>
               </label>
             </div>
@@ -1877,7 +1951,7 @@ function TicketsPage() {
                 <input onChange={updateAdvancedFilter("requester")} placeholder="Nome do solicitante" value={advancedFilters.requester} />
               </label>
               <label className="field-block">
-                <span>Tecnico</span>
+                <span>Técnico</span>
                 <select onChange={updateAdvancedFilter("assignee")} value={advancedFilters.assignee}>
                   {assigneeOptions.map((option) => (
                     <option key={option} value={option}>{option}</option>
@@ -1929,10 +2003,12 @@ function TicketsPage() {
         ) : null}
         <div className={`ticket-list-shell${analystPreviewMode && canUseAnalystPreview ? " has-analyst-preview" : ""}`}>
           <div className="ticket-rows ticket-rows-wide ticket-list-compact">
-          {filteredTickets.length ? (
-            filteredTickets.map((ticket) => (
+          {displayedTickets.length ? (
+            displayedTickets.map((ticket) => {
+              const operationalSla = getOperationalSla(ticket);
+              return (
               <article
-                className={`ticket-row-card ticket-row-compact ${getPriorityRowClass(ticket.priority)}${(detailTicketId === ticket.id || previewTicketId === ticket.id) ? " is-selected" : ""}`}
+                className={`ticket-row-card ticket-row-compact ${getOperationalPriorityRowClass(ticket)}${(detailTicketId === ticket.id || previewTicketId === ticket.id) ? " is-selected" : ""}`}
                 key={ticket.id}
                 style={getDepartmentColorStyle(departmentDirectory[ticket.departmentId]?.color, { alpha: 0.06 })}
               >
@@ -1946,7 +2022,7 @@ function TicketsPage() {
                       <div className="ticket-row-summaryline">
                         <span>{ticket.requester}</span>
                         <span>{ticket.department || ticket.queue || "Sem departamento"}</span>
-                        <span>{ticket.assignee || "Sem responsavel"}</span>
+                        <span>{ticket.assignee || "Sem responsável"}</span>
                         <span>{ticket.openedAtLabel || "-"}</span>
                       </div>
                     </div>
@@ -1954,16 +2030,13 @@ function TicketsPage() {
                       <div className="ticket-row-badges ticket-row-badges-compact">
                         <span className={`badge ${getPriorityBadgeClass(ticket.priority)}`}>{ticket.priority}</span>
                         <span className={`badge badge-priority-harmony ${getStatusBadgeClass(ticket.status)}`}>{ticket.status}</span>
-                        {(ticket.dueSoon || ticket.isOverdue || ticket.unassigned) ? (
-                          <span className={`badge badge-priority-harmony ${getSlaTone(ticket)}`}>{ticket.slaLabel}</span>
-                        ) : null}
+                        <span className={`badge badge-priority-harmony ${operationalSla.className}`}>{operationalSla.label}</span>
                       </div>
                     </div>
                   </div>
                   <div className="ticket-row-meta ticket-row-meta-compact">
-                    {visibleColumns.includes("email") && ticket.requesterEmail ? <span>{ticket.requesterEmail}</span> : null}
                     {visibleColumns.includes("category") ? <span>{ticket.category || "Geral"}</span> : null}
-                    {visibleColumns.includes("urgency") ? <span>Urgencia {ticket.urgency || ticket.priority}</span> : null}
+                    {visibleColumns.includes("urgency") ? <span>Urgência {ticket.urgency || ticket.priority}</span> : null}
                     {visibleColumns.includes("source") ? <span>{ticket.source || "Portal"}</span> : null}
                     {ticket.parentTicketId ? <span>Pai {ticket.parentTicketId}</span> : null}
                     {ticket.childTicketIds?.length ? <span>{ticket.childTicketIds.length} filho(s)</span> : null}
@@ -1971,23 +2044,24 @@ function TicketsPage() {
                 </button>
                 <div className="compact-row-actions ticket-inline-actions">
                   {canAssignTicket && normalizeText(ticket.status) !== "resolvido" ? (
-                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "assignSelf")} type="button">
+                    <button className="primary-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "assignSelf")} title="Alt+A Assumir" type="button">
                       Assumir
                     </button>
                   ) : null}
                   {canChangeStatus && normalizeText(ticket.status) !== "resolvido" ? (
-                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "start")} type="button">
+                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "start")} title="Alt+I Iniciar" type="button">
                       Iniciar
                     </button>
                   ) : null}
                   {canCloseTicket && normalizeText(ticket.status) !== "resolvido" ? (
-                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "resolve")} type="button">
+                    <button className="ghost-button compact-button interactive-button" onClick={() => handleInlineTicketAction(ticket, "resolve")} title="Alt+R Resolver" type="button">
                       Resolver
                     </button>
                   ) : null}
                 </div>
               </article>
-            ))
+            );
+            })
           ) : (
             <div className="empty-state">
               <strong>Nenhum chamado encontrado.</strong>
@@ -2012,7 +2086,8 @@ function TicketsPage() {
                   <strong>{previewTicket.id}</strong>
                   <span>{previewTicket.department || previewTicket.queue || "Sem departamento"} | {previewTicket.openedAtLabel || "-"}</span>
                 </div>
-                <button className="ghost-button compact-button interactive-button" onClick={() => handleOpenTicketDetail(previewTicket.id)} type="button">
+                <button className="primary-button compact-button interactive-button" onClick={() => handleOpenTicketDetail(previewTicket.id)} type="button">
+                  <span aria-hidden="true">↗</span>
                   Abrir atendimento
                 </button>
               </div>
@@ -2023,18 +2098,18 @@ function TicketsPage() {
               </div>
               <div className="ticket-analyst-preview-body">
                 <strong>{previewTicket.title}</strong>
-                <p>{previewTicket.description || "Sem descricao detalhada."}</p>
+                <p>{previewTicket.description || "Sem descrição detalhada."}</p>
                 <div className="ticket-row-meta">
                   <span>Solicitante: {previewTicket.requester}</span>
-                  <span>Responsavel: {previewTicket.assignee || "Sem responsavel"}</span>
-                  <span>SLA: {previewTicket.slaLabel}</span>
+                  <span>Responsável: {previewTicket.assignee || "Sem responsável"}</span>
+                  <span>{getOperationalSla(previewTicket).label}</span>
                   {previewTicket.parentTicketId ? <span>Pai: {previewTicket.parentTicketId}</span> : null}
                   {previewTicket.childTicketIds?.length ? <span>Filhos: {previewTicket.childTicketIds.join(", ")}</span> : null}
                 </div>
                 {previewTicket.approval?.required ? (
                   <div className="settings-placeholder-panel">
-                    <strong>Aprovacao</strong>
-                    <span>{previewTicket.approval.currentApproverName || previewTicket.approval.approverName || "Nao definido"} | {previewTicket.approval.status}</span>
+                    <strong>Aprovação</strong>
+                    <span>{previewTicket.approval.currentApproverName || previewTicket.approval.approverName || "Não definido"} | {previewTicket.approval.status}</span>
                   </div>
                 ) : null}
                 {previewTicket.followUps?.length ? (
@@ -2128,11 +2203,13 @@ function TicketsPage() {
                         <span>Ative departamentos com abertura habilitada em Configuracoes &gt; Central de Servicos.</span>
                       </div>
                     ) : null}
+                    {!createForm.departmentId ? <small className="field-error">Obrigatório para rotear o chamado.</small> : null}
                   </label>
                 ) : null}
                 <label className="field-block field-full">
-                  <span>Titulo</span>
-                  <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitacao em uma linha" required value={createForm.title} />
+                  <span>Título</span>
+                  <input onChange={updateCreateField("title")} placeholder="Resuma o problema ou a solicitação em uma linha" required value={createForm.title} />
+                  {!createForm.title.trim() ? <small className="field-error">Informe um título curto para identificar o chamado.</small> : null}
                 </label>
                 <label className="field-block">
                   <span>Prioridade</span>
@@ -2143,7 +2220,7 @@ function TicketsPage() {
                   </select>
                 </label>
                 <label className="field-block">
-                  <span>Urgencia</span>
+                  <span>Urgência</span>
                   <select onChange={updateCreateField("urgency")} value={createForm.urgency}>
                     {PRIORITY_LEVELS.map((priority) => (
                       <option key={priority}>{priority}</option>
@@ -2151,8 +2228,9 @@ function TicketsPage() {
                   </select>
                 </label>
                 <label className="field-block field-full">
-                  <span>Descricao</span>
+                  <span>Descrição</span>
                   <textarea onChange={updateCreateField("description")} placeholder="Descreva o contexto, impacto e o que precisa ser feito." required value={createForm.description} />
+                  {!createForm.description.trim() ? <small className="field-error">Descreva o contexto, impacto e necessidade.</small> : null}
                 </label>
                 <div className="field-block field-full">
                   <span>Anexos</span>
@@ -2183,14 +2261,14 @@ function TicketsPage() {
                 ) : null}
               </div>
 
-              <details className="ticket-create-section">
-                <summary>Classificacao e roteamento</summary>
+              <details className="ticket-create-section has-required-fields">
+                <summary>Classificação e roteamento</summary>
                 <div className="glpi-form-grid ticket-create-grid-simplified">
                   <label className="field-block">
                     <span>Tipo</span>
                     <select onChange={handleCreateTypeChange} value={createForm.type}>
                       <option>Incidente</option>
-                      <option>Requisicao</option>
+                      <option>Requisição</option>
                       <option>Problema</option>
                     </select>
                   </label>
@@ -2206,7 +2284,7 @@ function TicketsPage() {
                     </div>
                   </div>
                   <label className="field-block">
-                    <span>Localizacao</span>
+                    <span>Localização</span>
                     <input onChange={updateCreateField("location")} value={createForm.location} />
                   </label>
                 </div>
@@ -2214,10 +2292,10 @@ function TicketsPage() {
 
               {normalizeText(createForm.type) === "requisicao" ? (
                 <details className="ticket-create-section" open>
-                  <summary>Fluxo de aprovacao</summary>
+                  <summary>Fluxo de aprovação</summary>
                   <div className="glpi-form-grid ticket-create-grid-simplified">
                     <label className="field-block">
-                      <span>Valor / alcada da requisicao</span>
+                      <span>Valor / alçada da requisição</span>
                       <input min="0" onChange={updateCreateField("approvalAmount")} step="0.01" type="number" value={createForm.approvalAmount || ""} />
                     </label>
                     <label className="field-block">
@@ -2230,13 +2308,14 @@ function TicketsPage() {
                           </option>
                         ))}
                       </select>
+                      {!createForm.approvalApproverId ? <small className="field-error">Obrigatório para requisições.</small> : null}
                     </label>
                   </div>
                 </details>
               ) : null}
 
               <details className="ticket-create-section">
-                <summary>Classificacao avancada</summary>
+                <summary>Classificação avançada</summary>
                 <div className="glpi-form-grid ticket-create-grid-simplified">
                   <label className="field-block">
                     <span>Impacto</span>
@@ -2286,7 +2365,7 @@ function TicketsPage() {
               </details>
 
               <details className="ticket-create-section">
-                <summary>Observadores e notificacoes</summary>
+                <summary>Observadores e notificações</summary>
                 <div className="field-block field-full" ref={watcherBoxRef}>
                   <span>Observadores</span>
                   <div className="watcher-picker">
@@ -2348,8 +2427,8 @@ function TicketsPage() {
                 {createArticleSuggestions.length ? (
                   <div className="ticket-suggestion-panel">
                     <div className="ticket-inline-panel-head">
-                      <strong>Sugestoes automaticas da base</strong>
-                      <span>Artigos relacionados a titulo, categoria e descricao do novo chamado.</span>
+                      <strong>Sugestões automáticas da base</strong>
+                      <span>Artigos relacionados a título, categoria e descrição do novo chamado.</span>
                     </div>
                     <div className="ticket-rows">
                     {createArticleSuggestions.map((article) => (
@@ -2443,18 +2522,18 @@ function TicketsPage() {
 
               <div className="ticket-create-actions compact-actions">
                 {canAssignTicket && !isDetailResolved ? (
-                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("assignSelf")} type="button">
+                  <button className="primary-button interactive-button" onClick={() => handleQuickAction("assignSelf")} title="Alt+A Assumir" type="button">
                     Assumir chamado
                   </button>
                 ) : null}
                 {canChangeStatus && !isDetailResolved ? (
-                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("start")} type="button">
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("start")} title="Alt+I Iniciar" type="button">
                     Iniciar atendimento
                   </button>
                 ) : null}
                 {canChangeStatus && !isDetailResolved ? (
-                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("wait")} type="button">
-                    Aguardar usuario
+                  <button className="ghost-button interactive-button" onClick={() => handleQuickAction("wait")} title="Alt+U Aguardar" type="button">
+                    Aguardar usuário
                   </button>
                 ) : null}
                 {canEditTicket ? (
@@ -2467,11 +2546,27 @@ function TicketsPage() {
                     Resolver chamado
                   </button>
                 ) : null}
-                <span className="shortcut-hint">Atalhos: `Alt+A` assumir, `Alt+I` iniciar, `Alt+U` aguardar, `Alt+R` resolver</span>
+              </div>
+
+              <div className="ticket-detail-tabs" role="tablist" aria-label="Detalhe do chamado">
+                {[
+                  ["data", "Dados do chamado"],
+                  ["followup", "Acompanhamento"],
+                  ["audit", "Auditoria"],
+                ].map(([key, label]) => (
+                  <button
+                    className={`ticket-detail-tab interactive-button${activeDetailTab === key ? " is-active" : ""}`}
+                    key={key}
+                    onClick={() => setActiveDetailTab(key)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
               <fieldset disabled={isDetailLocked} style={{ border: 0, margin: 0, minInlineSize: 0, padding: 0 }}>
-              <div className="ticket-glpi-layout">
+              <div className={`ticket-glpi-layout ticket-detail-tab-${activeDetailTab}`}>
               <aside className="ticket-glpi-sidebar">
 
               <section className="ticket-inline-panel">
@@ -2511,7 +2606,7 @@ function TicketsPage() {
                 </div>
                 <div>
                   <span>SLA</span>
-                  <strong className={`badge ${getSlaTone(detailTicket)}`}>{detailTicket.slaLabel}</strong>
+                  <strong className={`badge ${getOperationalSla(detailTicket).className}`}>{getOperationalSla(detailTicket).label}</strong>
                 </div>
                 <div>
                   <span>Reincidencia</span>
@@ -2667,7 +2762,7 @@ function TicketsPage() {
                   </select>
                 </label>
                 <label className={`field-block${detailDirtyFields.urgency ? " is-dirty" : ""}`}>
-                  <span>Urgencia</span>
+                  <span>Urgência</span>
                   <select disabled={!canChangePriority} onChange={updateDetailField("urgency")} value={detailForm.urgency}>
                     {PRIORITY_LEVELS.map((priority) => (
                       <option key={priority}>{priority}</option>
@@ -2682,7 +2777,7 @@ function TicketsPage() {
                     ))}
                   </select>
                 </label>
-                {canManageManualSla ? (
+                {false && canManageManualSla ? (
                   <label className={`field-block${detailDirtyFields.slaTargetMinutes ? " is-dirty" : ""}`}>
                     <span>SLA resolucao (minutos)</span>
                     <input disabled={!canEditTicket} min="15" onChange={updateDetailField("slaTargetMinutes")} step="15" type="number" value={detailForm.slaTargetMinutes || ""} />
@@ -2702,7 +2797,7 @@ function TicketsPage() {
                   <input disabled={!canEditTicket} onChange={updateDetailField("watchers")} value={detailForm.watchers || ""} />
                 </label>
                 <label className={`field-block${detailDirtyFields.assignee ? " is-dirty" : ""}`}>
-                  <span>Tecnico responsavel</span>
+                  <span>Técnico responsável</span>
                   <UserAutocomplete
                     filterFn={(candidate) =>
                       serviceCenterEnabled
@@ -2718,14 +2813,14 @@ function TicketsPage() {
                           nextValue && ["aberto", "reaberto"].includes(normalizeText(current.status)) ? "Em andamento" : current.status,
                       }))
                     }
-                    placeholder={serviceCenterEnabled ? "Comece a digitar um responsavel do departamento" : "Comece a digitar um tecnico de TI"}
+                    placeholder={serviceCenterEnabled ? "Comece a digitar um responsável do departamento" : "Comece a digitar um técnico de TI"}
                     users={assigneeUsers}
                     value={detailForm.assignee || ""}
                   />
                 </label>
                 {suggestedAssignees.length ? (
                   <div className="field-block field-full">
-                    <span>Sugestao de tecnicos</span>
+                    <span>Sugestão de técnicos</span>
                     <div className="ticket-technician-suggestions">
                       {suggestedAssignees.map((candidate) => (
                         <button
@@ -2741,7 +2836,7 @@ function TicketsPage() {
                           type="button"
                         >
                           <strong>{candidate.name}</strong>
-                          <span>{candidate.team || "Tecnico"} | {candidate.workload} chamado(s)</span>
+                          <span>{candidate.team || "Técnico"} | {candidate.workload} chamado(s)</span>
                         </button>
                       ))}
                     </div>
@@ -2827,7 +2922,7 @@ function TicketsPage() {
               </div>
 
               <label className={`field-block field-full${detailDirtyFields.description ? " is-dirty" : ""}`}>
-                <span>Descricao</span>
+                <span>Descrição</span>
                 <textarea disabled={!canEditTicket} onChange={updateDetailField("description")} required value={detailForm.description} />
               </label>
 
@@ -3348,7 +3443,7 @@ function TicketsPage() {
               </section>
               </details>
 
-              <section className="ticket-attachment-panel">
+              <section className="ticket-attachment-panel ticket-audit-panel">
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Timeline visual do ticket</strong>

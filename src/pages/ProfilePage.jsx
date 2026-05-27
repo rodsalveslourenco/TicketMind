@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useAppData } from "../data/AppDataContext";
+import { useUiPreferences } from "../ui/UiPreferencesContext";
 
 function getInitials(name) {
   return String(name || "")
@@ -23,6 +24,7 @@ function readImageFileAsDataUrl(file) {
 function ProfilePage() {
   const { changePassword, user } = useAuth();
   const { pushToast, updateOwnProfile, users } = useAppData();
+  const { density, setDensity } = useUiPreferences();
   const [saving, setSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
@@ -104,6 +106,31 @@ function ProfilePage() {
           <h2>Meu perfil</h2>
         </div>
         <p className="module-caption">Aqui voce pode atualizar apenas a sua foto. Permissoes e cadastros permanecem bloqueados.</p>
+      </section>
+
+      <section className="board-card profile-card">
+        <div className="card-heading">
+          <div>
+            <h2>Preferências de tela</h2>
+            <span>Configuração pessoal aplicada ao carregar o sistema novamente.</span>
+          </div>
+        </div>
+        <div className="toolbar density-toggle profile-density-toggle" role="group" aria-label="Densidade visual">
+          {[
+            ["compacta", "Compacta"],
+            ["media", "Média"],
+            ["confortavel", "Confortável"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              className={`filter-pill interactive-button${density === value ? " is-active" : ""}`}
+              onClick={() => setDensity(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="board-card profile-card">

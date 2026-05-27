@@ -40,6 +40,19 @@ function formatDelta(currentValue, previousValue) {
   return `${delta > 0 ? "+" : ""}${delta}`;
 }
 
+function formatSlaTrend(currentValue, previousValue) {
+  const delta = Number(currentValue || 0) - Number(previousValue || 0);
+  if (Math.abs(delta) < 0.1) return "→";
+  return delta > 0 ? "↑" : "↓";
+}
+
+function getSlaComplianceForTickets(items, openStatuses) {
+  const openItems = items.filter((ticket) => openStatuses.has(normalizeText(ticket.status)));
+  if (!openItems.length) return 100;
+  const breached = openItems.filter((ticket) => ticket.isOverdue || String(ticket.sla || "").toLowerCase().includes("min")).length;
+  return clampPercent(Number((((openItems.length - breached) / openItems.length) * 100).toFixed(1)));
+}
+
 function getPriorityTone(priority) {
   const normalized = normalizeText(priority);
   if (normalized === "critica") return "critica";
@@ -175,7 +188,6 @@ function DashboardPage() {
     const status = normalizeText(ticket.status);
     return status === "aguardando aprovacao" || status === "aguardando usuario";
   }).length;
-  const slaCompliance = openTickets ? clampPercent(Number((((openTickets - overdueTickets) / openTickets) * 100).toFixed(1))) : 100;
   const resolutionRate = totalTickets ? percent(resolvedTickets, totalTickets) : 0;
   const activeFilterCount = [
     periodFilter !== "90",
@@ -190,7 +202,7 @@ function DashboardPage() {
     { label: "Abertos", value: openTickets, detail: `${summary.backlogTrend}% de backlog recente`, tone: "highlight" },
     { label: "Em andamento", value: inProgressTickets, detail: "Tratamento ativo", tone: "neutral" },
     { label: "SLA sob risco", value: overdueTickets, detail: "Prioridade operacional", tone: "warning" },
-    { label: "Criticos", value: criticalOpen, detail: "Maior impacto", tone: "danger" },
+    { label: "Críticos", value: criticalOpen, detail: "Maior impacto", tone: "danger" },
     { label: "Aguardando usuario", value: waitingApproval, detail: "Dependencia externa", tone: "neutral" },
   ];
 
@@ -540,6 +552,32 @@ function DashboardPage() {
     };
   }, [customEndDate, customStartDate, periodFilter, tickets]);
 
+  const slaContext = useMemo(() => {
+    const periodDays = periodFilter === "custom" || periodFilter === "all" ? 30 : Number(periodFilter) || 30;
+    const endDate = customEndDate ? new Date(`${customEndDate}T23:59:59.999`) : new Date();
+    const currentStart = customStartDate && periodFilter === "custom"
+      ? new Date(`${customStartDate}T00:00:00`)
+      : new Date(endDate.getTime() - periodDays * 86400000);
+    const previousStart = new Date(currentStart.getTime() - periodDays * 86400000);
+    const previousEnd = new Date(currentStart.getTime() - 1);
+    const byRange = (start, end) =>
+      tickets.filter((ticket) => {
+        const openedAt = parseTicketDate(ticket);
+        return openedAt && openedAt >= start && openedAt <= end;
+      });
+    const currentRate = getSlaComplianceForTickets(byRange(currentStart, endDate), openStatuses);
+    const previousRate = getSlaComplianceForTickets(byRange(previousStart, previousEnd), openStatuses);
+    const periodLabel = periodFilter === "all" ? "histórico completo" : periodFilter === "custom" ? "período filtrado" : `últimos ${periodDays} dias`;
+    return {
+      meta: 85,
+      currentRate,
+      previousRate,
+      trend: formatSlaTrend(currentRate, previousRate),
+      periodLabel,
+      summary: `${currentRate}% ${formatSlaTrend(currentRate, previousRate)} (meta: 85% | ${periodLabel})`,
+    };
+  }, [customEndDate, customStartDate, openStatuses, periodFilter, tickets]);
+
   const widgets = [
     { id: "overview", title: "Visao geral dos chamados", category: "Visao geral dos chamados" },
     { id: "department", title: "Chamados por departamento", category: "Chamados por departamento" },
@@ -614,7 +652,7 @@ function DashboardPage() {
           <div className="dashboard-status-strip">
             <article className="dashboard-status-card">
               <span>SLA atual</span>
-              <strong>{slaCompliance}%</strong>
+              <strong>{slaContext.summary}</strong>
             </article>
             <article className="dashboard-status-card dashboard-status-card-success">
               <span>Resolucao</span>
@@ -683,7 +721,7 @@ function DashboardPage() {
           <div className="card-heading dashboard-widget-heading">
             <div>
               <h2>SLA e criticidade</h2>
-              <span>Itens que exigem atencao imediata</span>
+              <span>Itens que exigem atenção imediata</span>
             </div>
             <button className="ghost-button compact-button interactive-button" onClick={() => hideWidget(widgetId)} type="button">
               Ocultar
@@ -1229,7 +1267,7 @@ function DashboardPage() {
         <div className="dashboard-filter-summary" aria-live="polite">
           <strong>{totalTickets} chamados no recorte atual</strong>
           <span>{activeFilterCount ? `${activeFilterCount} filtro(s) aplicado(s)` : "Visao padrao dos ultimos 90 dias"}</span>
-          <span>{slaCompliance}% no SLA | {resolutionRate}% resolvidos | {criticalOpen} criticos abertos</span>
+          <span>{slaContext.summary} | {resolutionRate}% resolvidos | {criticalOpen} críticos abertos</span>
         </div>
         {hiddenWidgetDefs.length ? (
           <div className="board-card compact-record-card">
