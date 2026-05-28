@@ -1666,7 +1666,19 @@ export function AppDataProvider({ children }) {
   };
 
   const updateTicket = (ticketId, updates) => {
-    if (!hasAnyPermission(user, ["tickets_edit", "tickets_admin"])) return;
+    const isResolutionUpdate = normalizeText(updates?.status) === "resolvido";
+    const canEditTicketPayload = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
+    const canCloseTicketPayload = isResolutionUpdate && hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
+    if (!canEditTicketPayload && !canCloseTicketPayload) return;
+    if (!canEditTicketPayload && canCloseTicketPayload) {
+      updates = {
+        status: "Resolvido",
+        resolutionNotes: updates?.resolutionNotes,
+        slaTargetMinutes: updates?.slaTargetMinutes,
+        attachments: updates?.attachments,
+        completionAttachments: updates?.completionAttachments,
+      };
+    }
     applyState((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) => {
@@ -1719,7 +1731,12 @@ export function AppDataProvider({ children }) {
                 ? hasAnyPermission(user, ["tickets_close", "tickets_admin"])
                 : false;
 
-          if (!autoProgressFromAssignment && !isApprovalWorkflowAction && !hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])) {
+          if (
+            !autoProgressFromAssignment &&
+            !isApprovalWorkflowAction &&
+            !(normalizeText(updates.status) === "resolvido" && hasAnyPermission(user, ["tickets_close", "tickets_admin"])) &&
+            !hasAnyPermission(user, ["tickets_change_status", "tickets_admin"])
+          ) {
             return ticket;
           }
           if (isApprovalWorkflowAction && !canExecuteApprovalAction) return ticket;
