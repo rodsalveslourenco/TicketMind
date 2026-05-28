@@ -1385,9 +1385,10 @@ export function AppDataProvider({ children }) {
     const activeAssets = data.assets.filter((asset) => normalizeText(asset.status) !== "baixado").length;
     const activeProjects = data.projects.filter((project) => normalizeText(project.status) !== "concluido").length;
     const activeApis = data.apiConfigs.filter((config) => normalizeText(config.status) === "ativa").length;
-    const breachedTickets = visibleTickets.filter((ticket) => ticket.isOverdue || ticket.slaBreachedAt).length;
-    const slaCompliance = visibleTickets.length
-      ? Number((((visibleTickets.length - breachedTickets) / visibleTickets.length) * 100).toFixed(1))
+    const measurableSlaTickets = visibleTickets.filter((ticket) => isOpenTicketStatus(ticket.status) || normalizeText(ticket.status) === "resolvido");
+    const breachedTickets = measurableSlaTickets.filter((ticket) => ticket.isOverdue || ticket.slaResolvedLate || ticket.slaBreachedAt).length;
+    const slaCompliance = measurableSlaTickets.length
+      ? Number((((measurableSlaTickets.length - breachedTickets) / measurableSlaTickets.length) * 100).toFixed(1))
       : 100;
     const now = new Date();
     const currentStart = new Date(now.getTime() - 30 * 86400000);
@@ -1399,9 +1400,10 @@ export function AppDataProvider({ children }) {
         return !Number.isNaN(openedAt.getTime()) && openedAt >= start && openedAt <= end;
       });
     const computeSlaRate = (items) => {
-      if (!items.length) return 100;
-      const breached = items.filter((ticket) => ticket.isOverdue || ticket.slaBreachedAt).length;
-      return Number((((items.length - breached) / items.length) * 100).toFixed(1));
+      const measurableItems = items.filter((ticket) => isOpenTicketStatus(ticket.status) || normalizeText(ticket.status) === "resolvido");
+      if (!measurableItems.length) return 100;
+      const breached = measurableItems.filter((ticket) => ticket.isOverdue || ticket.slaResolvedLate || ticket.slaBreachedAt).length;
+      return Number((((measurableItems.length - breached) / measurableItems.length) * 100).toFixed(1));
     };
     const slaCurrentRate = computeSlaRate(ticketsInRange(currentStart, now));
     const slaPreviousRate = computeSlaRate(ticketsInRange(previousStart, previousEnd));

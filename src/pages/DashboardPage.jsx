@@ -47,10 +47,14 @@ function formatSlaTrend(currentValue, previousValue) {
 }
 
 function getSlaComplianceForTickets(items, openStatuses) {
-  const openItems = items.filter((ticket) => openStatuses.has(normalizeText(ticket.status)));
-  if (!openItems.length) return 100;
-  const breached = openItems.filter((ticket) => ticket.isOverdue || String(ticket.sla || "").toLowerCase().includes("min")).length;
-  return clampPercent(Number((((openItems.length - breached) / openItems.length) * 100).toFixed(1)));
+  const measurableItems = items.filter((ticket) => openStatuses.has(normalizeText(ticket.status)) || normalizeText(ticket.status) === "resolvido");
+  if (!measurableItems.length) return 100;
+  const breached = measurableItems.filter((ticket) => ticket.isOverdue || ticket.slaResolvedLate || Boolean(ticket.slaBreachedAt)).length;
+  return clampPercent(Number((((measurableItems.length - breached) / measurableItems.length) * 100).toFixed(1)));
+}
+
+function isTicketAtSlaRisk(ticket, openStatuses) {
+  return openStatuses.has(normalizeText(ticket.status)) && (ticket.isOverdue || ticket.dueSoon || ticket.slaState === "overdue" || ticket.slaState === "due_soon");
 }
 
 function getPriorityTone(priority) {
@@ -180,7 +184,7 @@ function DashboardPage() {
     const status = normalizeText(ticket.status);
     return status === "em atendimento" || status === "em andamento";
   }).length;
-  const overdueTickets = filteredTickets.filter((ticket) => String(ticket.sla || "").toLowerCase().includes("min")).length;
+  const overdueTickets = filteredTickets.filter((ticket) => isTicketAtSlaRisk(ticket, openStatuses)).length;
   const criticalOpen = filteredTickets.filter(
     (ticket) => normalizeText(ticket.priority) === "critica" && openStatuses.has(normalizeText(ticket.status)),
   ).length;
@@ -366,7 +370,7 @@ function DashboardPage() {
       const bucket = accumulator[assignee];
       bucket.total += 1;
       if (normalizeText(ticket.status) === "resolvido") bucket.resolved += 1;
-      if (String(ticket.sla || "").toLowerCase().includes("min")) bucket.slaRisk += 1;
+      if (isTicketAtSlaRisk(ticket, openStatuses) || ticket.slaResolvedLate || ticket.slaBreachedAt) bucket.slaRisk += 1;
       if (normalizeText(ticket.priority) === "critica") bucket.critical += 1;
       if (normalizeText(ticket.status) === "em atendimento" || normalizeText(ticket.status) === "em andamento") {
         bucket.inProgress += 1;
@@ -387,7 +391,7 @@ function DashboardPage() {
         slaRate: item.total ? Math.max(100 - percent(item.slaRisk, item.total), 0) : 100,
         averageResolution: item.openAgeCount ? formatHours(item.openAgeHours / item.openAgeCount) : "0h",
       }));
-  }, [filteredTickets]);
+  }, [filteredTickets, openStatuses]);
 
   const taskMetrics = useMemo(() => {
     const tasks = filteredTickets.flatMap((ticket) =>
@@ -475,10 +479,7 @@ function DashboardPage() {
 
   const slaAlerts = useMemo(() => {
     const urgentAlerts = filteredTickets
-      .filter((ticket) => {
-        const normalizedSla = String(ticket.sla || "").toLowerCase();
-        return normalizedSla.includes("1h") || normalizedSla.includes("min");
-      })
+      .filter((ticket) => isTicketAtSlaRisk(ticket, openStatuses))
       .slice(0, 4)
       .map((ticket) => ({
         id: `${ticket.id}-sla`,
@@ -498,7 +499,7 @@ function DashboardPage() {
       }));
 
     return [...urgentAlerts, ...criticalUnassigned].slice(0, 6);
-  }, [filteredTickets]);
+  }, [filteredTickets, openStatuses]);
 
   const knowledgeInsights = useMemo(() => {
     const articles = (knowledgeArticles || []).slice(0, 3).map((article) => ({

@@ -220,12 +220,19 @@ function getStatusBadgeClass(status) {
 }
 
 function getSlaTone(ticket) {
+  if (normalizeText(ticket?.status) === "resolvido") return "status-badge-resolvido";
   if (ticket.isOverdue || ticket.criticalWaitingTechnician) return "status-badge-reaberto";
   if (ticket.dueSoon || ticket.unassigned) return "status-badge-aguardando";
   return "status-badge-resolvido";
 }
 
 function getOperationalSla(ticket) {
+  if (normalizeText(ticket?.status) === "resolvido") {
+    return {
+      label: ticket?.slaLabel ? `SLA: ${ticket.slaLabel}` : "SLA: resolvido",
+      className: "status-badge-resolvido",
+    };
+  }
   const deadlineValue = ticket?.slaDeadlineAt || ticket?.dueDate || "";
   const deadline = deadlineValue ? new Date(deadlineValue).getTime() : Number.NaN;
   if (!Number.isFinite(deadline)) {

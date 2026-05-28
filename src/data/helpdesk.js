@@ -477,7 +477,12 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
 
   let slaBreachedAt = ticket.slaBreachedAt || "";
   let nextHistory = history;
-  if (!isResolved && new Date(nowIso).getTime() > new Date(slaDeadlineAt).getTime() && !slaBreachedAt) {
+  const resolvedAtMs = resolvedAt ? new Date(resolvedAt).getTime() : Number.NaN;
+  const slaDeadlineAtMs = new Date(slaDeadlineAt).getTime();
+  if (isResolved && Number.isFinite(resolvedAtMs) && Number.isFinite(slaDeadlineAtMs)) {
+    slaBreachedAt = resolvedAtMs > slaDeadlineAtMs ? slaBreachedAt || resolvedAt : "";
+  }
+  if (!isResolved && new Date(nowIso).getTime() > slaDeadlineAtMs && !slaBreachedAt) {
     slaBreachedAt = nowIso;
     nextHistory = [
       createHistoryEntry({
@@ -550,9 +555,12 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   const now = new Date(nowIso).getTime();
   const deadline = new Date(ticket.slaDeadlineAt).getTime();
   const firstResponseDeadline = new Date(ticket.initialResponseDeadlineAt || ticket.slaDeadlineAt).getTime();
-  const remainingMinutes = Math.round((deadline - now) / 60000);
-  const initialResponseRemainingMinutes = Math.round((firstResponseDeadline - now) / 60000);
   const isResolved = normalizeText(ticket.status) === "resolvido";
+  const resolvedAtMs = ticket.resolvedAt ? new Date(ticket.resolvedAt).getTime() : Number.NaN;
+  const slaReferenceTime = isResolved && Number.isFinite(resolvedAtMs) ? resolvedAtMs : now;
+  const remainingMinutes = Math.round((deadline - slaReferenceTime) / 60000);
+  const initialResponseReferenceTime = isResolved && Number.isFinite(resolvedAtMs) ? resolvedAtMs : now;
+  const initialResponseRemainingMinutes = Math.round((firstResponseDeadline - initialResponseReferenceTime) / 60000);
   const isOverdue = !isResolved && remainingMinutes < 0;
   const initialResponseOverdue = !ticket.firstResponseAt && !isResolved && initialResponseRemainingMinutes < 0;
   const dueSoon = !isResolved && remainingMinutes >= 0 && remainingMinutes <= 60;
@@ -563,9 +571,12 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   const approvalRemainingMinutes = approvalDueAt ? Math.round((approvalDueAt - now) / 60000) : null;
   const approvalDueSoon = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes >= 0 && approvalRemainingMinutes <= 60;
   const approvalOverdue = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes < 0;
+  const resolvedLate = isResolved && remainingMinutes < 0;
   const slaLabel = isResolved
     ? ticket.resolvedAt
-      ? `Resolvido em ${ticket.resolvedAtLabel}`
+      ? resolvedLate
+        ? `Resolvido fora do SLA por ${formatDurationLabel(Math.abs(remainingMinutes))}`
+        : `Resolvido dentro do SLA com ${formatDurationLabel(Math.max(0, remainingMinutes))} de folga`
       : "Resolvido"
     : isOverdue
       ? `SLA vencido ha ${formatDurationLabel(Math.abs(remainingMinutes))}`
@@ -579,6 +590,7 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
     slaRemainingMinutes: remainingMinutes,
     slaState: isResolved ? "resolved" : isOverdue ? "overdue" : dueSoon ? "due_soon" : "within_sla",
     slaLabel,
+    slaResolvedLate: resolvedLate,
     isOverdue,
     dueSoon,
     unassigned,
