@@ -578,6 +578,45 @@ function DashboardPage() {
     };
   }, [customEndDate, customStartDate, openStatuses, periodFilter, tickets]);
 
+  const dashboardReviewInsights = useMemo(() => {
+    const insights = [];
+    if (slaContext.currentRate < slaContext.meta) {
+      insights.push({
+        title: "SLA abaixo da meta",
+        detail: `O recorte está em ${slaContext.currentRate}% contra meta de ${slaContext.meta}%. Priorize a visão de SLA e criticidade por responsável.`,
+        tone: "danger",
+      });
+    } else {
+      insights.push({
+        title: "SLA saudável",
+        detail: `O recorte está acima da meta de ${slaContext.meta}%. Mantenha acompanhamento de tendência para não perder queda antecipada.`,
+        tone: "success",
+      });
+    }
+    if (criticalOpen) {
+      insights.push({
+        title: "Críticos precisam de dono",
+        detail: `${criticalOpen} chamado(s) crítico(s) aberto(s). O relatório deve destacar fila, técnico e idade do chamado antes de volume geral.`,
+        tone: "warning",
+      });
+    }
+    if (taskMetrics.pending) {
+      insights.push({
+        title: "Tarefas pendentes no atendimento",
+        detail: `${taskMetrics.pending} tarefa(s) pendente(s) em ${taskMetrics.ticketsWithPendingTasks} chamado(s). Vale acompanhar tarefas por responsável e por chamado.`,
+        tone: "warning",
+      });
+    }
+    if (!totalTickets) {
+      insights.push({
+        title: "Sem dados no filtro",
+        detail: "O dashboard fica pouco útil nesse recorte. Amplie o período ou remova filtros para validar tendência.",
+        tone: "neutral",
+      });
+    }
+    return insights.slice(0, 4);
+  }, [criticalOpen, slaContext.currentRate, slaContext.meta, taskMetrics.pending, taskMetrics.ticketsWithPendingTasks, totalTickets]);
+
   const widgets = [
     { id: "overview", title: "Visao geral dos chamados", category: "Visao geral dos chamados" },
     { id: "department", title: "Chamados por departamento", category: "Chamados por departamento" },
@@ -1268,6 +1307,14 @@ function DashboardPage() {
           <strong>{totalTickets} chamados no recorte atual</strong>
           <span>{activeFilterCount ? `${activeFilterCount} filtro(s) aplicado(s)` : "Visao padrao dos ultimos 90 dias"}</span>
           <span>{slaContext.summary} | {resolutionRate}% resolvidos | {criticalOpen} críticos abertos</span>
+        </div>
+        <div className="dashboard-review-strip">
+          {dashboardReviewInsights.map((insight) => (
+            <article className={`dashboard-review-card dashboard-review-${insight.tone}`} key={insight.title}>
+              <strong>{insight.title}</strong>
+              <span>{insight.detail}</span>
+            </article>
+          ))}
         </div>
         {hiddenWidgetDefs.length ? (
           <div className="board-card compact-record-card">

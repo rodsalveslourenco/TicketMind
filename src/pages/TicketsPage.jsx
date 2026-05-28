@@ -561,6 +561,72 @@ function TicketsPage() {
     }
     return detailTimeline;
   }, [detailTimeline, timelineFilter]);
+  const detailConversationEntries = useMemo(() => {
+    if (!detailTicket) return [];
+    const openedAt = detailTicket.openedAt || "";
+    const openedLabel = detailTicket.openedAtLabel || "";
+    const entries = [
+      {
+        id: `conversation-form-${detailTicket.id}`,
+        source: "form",
+        actorName: detailTicket.requester || "Solicitante",
+        createdAt: openedAt,
+        createdAtLabel: openedLabel,
+        title: "Dados do formulário",
+        message: detailTicket.description || "Chamado aberto sem descrição detalhada.",
+        meta: [
+          `Título: ${detailTicket.title || "-"}`,
+          `Tipo: ${detailTicket.type || "-"}`,
+          `Categoria: ${detailTicket.category || "-"}`,
+          `Departamento: ${detailTicket.department || detailTicket.queue || "-"}`,
+        ],
+        tone: "conversation-form",
+        visibility: "solicitante",
+      },
+      ...detailTimeline.map((entry) => ({
+        ...entry,
+        message: entry.title,
+        meta: [
+          entry.source === "followUp" ? "Acompanhamento" : entry.source === "approval" ? "Aprovação" : "Movimentação",
+          entry.visibility === "private" ? "Interno" : entry.visibility === "approval" ? "Aprovação" : entry.visibility === "audit" ? "Auditoria" : "Público",
+        ],
+        tone: entry.source === "followUp" ? "conversation-followup" : entry.source === "approval" ? "conversation-approval" : "conversation-audit",
+      })),
+      ...(detailTicket.subtasks || []).map((task) => ({
+        id: `conversation-task-${task.id}`,
+        source: "task",
+        actorName: task.ownerName || detailTicket.assignee || "Equipe técnica",
+        createdAt: task.completedAt || task.createdAt || openedAt,
+        createdAtLabel: normalizeText(task.status) === "concluida" ? task.completedAtLabel || "Concluída" : task.createdAtLabel || "",
+        title: normalizeText(task.status) === "concluida" ? "Tarefa concluída" : "Tarefa criada",
+        message: task.title,
+        meta: [`Status: ${task.status || "Pendente"}`],
+        tone: normalizeText(task.status) === "concluida" ? "conversation-task-done" : "conversation-task",
+        visibility: "tarefa",
+      })),
+    ];
+
+    if (normalizeText(detailTicket.status) === "resolvido") {
+      entries.push({
+        id: `conversation-resolution-${detailTicket.id}`,
+        source: "resolution",
+        actorName: detailTicket.assignee || user?.name || "Equipe técnica",
+        createdAt: detailTicket.resolvedAt || detailTicket.updatedAt || "",
+        createdAtLabel: detailTicket.resolvedAtLabel || detailTicket.updatedAtLabel || "",
+        title: "Chamado finalizado",
+        message: detailTicket.resolutionNotes || "Chamado resolvido.",
+        meta: ["Finalização"],
+        tone: "conversation-resolution",
+        visibility: "resolução",
+      });
+    }
+
+    return entries.sort((left, right) => {
+      const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+      const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+      return leftTime - rightTime;
+    });
+  }, [detailTicket, detailTimeline, user?.name]);
   const reopenCount = useMemo(
     () => (detailTicket?.history || []).filter((entry) => normalizeText(entry.type) === "reopened").length,
     [detailTicket?.history],
@@ -3052,6 +3118,80 @@ function TicketsPage() {
 
               </aside>
               <div className="ticket-glpi-main">
+
+              <section className="ticket-attachment-panel ticket-conversation-panel">
+                <div className="attachment-toolbar glpi-subbar">
+                  <div>
+                    <strong>Conversa do chamado</strong>
+                    <span>Abertura, acompanhamentos, tarefas, aprovações, anexos e finalização em uma linha interativa.</span>
+                  </div>
+                  <div className="ticket-row-badges">
+                    <span className={`badge ${getStatusBadgeClass(detailTicket.status)}`}>{detailTicket.status}</span>
+                    <span className={`badge ${getOperationalSla(detailTicket).className}`}>{getOperationalSla(detailTicket).label}</span>
+                  </div>
+                </div>
+                <div className="ticket-conversation-stream" aria-live="polite">
+                  {detailConversationEntries.map((entry) => (
+                    <article className={`ticket-chat-message ${entry.tone || ""}`} key={entry.id}>
+                      <div className="ticket-chat-avatar" aria-hidden="true">
+                        {String(entry.actorName || "S").trim().slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="ticket-chat-bubble">
+                        <div className="ticket-chat-meta">
+                          <strong>{entry.actorName || "Sistema"}</strong>
+                          <span>{entry.createdAtLabel || "-"}</span>
+                        </div>
+                        <h3>{entry.title}</h3>
+                        <p>{entry.message}</p>
+                        {entry.meta?.length ? (
+                          <div className="ticket-chat-tags">
+                            {entry.meta.filter(Boolean).map((item) => (
+                              <span key={`${entry.id}-${item}`}>{item}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                        {entry.attachments?.length ? (
+                          <div className="attachment-list timeline-attachment-list">
+                            {entry.attachments.map((attachment) => (
+                              <div className="attachment-item attachment-item-actions" key={attachment.id}>
+                                <div>
+                                  <strong>{attachment.name}</strong>
+                                  <span>{formatBytes(attachment.size)}</span>
+                                </div>
+                                <a className="ghost-link" download={attachment.name} href={attachment.url}>
+                                  Baixar
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className="ticket-chat-composer">
+                  <label className="field-block field-full">
+                    <span>Responder no acompanhamento</span>
+                    <textarea
+                      disabled={!canEditTicket}
+                      onChange={(event) => setFollowUpDraft(event.target.value)}
+                      placeholder="Escreva uma orientação, dúvida ao solicitante, teste executado ou próximo passo."
+                      value={followUpDraft}
+                    />
+                  </label>
+                  <div className="ticket-create-actions compact-actions">
+                    <select disabled={!canEditTicket} onChange={(event) => setFollowUpVisibility(event.target.value)} value={followUpVisibility}>
+                      <option value="public">Público</option>
+                      <option value="private">Interno</option>
+                    </select>
+                    {canEditTicket ? (
+                      <button className="primary-button interactive-button" onClick={handleAddFollowUp} type="button">
+                        Enviar acompanhamento
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
 
               {activeDetailWorkspace === "followup" ? (
               <section className="ticket-attachment-panel ticket-glpi-workspace">
