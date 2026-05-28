@@ -583,15 +583,17 @@ function TicketsPage() {
         tone: "conversation-form",
         visibility: "solicitante",
       },
-      ...detailTimeline.map((entry) => ({
-        ...entry,
-        message: entry.title,
-        meta: [
-          entry.source === "followUp" ? "Acompanhamento" : entry.source === "approval" ? "Aprovação" : "Movimentação",
-          entry.visibility === "private" ? "Interno" : entry.visibility === "approval" ? "Aprovação" : entry.visibility === "audit" ? "Auditoria" : "Público",
-        ],
-        tone: entry.source === "followUp" ? "conversation-followup" : entry.source === "approval" ? "conversation-approval" : "conversation-audit",
-      })),
+      ...detailTimeline
+        .filter((entry) => entry.source !== "history")
+        .map((entry) => ({
+          ...entry,
+          message: entry.title,
+          meta: [
+            entry.source === "followUp" ? "Acompanhamento" : entry.source === "approval" ? "Aprovação" : "Movimentação",
+            entry.visibility === "private" ? "Interno" : entry.visibility === "approval" ? "Aprovação" : "Público",
+          ],
+          tone: entry.source === "followUp" ? "conversation-followup" : entry.source === "approval" ? "conversation-approval" : "conversation-task",
+        })),
       ...(detailTicket.subtasks || []).map((task) => ({
         id: `conversation-task-${task.id}`,
         source: "task",
@@ -3587,7 +3589,7 @@ function TicketsPage() {
                 <div className="attachment-toolbar glpi-subbar">
                   <div>
                     <strong>Timeline visual do ticket</strong>
-                    <span>Auditoria, acompanhamentos publicos e privados em ordem cronologica unica.</span>
+                    <span>Eventos técnicos, alterações de status e aprovações para consulta interna.</span>
                   </div>
                 </div>
                 <div className="ticket-inline-filter-bar">
