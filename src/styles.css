@@ -3403,6 +3403,12 @@ textarea:focus {
   align-items: end;
 }
 
+.dashboard-period-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .dashboard-filter-grid label {
   display: grid;
   gap: 0.4rem;
@@ -3458,6 +3464,13 @@ textarea:focus {
   color: var(--text);
   font-size: 1.5rem;
   overflow-wrap: anywhere;
+}
+
+.dashboard-status-card small {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .dashboard-review-strip {

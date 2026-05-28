@@ -42,8 +42,8 @@ function formatDelta(currentValue, previousValue) {
 
 function formatSlaTrend(currentValue, previousValue) {
   const delta = Number(currentValue || 0) - Number(previousValue || 0);
-  if (Math.abs(delta) < 0.1) return "→";
-  return delta > 0 ? "↑" : "↓";
+  if (Math.abs(delta) < 0.1) return "estável";
+  return delta > 0 ? "subiu" : "caiu";
 }
 
 function getSlaComplianceForTickets(items, openStatuses) {
@@ -574,7 +574,8 @@ function DashboardPage() {
       previousRate,
       trend: formatSlaTrend(currentRate, previousRate),
       periodLabel,
-      summary: `${currentRate}% ${formatSlaTrend(currentRate, previousRate)} (meta: 85% | ${periodLabel})`,
+      summary: `${currentRate}% no prazo`,
+      detail: `Meta: 85% | Tendência: ${formatSlaTrend(currentRate, previousRate)} | Período: ${periodLabel}`,
     };
   }, [customEndDate, customStartDate, openStatuses, periodFilter, tickets]);
 
@@ -690,8 +691,9 @@ function DashboardPage() {
           </div>
           <div className="dashboard-status-strip">
             <article className="dashboard-status-card">
-              <span>SLA atual</span>
+              <span>Cumprimento de SLA</span>
               <strong>{slaContext.summary}</strong>
+              <small>{slaContext.detail}</small>
             </article>
             <article className="dashboard-status-card dashboard-status-card-success">
               <span>Resolucao</span>
@@ -1256,6 +1258,29 @@ function DashboardPage() {
             Ver chamados
           </Link>
         </div>
+        <div className="dashboard-period-pills" aria-label="Escolher período do dashboard">
+          {[
+            ["30", "30 dias"],
+            ["90", "90 dias"],
+            ["180", "180 dias"],
+            ["all", "Histórico"],
+          ].map(([value, label]) => (
+            <button
+              className={`filter-pill interactive-button${periodFilter === value ? " is-active" : ""}`}
+              key={value}
+              onClick={() => {
+                setPeriodFilter(value);
+                if (value !== "custom") {
+                  setCustomStartDate("");
+                  setCustomEndDate("");
+                }
+              }}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="glpi-form-grid dashboard-filter-grid">
           <label>
             <span>Periodo</span>
@@ -1306,7 +1331,7 @@ function DashboardPage() {
         <div className="dashboard-filter-summary" aria-live="polite">
           <strong>{totalTickets} chamados no recorte atual</strong>
           <span>{activeFilterCount ? `${activeFilterCount} filtro(s) aplicado(s)` : "Visao padrao dos ultimos 90 dias"}</span>
-          <span>{slaContext.summary} | {resolutionRate}% resolvidos | {criticalOpen} críticos abertos</span>
+          <span>{slaContext.summary} | {slaContext.detail} | {resolutionRate}% resolvidos | {criticalOpen} críticos abertos</span>
         </div>
         <div className="dashboard-review-strip">
           {dashboardReviewInsights.map((insight) => (
