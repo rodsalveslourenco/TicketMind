@@ -304,10 +304,26 @@ function protectIncomingUsers(previousState = {}, nextState = {}) {
   });
 }
 
-function applyServerStateProtections(previousState = {}, nextState = {}) {
+function protectIncomingTickets(previousState = {}, nextState = {}, requestUser = null) {
+  const previousTickets = Array.isArray(previousState.tickets) ? previousState.tickets : [];
+  const nextTickets = Array.isArray(nextState.tickets) ? nextState.tickets : null;
+  if (!nextTickets) return previousTickets;
+
+  const canDeleteTickets = hasAnyPermission(requestUser, ["tickets_delete", "tickets_admin"]);
+  if (canDeleteTickets || nextTickets.length >= previousTickets.length) {
+    return nextTickets;
+  }
+
+  const nextTicketIds = new Set(nextTickets.map((ticket) => String(ticket?.id || "").trim()).filter(Boolean));
+  const preservedTickets = previousTickets.filter((ticket) => !nextTicketIds.has(String(ticket?.id || "").trim()));
+  return [...nextTickets, ...preservedTickets];
+}
+
+function applyServerStateProtections(previousState = {}, nextState = {}, requestUser = null) {
   return {
     ...nextState,
     users: protectIncomingUsers(previousState, nextState),
+    tickets: protectIncomingTickets(previousState, nextState, requestUser),
   };
 }
 
@@ -328,7 +344,7 @@ function buildAdministrativeAuditLogs(changes = [], actor = {}, origin = "") {
 
 async function persistStateChange(request, response, auth, nextState) {
   const previousState = auth?.state || (await readState());
-  const protectedState = applyServerStateProtections(previousState, nextState);
+  const protectedState = applyServerStateProtections(previousState, nextState, auth.requestUser);
   const criticalChanges = summarizeCriticalStateChanges(previousState, protectedState);
   const deniedChanges = criticalChanges.filter((change) => !isAllowedCriticalChange(auth.requestUser, change));
 
