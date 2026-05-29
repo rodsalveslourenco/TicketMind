@@ -3,5 +3,6 @@ dist/
 *.log
 data/*.sqlite
 data/logs/
+backups/
 .tmp-db-test/
 .tmp-central-smoke/
