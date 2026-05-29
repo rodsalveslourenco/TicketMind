@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { createTicketRequest, loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
+import { createTicketRequest, getRealtimeClientId, loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
 import {
   buildEmptyPermissions,
   getRolePermissions,
@@ -1317,6 +1317,36 @@ export function AppDataProvider({ children }) {
       cancelled = true;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!serverReady || !user?.id || typeof window === "undefined" || typeof window.EventSource === "undefined") {
+      return undefined;
+    }
+
+    const clientId = getRealtimeClientId();
+    const stream = new window.EventSource(`/api/state/stream?clientId=${encodeURIComponent(clientId)}`);
+
+    stream.addEventListener("state", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (payload?.sourceClientId && payload.sourceClientId === clientId) return;
+        if (!payload?.state) return;
+        skipNextPersistenceRef.current = true;
+        setData(mergeCollections(payload.state));
+      } catch (error) {
+        console.error("Falha ao aplicar atualizacao em tempo real", error);
+      }
+    });
+
+    stream.addEventListener("ping", () => {});
+    stream.onerror = (error) => {
+      console.warn("Atualizacao em tempo real reconectando", error);
+    };
+
+    return () => {
+      stream.close();
+    };
+  }, [serverReady, user?.id]);
 
   useEffect(() => {
     if (!serverReady || !user?.id) return undefined;

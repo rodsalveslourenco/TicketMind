@@ -51,6 +51,7 @@ const collectionService = createCollectionService({ stateService });
 const approvalReminderPollMs = Math.max(60 * 1000, Number(process.env.APPROVAL_REMINDER_POLL_MS) || 5 * 60 * 1000);
 let approvalReminderTimer = null;
 let escalationTimer = null;
+const realtimeClients = new Set();
 
 app.use(express.json({ limit: "15mb" }));
 
@@ -119,6 +120,33 @@ function buildPublicHashUrl(request, hashPath = "") {
 
 function mapById(items = []) {
   return new Map((Array.isArray(items) ? items : []).filter(Boolean).map((item) => [String(item.id || "").trim(), item]));
+}
+
+function getRealtimeSourceClientId(request) {
+  return String(request.headers["x-ticketmind-client"] || request.query?.clientId || "").trim();
+}
+
+function sendRealtimeEvent(client, eventName, payload) {
+  try {
+    client.response.write(`event: ${eventName}\n`);
+    client.response.write(`data: ${JSON.stringify(payload)}\n\n`);
+  } catch {
+    realtimeClients.delete(client);
+  }
+}
+
+function broadcastStateUpdate(nextState, sourceClientId = "") {
+  if (!realtimeClients.size) return;
+  for (const client of realtimeClients) {
+    const clientState = prepareStateForClient(nextState, client.user);
+    sendRealtimeEvent(client, "state", {
+      sourceClientId,
+      payloadVersion: nextState.payloadVersion,
+      schemaVersion: nextState.schemaVersion,
+      updatedAt: new Date().toISOString(),
+      state: clientState,
+    });
+  }
 }
 
 function summarizeCriticalStateChanges(previousState = {}, nextState = {}) {
@@ -338,6 +366,8 @@ async function persistStateChange(request, response, auth, nextState) {
   }).catch((error) => {
     console.error("notification processing failed", error);
   });
+
+  broadcastStateUpdate(persistedState, getRealtimeSourceClientId(request));
 
   return persistedState;
 }
@@ -729,6 +759,34 @@ app.get("/api/state", handleAsync(async (request, response) => {
   response.json(prepareStateForClient(auth.state, auth.requestUser));
 }));
 
+app.get("/api/state/stream", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+
+  response.setHeader("Content-Type", "text/event-stream");
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.setHeader("Connection", "keep-alive");
+  response.setHeader("X-Accel-Buffering", "no");
+  response.flushHeaders?.();
+
+  const client = {
+    id: getRealtimeSourceClientId(request) || `stream-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    response,
+    user: auth.requestUser,
+  };
+  realtimeClients.add(client);
+  sendRealtimeEvent(client, "ping", { ok: true, connectedAt: new Date().toISOString() });
+
+  const heartbeat = setInterval(() => {
+    sendRealtimeEvent(client, "ping", { ok: true, at: new Date().toISOString() });
+  }, 25000);
+
+  request.on("close", () => {
+    clearInterval(heartbeat);
+    realtimeClients.delete(client);
+  });
+}));
+
 app.put("/api/state", handleAsync(async (request, response) => {
   const previousState = await readState();
   const auth = await requireAuthenticatedUser(request, response, previousState);
@@ -858,6 +916,8 @@ app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, 
   }).catch((error) => {
     console.error("public notification processing failed", error);
   });
+
+  broadcastStateUpdate(persistedState, getRealtimeSourceClientId(request));
 
   const persistedTicket =
     (persistedState.tickets || []).find((candidate) => String(candidate.id || "").trim() === String(ticket.id || "").trim()) || ticket;

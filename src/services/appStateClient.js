@@ -1,5 +1,11 @@
 import { requestJson } from "../lib/api.js";
 
+const REALTIME_CLIENT_ID = `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+export function getRealtimeClientId() {
+  return REALTIME_CLIENT_ID;
+}
+
 export async function loadAppState() {
   return requestJson("/api/state");
 }
@@ -7,6 +13,9 @@ export async function loadAppState() {
 export async function persistAppState(nextState) {
   return requestJson("/api/state", {
     method: "PUT",
+    headers: {
+      "X-TicketMind-Client": REALTIME_CLIENT_ID,
+    },
     body: JSON.stringify(nextState),
   });
 }
@@ -14,6 +23,9 @@ export async function persistAppState(nextState) {
 export async function createTicketRequest(payload) {
   const envelope = await requestJson("/api/v1/tickets", {
     method: "POST",
+    headers: {
+      "X-TicketMind-Client": REALTIME_CLIENT_ID,
+    },
     body: JSON.stringify(payload),
   });
   return envelope?.data || null;
