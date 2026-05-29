@@ -14,8 +14,26 @@ const roleAliases = {
 };
 
 const defaultProfilePermissionBackfills = {
-  "profile-analyst": ["service_center_view_department_tickets", "service_center_attend_linked_departments"],
-  "profile-infra": ["service_center_view_department_tickets", "service_center_attend_linked_departments"],
+  "profile-analyst": [
+    "tickets_edit",
+    "tickets_close",
+    "tickets_reopen",
+    "tickets_change_priority",
+    "tickets_change_status",
+    "tickets_assign",
+    "service_center_view_department_tickets",
+    "service_center_attend_linked_departments",
+  ],
+  "profile-infra": [
+    "tickets_edit",
+    "tickets_close",
+    "tickets_reopen",
+    "tickets_change_priority",
+    "tickets_change_status",
+    "tickets_assign",
+    "service_center_view_department_tickets",
+    "service_center_attend_linked_departments",
+  ],
   "profile-area-manager": [
     "tickets_edit",
     "tickets_assign",

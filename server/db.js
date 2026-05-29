@@ -30,6 +30,8 @@ const systemLogsJsonPath = path.join(logsDir, "system-logs.jsonl");
 const systemLogsTxtPath = path.join(logsDir, "system-logs.txt");
 const wasmPath = path.join(rootDir, "node_modules", "sql.js", "dist");
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
+const postgresRetryAttempts = Math.max(1, Number(process.env.POSTGRES_RETRY_ATTEMPTS) || 5);
+const postgresRetryBaseDelayMs = Math.max(100, Number(process.env.POSTGRES_RETRY_BASE_DELAY_MS) || 250);
 
 const staticSeedState = {
   ...seedData,
@@ -1235,15 +1237,63 @@ function getPgPool() {
     pgPool = new Pool({
       connectionString: databaseUrl,
       ssl: databaseUrl.includes("render.com") ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: Number(process.env.POSTGRES_CONNECTION_TIMEOUT_MS) || 10000,
+      idleTimeoutMillis: Number(process.env.POSTGRES_IDLE_TIMEOUT_MS) || 30000,
       keepAlive: true,
     });
+    const rawQuery = pgPool.query.bind(pgPool);
+    pgPool.query = (...args) => {
+      if (typeof args[args.length - 1] === "function") {
+        return rawQuery(...args);
+      }
+      return withPostgresRetry(() => rawQuery(...args), "postgres query");
+    };
     pgPool.on("error", (error) => {
       console.error("postgres pool error", error);
     });
   }
   return pgPool;
+}
+
+function isTransientPostgresError(error) {
+  const code = String(error?.code || "").trim().toUpperCase();
+  const message = String(error?.message || "").trim().toLowerCase();
+  return (
+    ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P01", "57P02", "57P03", "08006", "08001"].includes(code) ||
+    message.includes("connection terminated unexpectedly") ||
+    message.includes("connect econnrefused") ||
+    message.includes("connection timeout") ||
+    message.includes("terminating connection") ||
+    message.includes("the database system is starting up")
+  );
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function withPostgresRetry(operation, label = "postgres operation") {
+  let lastError = null;
+  for (let attempt = 1; attempt <= postgresRetryAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientPostgresError(error) || attempt >= postgresRetryAttempts) {
+        throw error;
+      }
+      const delayMs = postgresRetryBaseDelayMs * 2 ** (attempt - 1);
+      console.warn(`${label} failed transiently; retrying in ${delayMs}ms`, {
+        attempt,
+        code: error?.code,
+        message: error?.message,
+      });
+      await wait(delayMs);
+    }
+  }
+  throw lastError;
 }
 
 function attachPgClientErrorHandler(client) {
@@ -1266,7 +1316,7 @@ async function rollbackPgTransaction(client) {
 
 async function withPgClient(callback) {
   const pool = getPgPool();
-  const client = await pool.connect();
+  const client = await withPostgresRetry(() => pool.connect(), "postgres connect");
   const detachErrorHandler = attachPgClientErrorHandler(client);
   try {
     return await callback(client);
