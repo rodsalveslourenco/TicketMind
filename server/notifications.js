@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { hasAnyPermission } from "../src/data/permissions.js";
+import { canViewAllTickets, canViewOwnTickets, hasAnyPermission } from "../src/data/permissions.js";
 import { analyzeTicketWithAI } from "./aiTicketInsights.js";
 import { decryptSecret, encryptSecret } from "./security.js";
 
@@ -630,6 +630,70 @@ function canExposePasswordReveal(requestUser) {
   return hasAnyPermission(requestUser, ["users_reset_password", "users_admin"]) || normalizeText(requestUser?.department) === "ti";
 }
 
+function getServiceCenterDepartmentConfig(serviceCenter = {}, departmentId = "") {
+  const normalizedDepartmentId = String(departmentId || "").trim();
+  const config = normalizedDepartmentId ? serviceCenter?.departments?.[normalizedDepartmentId] || {} : {};
+  return {
+    active: config.active !== false,
+    responsibleUserIds: Array.isArray(config.responsibleUserIds) ? config.responsibleUserIds.map((id) => String(id || "").trim()).filter(Boolean) : [],
+  };
+}
+
+function getScopedServiceDepartmentIds(user, departments = [], serviceCenter = {}) {
+  if (!user || !serviceCenter?.enabled) return [];
+  const scopedDepartmentIds = new Set();
+  const userId = String(user.id || "").trim();
+
+  for (const department of departments || []) {
+    const config = getServiceCenterDepartmentConfig(serviceCenter, department.id);
+    if (config.active && config.responsibleUserIds.includes(userId)) {
+      scopedDepartmentIds.add(department.id);
+    }
+  }
+
+  const userDepartmentId = String(user.departmentId || "").trim();
+  if (userDepartmentId) {
+    const department = (departments || []).find((candidate) => String(candidate.id || "") === userDepartmentId);
+    if (department && normalizeText(department.status) === "ativo") {
+      const config = getServiceCenterDepartmentConfig(serviceCenter, userDepartmentId);
+      if (config.active) scopedDepartmentIds.add(userDepartmentId);
+    }
+  }
+
+  return Array.from(scopedDepartmentIds);
+}
+
+function canViewAllTicketsForClient(user, departments = [], serviceCenter = {}) {
+  if (!user) return false;
+  if (!serviceCenter?.enabled) return canViewAllTickets(user);
+  return hasAnyPermission(user, ["tickets_admin", "service_center_view_all_tickets"]);
+}
+
+function canViewDepartmentTicketsForClient(user, departments = [], serviceCenter = {}) {
+  if (!user || !serviceCenter?.enabled) return false;
+  if (!hasAnyPermission(user, ["service_center_view_department_tickets", "service_center_attend_linked_departments", "tickets_admin"])) {
+    return false;
+  }
+  return getScopedServiceDepartmentIds(user, departments, serviceCenter).length > 0;
+}
+
+function filterTicketsForClient(tickets = [], requestUser = null, state = {}) {
+  if (!requestUser) return [];
+  const departments = Array.isArray(state.departments) ? state.departments : [];
+  const serviceCenter = state.serviceCenter || {};
+  if (canViewAllTicketsForClient(requestUser, departments, serviceCenter)) return tickets;
+
+  const scopedDepartmentIds = new Set(getScopedServiceDepartmentIds(requestUser, departments, serviceCenter));
+  const canViewDepartmentTickets = canViewDepartmentTicketsForClient(requestUser, departments, serviceCenter);
+  if (!canViewOwnTickets(requestUser) && !canViewDepartmentTickets) return [];
+
+  return tickets.filter((ticket) => {
+    if (canViewOwnTickets(requestUser) && ticket.requesterId === requestUser.id) return true;
+    if (!canViewDepartmentTickets) return false;
+    return scopedDepartmentIds.has(String(ticket.departmentId || "").trim());
+  });
+}
+
 export function prepareStateForClient(state, requestUser = null) {
   const smtpSettings = state?.smtpSettings || {};
   const envSmtpSettings = getEnvSmtpSettings();
@@ -647,6 +711,7 @@ export function prepareStateForClient(state, requestUser = null) {
   return {
     ...state,
     users,
+    tickets: filterTicketsForClient(Array.isArray(state?.tickets) ? state.tickets : [], requestUser, state),
     smtpSettings: {
       ...envSmtpSettings,
       ...smtpSettings,
