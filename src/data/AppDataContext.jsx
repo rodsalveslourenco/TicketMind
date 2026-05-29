@@ -9,6 +9,7 @@ import {
   canViewAllTickets,
   canViewOwnTickets,
   hasAnyPermission,
+  isSystemAdministrator,
   listPermissionKeys,
   normalizeRoleName,
   normalizeUserPermissions,
@@ -855,8 +856,7 @@ function getScopedServiceDepartmentIds(user, departments = [], serviceCenter = d
 
 function canViewAllTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
   if (!user) return false;
-  if (!serviceCenter?.enabled) return canViewAllTickets(user);
-  return hasAnyPermission(user, ["tickets_admin", "service_center_view_all_tickets"]);
+  return isSystemAdministrator(user) || canViewAllTickets(user);
 }
 
 function canViewDepartmentTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {

@@ -360,8 +360,12 @@ export function canViewOwnTickets(user) {
   return hasAnyPermission(user, ["tickets_view_own", "tickets_view_all", "tickets_admin"]);
 }
 
+export function isSystemAdministrator(user) {
+  return normalizeText(user?.role) === "administrador da plataforma" || hasPermission(user, "users_admin");
+}
+
 export function canViewAllTickets(user) {
-  return isTechnologyDepartment(user) && hasAnyPermission(user, ["tickets_view_all", "tickets_admin"]);
+  return isSystemAdministrator(user);
 }
 
 export function isTechnologyDepartment(user) {

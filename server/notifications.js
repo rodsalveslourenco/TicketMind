@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { canViewAllTickets, canViewOwnTickets, hasAnyPermission } from "../src/data/permissions.js";
+import { canViewAllTickets, canViewOwnTickets, hasAnyPermission, isSystemAdministrator } from "../src/data/permissions.js";
 import { analyzeTicketWithAI } from "./aiTicketInsights.js";
 import { decryptSecret, encryptSecret } from "./security.js";
 
@@ -665,8 +665,7 @@ function getScopedServiceDepartmentIds(user, departments = [], serviceCenter = {
 
 function canViewAllTicketsForClient(user, departments = [], serviceCenter = {}) {
   if (!user) return false;
-  if (!serviceCenter?.enabled) return canViewAllTickets(user);
-  return hasAnyPermission(user, ["tickets_admin", "service_center_view_all_tickets"]);
+  return isSystemAdministrator(user) || canViewAllTickets(user);
 }
 
 function canViewDepartmentTicketsForClient(user, departments = [], serviceCenter = {}) {
