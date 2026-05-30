@@ -1143,6 +1143,11 @@ app.use((error, request, response, next) => {
   response.status(statusCode).send(message);
 });
 
+// TicketMind 2 (app novo, mesmo backend/banco) servido em /v2.
+app.get(["/v2", "/v2/*"], (request, response) => {
+  response.sendFile(path.join(distPath, "v2", "index.html"));
+});
+
 app.get("*", (request, response) => {
   if (request.path.startsWith("/api/")) {
     response.status(404).json({ error: "Rota nao encontrada." });

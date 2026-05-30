@@ -7,13 +7,14 @@
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite --host 0.0.0.0 --port 5180 --strictPort",
     "dev:server": "node --watch --watch-preserve-output server/index.js",
-    "build": "vite build",
+    "build": "vite build && vite build --config v2/vite.config.js",
     "test:notifications": "node --test tests/notifications.test.mjs",
     "smoke:release": "node scripts/release-smoke.mjs",
     "validate": "npm run build && npm run smoke:release",
     "deploy:render": "node scripts/render-deploy.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 4180",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "build:v2": "vite build --config v2/vite.config.js"
   },
   "dependencies": {
     "concurrently": "^9.1.2",
