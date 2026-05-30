@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { Reports, CollectionView, COLLECTIONS, ServiceCenterView, Dashboard } from "./modules.jsx";
+import { Reports, CollectionView, COLLECTIONS, ServiceCenterView, Dashboard, Autocomplete } from "./modules.jsx";
 
 const LOGO = `${import.meta.env.BASE_URL}logo-wega.png`;
 const STATUS_OPTIONS = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
@@ -293,10 +293,7 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
         <div className="section-title">Atendimento</div>
         <div className="form-row">
           <div className="field"><label>Responsavel</label>
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-              <option value="">Sem responsavel</option>
-              {assigneeNames.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <Autocomplete value={assignee} onChange={setAssignee} allowFreeText placeholder="Sem responsavel" options={assigneeNames.map((n) => ({ value: n, label: n }))} />
           </div>
           <div className="field"><label>Observadores (watchers)</label>
             <select multiple value={watcherIds} onChange={(e) => setWatcherIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 90 }}>
@@ -325,8 +322,8 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
 
         <div className="section-title">Vinculos</div>
         <div className="form-row">
-          <div className="field"><label>Ativo</label><select value={assetId} onChange={(e) => setAssetId(e.target.value)}><option value="">— Nenhum —</option>{(assets || []).map((a) => <option key={a.id} value={a.id}>{a.assetTag || a.name || a.id}</option>)}</select></div>
-          <div className="field"><label>Projeto</label><select value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">— Nenhum —</option>{(projects || []).map((pr) => <option key={pr.id} value={pr.id}>{pr.name || pr.id}</option>)}</select></div>
+          <div className="field"><label>Ativo</label><Autocomplete value={assetId} onChange={setAssetId} placeholder="Buscar ativo..." options={(assets || []).map((a) => ({ value: a.id, label: a.assetTag || a.name || a.id }))} /></div>
+          <div className="field"><label>Projeto</label><Autocomplete value={projectId} onChange={setProjectId} placeholder="Buscar projeto..." options={(projects || []).map((pr) => ({ value: pr.id, label: pr.name || pr.id }))} /></div>
         </div>
         <div className="field"><label>Base de conhecimento</label><select multiple value={knowledgeIds} onChange={(e) => setKnowledgeIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 80 }}>{(knowledgeArticles || []).map((k) => <option key={k.id} value={k.id}>{k.title || k.id}</option>)}</select></div>
         <div className="drawer-actions"><button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar vinculos</button></div>
@@ -644,6 +641,17 @@ function PublicPortal({ token }) {
     } catch (e) { setErr(e.message || "Falha ao abrir o chamado."); }
     finally { setBusy(false); }
   };
+  const [lookup, setLookup] = useState(null);
+  const doLookup = async () => {
+    const email = form.requesterEmail.trim();
+    if (!email) return;
+    try {
+      const env = await api.publicRequester(token, email);
+      const r = env?.data || env;
+      setLookup(r || null);
+      setForm((f) => ({ ...f, requesterName: f.requesterName || r?.requesterName || "", requesterDepartmentId: f.requesterDepartmentId || r?.requesterDepartmentId || "", requesterLocation: f.requesterLocation || r?.requesterLocation || "" }));
+    } catch { setLookup(null); }
+  };
   const destDepts = boot?.destinationDepartments || [];
   const reqDepts = boot?.requesterDepartments || [];
   const locations = boot?.locations || [];
@@ -666,8 +674,26 @@ function PublicPortal({ token }) {
           <>
             <div className="form-row">
               <div className="field"><label>Seu nome</label><input value={form.requesterName} onChange={set("requesterName")} /></div>
-              <div className="field"><label>Seu e-mail</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
+              <div className="field"><label>Seu e-mail</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={form.requesterEmail} onChange={set("requesterEmail")} onBlur={doLookup} />
+                  <button type="button" className="btn btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={doLookup}>Buscar</button>
+                </div>
+              </div>
             </div>
+            {lookup && (lookup.hasRegisteredUser || lookup.hasPreRegisteredUser || (lookup.previousTickets || []).length) ? (
+              <div className="portal-prev">
+                {lookup.requesterName ? <div style={{ fontSize: 13 }}>Ola, <strong>{lookup.requesterName}</strong>{lookup.hasPreRegisteredUser && !lookup.hasRegisteredUser ? " (pre-cadastro)" : ""}.</div> : null}
+                {(lookup.previousTickets || []).length ? (
+                  <>
+                    <div style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 2px" }}>Seus chamados:</div>
+                    {(lookup.previousTickets || []).slice(0, 6).map((t) => (
+                      <div className="pt" key={t.id}><span><strong>{t.id}</strong> {t.title || ""}</span><span>{t.status || ""}</span></div>
+                    ))}
+                  </>
+                ) : <div style={{ fontSize: 12, color: "var(--muted)" }}>Nenhum chamado anterior.</div>}
+              </div>
+            ) : null}
             <div className="form-row">
               <div className="field"><label>Seu setor *</label>
                 <select value={form.requesterDepartmentId} onChange={set("requesterDepartmentId")}>

@@ -60,7 +60,7 @@ function filterPublicDepartments(state = {}) {
     const config = getServiceCenterDepartmentConfig(state.serviceCenter || {}, department.id);
     return (
       normalizeText(department.status || "Ativo") === "ativo" &&
-      Boolean(config.active) &&
+      config.active !== false &&
       Boolean(config.acceptsTickets) &&
       Boolean(config.showInRequestPortal)
     );

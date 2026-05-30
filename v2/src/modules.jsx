@@ -3,6 +3,35 @@ import { useEffect, useMemo, useState } from "react";
 export function norm(value) { return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 const OPEN_STATUSES = ["aberto", "em andamento", "em espera", "pausado", "aguardando usuario", "aguardando aprovacao", "reaberto"];
 export function isOpen(status) { return OPEN_STATUSES.includes(norm(status)); }
+export function Autocomplete({ value, onChange, options, placeholder, allowFreeText = false }) {
+  const opts = Array.isArray(options) ? options : [];
+  const selected = opts.find((o) => String(o.value) === String(value));
+  const [q, setQ] = useState(selected ? selected.label : (allowFreeText ? String(value || "") : ""));
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const sel = opts.find((o) => String(o.value) === String(value));
+    setQ(sel ? sel.label : (allowFreeText ? String(value || "") : ""));
+  }, [value]);
+  const filtered = opts.filter((o) => norm(o.label).includes(norm(q))).slice(0, 60);
+  const pick = (o) => { onChange(o.value); setQ(o.label); setOpen(false); };
+  return (
+    <div className="ac">
+      <input
+        value={q}
+        placeholder={placeholder || "Digite para buscar..."}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); if (allowFreeText) onChange(e.target.value); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => { setOpen(false); if (!allowFreeText) { const sel = opts.find((o) => String(o.value) === String(value)); setQ(sel ? sel.label : ""); } }, 150)}
+      />
+      {open && filtered.length > 0 && (
+        <div className="ac-list">
+          {filtered.map((o) => <div key={o.value} className="ac-item" onMouseDown={() => pick(o)}>{o.label}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function val(item, key) {
   const v = item?.[key];
   if (v === null || v === undefined || v === "") return "—";
@@ -290,7 +319,15 @@ export function ServiceCenterView({ serviceCenter, departments, users, onSave, s
   const deptCfg = sc.departments || {};
   const setProfile = (type, text) => { updPath("ticketStatusProfiles", { [type]: text.split(/[\n,]/).map((x) => x.trim()).filter(Boolean) }); };
   const setReason = (key, text) => { updPath("statusReasonRules", { [key]: text.split(/[\n,]/).map((x) => x.trim()).filter(Boolean) }); };
-  const setDept = (id, patch) => { setSc((cur) => ({ ...cur, departments: { ...(cur.departments || {}), [id]: { ...(cur.departments?.[id] || {}), ...patch } } })); setDirty(true); };
+  const setDept = (id, patch) => {
+    setSc((cur) => {
+      const existing = cur.departments?.[id] || {};
+      const next = { ...existing, ...patch };
+      if (next.active === undefined) next.active = true; // grava ativo explicito
+      return { ...cur, departments: { ...(cur.departments || {}), [id]: next } };
+    });
+    setDirty(true);
+  };
 
   return (
     <div>

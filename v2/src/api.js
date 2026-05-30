@@ -39,6 +39,7 @@ export const api = {
   changePassword: (currentPassword, newPassword) => request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
   publicIntake: (token) => request(`/api/public/intake/${encodeURIComponent(token)}`),
   createPublicTicket: (token, payload) => request(`/api/public/intake/${encodeURIComponent(token)}/tickets`, { method: "POST", body: JSON.stringify(payload) }),
+  publicRequester: (token, email) => request(`/api/public/intake/${encodeURIComponent(token)}/requester?email=${encodeURIComponent(email)}`),
   createV1: (domain, item) => request(`/api/v1/${encodeURIComponent(domain)}`, { method: "POST", body: JSON.stringify(item) }),
   saveV1: (domain, id, item) => request(`/api/v1/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(item) }),
   deleteV1: (domain, id) => request(`/api/v1/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "DELETE" }),

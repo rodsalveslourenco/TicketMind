@@ -228,3 +228,13 @@ textarea.solution { width: 100%; min-height: 96px; padding: 11px 12px; border: 1
   .collapse-btn { display: none; }
   .report-grid { grid-template-columns: 1fr; }
 }
+
+
+/* AUTOCOMPLETE */
+.ac { position: relative; }
+.ac input { width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; }
+.ac-list { position: absolute; left: 0; right: 0; top: 46px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); max-height: 220px; overflow: auto; z-index: 40; }
+.ac-item { padding: 9px 12px; cursor: pointer; font-size: 14px; }
+.ac-item:hover { background: var(--surface-2); }
+.portal-prev { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+.portal-prev .pt { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
