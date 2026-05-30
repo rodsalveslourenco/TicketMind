@@ -186,6 +186,8 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
   const [followText, setFollowText] = useState("");
   const [followVis, setFollowVis] = useState("public");
   const [checkText, setCheckText] = useState("");
+  const [approverId, setApproverId] = useState(ticket.approval?.currentApproverId || ticket.approval?.approverId || "");
+  const [approvalReason, setApprovalReason] = useState("");
   useEffect(() => {
     setStatus(ticket.status || "Aberto");
     setSolution(ticket.resolutionNotes || "");
@@ -202,6 +204,8 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
     setKnowledgeIds(Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : []);
     setFollowText("");
     setCheckText("");
+    setApproverId(ticket.approval?.currentApproverId || ticket.approval?.approverId || "");
+    setApprovalReason("");
   }, [ticket.id]);
 
   const deptList = departments || [];
@@ -247,6 +251,28 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
   };
   const toggleCheck = (id) => onSave(withDept({ ...ticket, checklistItems: checklist.map((c) => (c.id === id ? { ...c, done: !c.done } : c)) }));
   const removeCheck = (id) => onSave(withDept({ ...ticket, checklistItems: checklist.filter((c) => c.id !== id) }));
+  const approval = ticket.approval || {};
+  const canDecideApproval = Boolean((user?.id && (user.id === approval.currentApproverId || user.id === approval.approverId)) || hasPerm(user, ["tickets_admin"]));
+  const requestApproval = () => {
+    const ap = userList.find((u) => u.id === approverId);
+    const now = new Date().toISOString();
+    onSave(withDept({
+      ...ticket, status: "Aguardando aprovacao",
+      approval: { required: true, status: "pending", approverId, approverName: ap?.name || "", currentApproverId: approverId, currentApproverName: ap?.name || "", requestedAt: now, requestedById: user?.id || "", requestedByName: user?.name || "", decisionReason: "", history: [{ action: "requested", actorName: user?.name || "Sistema", createdAt: now }, ...(Array.isArray(approval.history) ? approval.history : [])] },
+    }));
+  };
+  const decideApproval = (action) => {
+    const now = new Date().toISOString();
+    const next = action === "approve" ? "approved" : "rejected";
+    const nextStatus = action === "approve" ? "Em andamento" : "Aguardando usuario";
+    const note = `Aprovacao ${next === "approved" ? "aprovada" : "rejeitada"}${approvalReason ? ": " + approvalReason : ""}`;
+    onSave(withDept({
+      ...ticket, status: nextStatus,
+      approval: { ...approval, status: next, decisionReason: approvalReason, decidedById: user?.id || "", decidedByName: user?.name || "", decidedAt: now, history: [{ action: next, actorName: user?.name || "Sistema", reason: approvalReason, createdAt: now }, ...(Array.isArray(approval.history) ? approval.history : [])] },
+      followUps: [{ id: `fu-${Date.now().toString(36)}`, message: note, visibility: "private", authorId: user?.id || "", authorName: user?.name || "Sistema", createdAt: now }, ...followUps],
+    }));
+    setApprovalReason("");
+  };
   const currentDeptName = deptList.find((d) => String(d.id) === String(ticket.departmentId))?.name || ticket.department || "—";
   const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
   const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
@@ -357,6 +383,34 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
             </label>
           ))}
         </div>
+
+        <div className="section-title">Aprovacao</div>
+        {approval.status === "pending" ? (
+          <div className="panel" style={{ boxShadow: "none", border: "1px solid var(--border)", padding: 14 }}>
+            <p style={{ margin: "0 0 8px" }}>Aguardando aprovacao de <strong>{approval.currentApproverName || approval.approverName || "—"}</strong>.</p>
+            {canDecideApproval ? (
+              <>
+                <textarea className="solution" style={{ minHeight: 56 }} value={approvalReason} onChange={(e) => setApprovalReason(e.target.value)} placeholder="Motivo da decisao (opcional)" />
+                <div className="drawer-actions">
+                  <button className="btn-ok" onClick={() => decideApproval("approve")} disabled={saving}>Aprovar</button>
+                  <button className="btn-reopen" onClick={() => decideApproval("reject")} disabled={saving}>Rejeitar</button>
+                </div>
+              </>
+            ) : <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>Somente o aprovador designado pode decidir.</p>}
+          </div>
+        ) : approval.status === "approved" || approval.status === "rejected" ? (
+          <p style={{ color: approval.status === "approved" ? "var(--ok)" : "var(--crit)" }}>
+            Aprovacao <strong>{approval.status === "approved" ? "aprovada" : "rejeitada"}</strong>{approval.decisionReason ? `: ${approval.decisionReason}` : ""}{approval.decidedByName ? ` (por ${approval.decidedByName})` : ""}.
+          </p>
+        ) : (
+          <div className="drawer-actions">
+            <select className="status-select" value={approverId} onChange={(e) => setApproverId(e.target.value)} style={{ minWidth: 200 }}>
+              <option value="">— Aprovador —</option>
+              {userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <button className="btn btn-ghost" onClick={requestApproval} disabled={saving || !approverId}>Solicitar aprovacao</button>
+          </div>
+        )}
 
         <div className="section-title">Acompanhamentos</div>
         <div className="followup-add">
@@ -599,6 +653,90 @@ function ProfileView({ user, onChangePassword }) {
   );
 }
 
+function PublicPortal({ token }) {
+  const [boot, setBoot] = useState(null);
+  const [err, setErr] = useState("");
+  const [form, setForm] = useState({ requesterName: "", requesterEmail: "", requesterDepartmentId: "", requesterLocation: "", title: "", description: "", destinationDepartmentId: "", priority: "Media" });
+  const [busy, setBusy] = useState(false);
+  const [sentId, setSentId] = useState("");
+  useEffect(() => {
+    (async () => {
+      try { const env = await api.publicIntake(token); setBoot(env?.data || env || {}); }
+      catch (e) { setErr(e.message || "Canal de abertura indisponivel."); }
+    })();
+  }, [token]);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const submit = async () => {
+    if (!form.title.trim() || !form.description.trim() || !form.destinationDepartmentId) return;
+    setBusy(true); setErr("");
+    try {
+      const env = await api.createPublicTicket(token, {
+        requesterName: form.requesterName, requesterEmail: form.requesterEmail,
+        requesterDepartmentId: form.requesterDepartmentId, requesterLocation: form.requesterLocation,
+        destinationDepartmentId: form.destinationDepartmentId,
+        title: form.title, description: form.description,
+        type: "Incidente", priority: form.priority, urgency: form.priority,
+      });
+      const t = env?.data || env;
+      setSentId(t?.id || "OK");
+    } catch (e) { setErr(e.message || "Falha ao abrir o chamado."); }
+    finally { setBusy(false); }
+  };
+  const destDepts = boot?.destinationDepartments?.length ? boot.destinationDepartments : (boot?.requesterDepartments || []);
+  const reqDepts = boot?.requesterDepartments || [];
+  const locations = boot?.locations || [];
+  return (
+    <div className="login-wrap">
+      <div className="login-card" style={{ maxWidth: 560 }}>
+        <Brand />
+        <h2 style={{ margin: "6px 0 2px" }}>{boot?.portal?.portalTitle || "Abrir chamado"}</h2>
+        <p className="brand-sub">{boot?.portal?.portalDescription || "Registre sua solicitacao para a equipe de atendimento."}</p>
+        {err && <div className="error-banner">{err}</div>}
+        {sentId ? (
+          <div>
+            <div className="kpi" style={{ textAlign: "center" }}><div className="label">Chamado registrado</div><div className="value ok">{sentId}</div></div>
+            <p style={{ color: "var(--muted)" }}>Guarde este numero para acompanhamento. Voce pode fechar esta pagina.</p>
+            <button className="btn btn-ghost" onClick={() => { setSentId(""); setForm({ requesterName: "", requesterEmail: "", requesterDepartmentId: "", requesterLocation: "", title: "", description: "", destinationDepartmentId: "", priority: "Media" }); }}>Abrir outro chamado</button>
+          </div>
+        ) : boot?.portal && boot.portal.enabled === false ? (
+          <div className="error-banner">A abertura externa esta desativada no momento.</div>
+        ) : (
+          <>
+            <div className="form-row">
+              <div className="field"><label>Seu nome</label><input value={form.requesterName} onChange={set("requesterName")} /></div>
+              <div className="field"><label>Seu e-mail</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
+            </div>
+            <div className="form-row">
+              <div className="field"><label>Seu setor *</label>
+                <select value={form.requesterDepartmentId} onChange={set("requesterDepartmentId")}>
+                  <option value="">— Selecionar —</option>
+                  {reqDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div className="field"><label>Seu local *</label>
+                <input list="portal-locais" value={form.requesterLocation} onChange={set("requesterLocation")} placeholder="Ex.: Matriz" />
+                <datalist id="portal-locais">{locations.map((l) => <option key={l.id} value={l.name} />)}</datalist>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="field"><label>Departamento de destino *</label>
+                <select value={form.destinationDepartmentId} onChange={set("destinationDepartmentId")}>
+                  <option value="">— Selecionar —</option>
+                  {destDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div className="field"><label>Prioridade</label><select value={form.priority} onChange={set("priority")}><option>Baixa</option><option>Media</option><option>Alta</option><option>Critica</option></select></div>
+            </div>
+            <div className="field"><label>Titulo *</label><input value={form.title} onChange={set("title")} /></div>
+            <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} /></div>
+            <button className="btn btn-primary" disabled={busy || !form.title.trim() || !form.description.trim() || !form.destinationDepartmentId || !form.requesterDepartmentId || !form.requesterLocation || !form.requesterName.trim() || !form.requesterEmail.trim()} onClick={submit}>{busy ? <span className="spinner" /> : "Abrir chamado"}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState(null);
@@ -617,7 +755,9 @@ export default function App() {
     if (d.currentUser) setUser(d.currentUser);
   };
 
+  const portalToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("portal") : null;
   useEffect(() => {
+    if (portalToken) { setBooting(false); return; }
     (async () => {
       try { const s = await api.session(); if (s?.user) { setUser(s.user); await loadState(); } }
       catch { /* sem sessao */ }
@@ -750,6 +890,7 @@ export default function App() {
     finally { setSaving(false); }
   };
 
+  if (portalToken) return <PublicPortal token={portalToken} />;
   if (booting) return <div className="center-load"><span className="spinner" style={{ borderTopColor: "#1565c0", borderColor: "#cbd5e1" }} /> &nbsp;Carregando...</div>;
   if (!user) return <Login onSuccess={onLoginSuccess} />;
 
