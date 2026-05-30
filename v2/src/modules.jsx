@@ -214,6 +214,21 @@ export function ServiceCenterView({ serviceCenter, departments, users, onSave, s
           <div className="field"><label>Token de acesso</label><input value={intake.accessToken || ""} onChange={(e) => updPath("publicIntake", { accessToken: e.target.value })} /></div>
         </div>
         <div className="field"><label>Descricao</label><textarea className="solution" value={intake.portalDescription || ""} onChange={(e) => updPath("publicIntake", { portalDescription: e.target.value })} /></div>
+        <div className="drawer-actions">
+          {!intake.accessToken && <button className="btn btn-ghost" onClick={() => updPath("publicIntake", { accessToken: `portal-${Math.random().toString(36).slice(2, 10)}` })}>Gerar token</button>}
+        </div>
+        {intake.accessToken ? (() => {
+          const link = `${typeof window !== "undefined" ? window.location.origin : ""}/v2/?portal=${encodeURIComponent(intake.accessToken)}`;
+          return (
+            <div className="field"><label>Link do portal publico (compartilhe com solicitantes)</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input readOnly value={link} onFocus={(e) => e.target.select()} />
+                <button className="btn btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={() => { try { navigator.clipboard.writeText(link); } catch { /* ignore */ } }}>Copiar</button>
+              </div>
+              <small style={{ color: intake.enabled ? "var(--muted)" : "var(--crit)" }}>{intake.enabled ? "Portal habilitado." : "Ative o portal acima para o link funcionar."}</small>
+            </div>
+          );
+        })() : null}
       </div>
 
       <div className="panel"><h2>Perfis de status por tipo</h2>
