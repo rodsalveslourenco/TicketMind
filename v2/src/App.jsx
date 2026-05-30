@@ -682,7 +682,7 @@ function PublicPortal({ token }) {
     } catch (e) { setErr(e.message || "Falha ao abrir o chamado."); }
     finally { setBusy(false); }
   };
-  const destDepts = boot?.destinationDepartments?.length ? boot.destinationDepartments : (boot?.requesterDepartments || []);
+  const destDepts = boot?.destinationDepartments || [];
   const reqDepts = boot?.requesterDepartments || [];
   const locations = boot?.locations || [];
   return (
@@ -720,10 +720,11 @@ function PublicPortal({ token }) {
             </div>
             <div className="form-row">
               <div className="field"><label>Departamento de destino *</label>
-                <select value={form.destinationDepartmentId} onChange={set("destinationDepartmentId")}>
+                <select value={form.destinationDepartmentId} onChange={set("destinationDepartmentId")} disabled={!destDepts.length}>
                   <option value="">— Selecionar —</option>
                   {destDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
+                {!destDepts.length ? <small style={{ color: "var(--crit)" }}>Nenhum departamento habilitado para abertura externa. Habilite em Central de Servicos (Aceita chamados + No portal).</small> : null}
               </div>
               <div className="field"><label>Prioridade</label><select value={form.priority} onChange={set("priority")}><option>Baixa</option><option>Media</option><option>Alta</option><option>Critica</option></select></div>
             </div>
