@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHistoryEntry, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
-import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
+import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, runPersistenceDiagnostic, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -796,6 +796,21 @@ app.post("/api/auth/reset-password", handleAsync(async (request, response) => {
   );
 
   response.json({ user: sanitizeSessionUser(persistedUser), expiresAt });
+}));
+
+app.get("/api/diag/persistence", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  if (!hasAnyPermission(auth.requestUser, ["users_admin"])) {
+    response.status(403).json({ error: "Apenas administradores podem executar o diagnostico." });
+    return;
+  }
+  try {
+    const report = await runPersistenceDiagnostic();
+    response.json(report);
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
 }));
 
 app.get("/api/system-logs", handleAsync(async (request, response) => {

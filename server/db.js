@@ -1666,6 +1666,17 @@ async function writePostgresSingletons(client, state = {}) {
 
 async function writePostgresCollections(collections) {
   await ensurePgSchema();
+  // Conjunto de departamentos validos (existentes). department_id que aponte
+  // para um departamento inexistente (orfao) e gravado como null, evitando que
+  // a violacao de chave estrangeira derrube TODA a gravacao no Postgres.
+  const validDepartmentIds = new Set(
+    (collections.departments || []).map((department) => String(department.id || "").trim()).filter(Boolean),
+  );
+  const safeDepartmentId = (value) => {
+    const id = String(value || "").trim();
+    return id && validDepartmentIds.has(id) ? id : null;
+  };
+
   await withPgClient(async (client) => {
     await client.query("BEGIN");
     try {
@@ -1687,7 +1698,7 @@ async function writePostgresCollections(collections) {
             INSERT INTO locations (id, code, name, department_id, status, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
           `,
-          [location.id, location.code, location.name, location.departmentId || null, location.status, location.createdAt, location.updatedAt],
+          [location.id, location.code, location.name, safeDepartmentId(location.departmentId), location.status, location.createdAt, location.updatedAt],
         );
       }
 
@@ -1711,7 +1722,7 @@ async function writePostgresCollections(collections) {
             user.role,
             user.permissionProfileId || "",
             user.team,
-            user.departmentId || null,
+            safeDepartmentId(user.departmentId),
             user.avatar || "",
             JSON.stringify(user.additionalPermissions || {}),
             JSON.stringify(user.restrictedPermissions || {}),
@@ -2169,6 +2180,51 @@ export async function writeState(nextState) {
   }
   const persistedState = await writePostgresState(nextState);
   return primeStateCache(persistedState);
+}
+
+// Diagnostico de persistencia: executa o caminho REAL de gravacao e relata o
+// erro exato (sem alterar dados — grava o estado de volta inalterado).
+export async function runPersistenceDiagnostic() {
+  const report = { storage: isPostgresEnabled() ? "postgres" : "sqlite", checks: {} };
+  // 1. Escrita/leitura crua no Postgres (testa capacidade basica de gravar).
+  try {
+    if (isPostgresEnabled()) {
+      await ensurePgSchema();
+      const pool = getPgPool();
+      const marker = `diag-${Date.now()}`;
+      await pool.query(
+        `INSERT INTO app_singletons (domain_key, payload, updated_at)
+         VALUES ('__diag', $1::jsonb, NOW())
+         ON CONFLICT (domain_key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()`,
+        [JSON.stringify({ marker })],
+      );
+      const r = await pool.query(`SELECT payload FROM app_singletons WHERE domain_key = '__diag'`);
+      const back = r.rows?.[0]?.payload?.marker;
+      report.checks.rawRoundTrip = { ok: back === marker, wrote: marker, readBack: back || null };
+    } else {
+      report.checks.rawRoundTrip = { ok: true, skipped: "sqlite" };
+    }
+  } catch (error) {
+    report.checks.rawRoundTrip = { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+  // 2. Caminho completo do app: le o estado e grava de volta inalterado.
+  try {
+    const state = await readState();
+    await writeState(state);
+    report.checks.stateWriteBack = {
+      ok: true,
+      tickets: Array.isArray(state.tickets) ? state.tickets.length : 0,
+      users: Array.isArray(state.users) ? state.users.length : 0,
+    };
+  } catch (error) {
+    report.checks.stateWriteBack = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      detail: error instanceof Error ? String(error.stack || "").split("\n").slice(0, 6).join(" | ") : "",
+    };
+  }
+  report.ok = Object.values(report.checks).every((check) => check.ok);
+  return report;
 }
 
 export async function insertSystemLog(entry) {
