@@ -145,3 +145,9 @@ textarea.solution { width: 100%; min-height: 96px; padding: 11px 12px; border: 1
   .shell { grid-template-columns: 1fr; }
   .sidebar { flex-direction: row; flex-wrap: wrap; }
 }
+
+/* FORMULARIOS (modais de cadastro) */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field select { width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.field textarea.solution { min-height: 90px; }
+@media (max-width: 560px) { .form-row { grid-template-columns: 1fr; } }

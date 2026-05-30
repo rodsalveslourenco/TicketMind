@@ -173,10 +173,68 @@ function TicketDrawer({ ticket, onClose, onSave, saving }) {
   );
 }
 
-function TicketsView({ tickets, onSave, saving }) {
+function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
+  const [form, setForm] = useState({
+    title: "", type: "Incidente", priority: "Media", departmentId: "", category: "",
+    description: "", requester: user?.name || "", requesterEmail: user?.email || "",
+  });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const submit = async () => {
+    if (!form.title.trim()) return;
+    const dept = (departments || []).find((d) => String(d.id) === String(form.departmentId));
+    const nowIso = new Date().toISOString();
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim(),
+      type: form.type,
+      priority: form.priority,
+      status: "Aberto",
+      category: String(form.category || "Geral").trim(),
+      departmentId: dept?.id || "",
+      department: dept?.name || "",
+      queue: dept?.name || "Service Desk",
+      requester: form.requester.trim() || user?.name || "",
+      requesterId: user?.id || "",
+      requesterEmail: form.requesterEmail.trim().toLowerCase(),
+      source: "TicketMind 2",
+      openedAt: nowIso,
+      slaTargetMinutes: 240,
+    };
+    const created = await onCreate(payload);
+    if (created) onClose();
+  };
+  return (
+    <div className="drawer-overlay" onClick={onClose}>
+      <div className="drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head"><h3>Abrir novo chamado</h3><button className="btn btn-ghost" onClick={onClose}>Fechar</button></div>
+        <div className="field"><label>Titulo *</label><input value={form.title} onChange={set("title")} autoFocus /></div>
+        <div className="form-row">
+          <div className="field"><label>Tipo</label><select value={form.type} onChange={set("type")}><option>Incidente</option><option>Requisicao</option><option>Problema</option></select></div>
+          <div className="field"><label>Prioridade</label><select value={form.priority} onChange={set("priority")}><option>Baixa</option><option>Media</option><option>Alta</option><option>Critica</option></select></div>
+        </div>
+        <div className="form-row">
+          <div className="field"><label>Setor</label><select value={form.departmentId} onChange={set("departmentId")}><option value="">— Selecionar —</option>{(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+          <div className="field"><label>Categoria</label><input value={form.category} onChange={set("category")} placeholder="Ex.: Infraestrutura" /></div>
+        </div>
+        <div className="form-row">
+          <div className="field"><label>Solicitante</label><input value={form.requester} onChange={set("requester")} /></div>
+          <div className="field"><label>E-mail do solicitante</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
+        </div>
+        <div className="field"><label>Descricao</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
+        <div className="drawer-actions">
+          <button className="btn btn-primary" style={{ width: "auto" }} onClick={submit} disabled={saving || !form.title.trim()}>{saving ? <span className="spinner" /> : "Abrir chamado"}</button>
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketsView({ tickets, onSave, onCreate, departments, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [selected, setSelected] = useState(null);
+  const [showNew, setShowNew] = useState(false);
   const filtered = useMemo(() => {
     const q = norm(search);
     return tickets
@@ -193,6 +251,7 @@ function TicketsView({ tickets, onSave, saving }) {
           <option value="abertos">Em aberto</option><option value="resolvidos">Resolvidos</option><option value="todos">Todos</option>
         </select>
         <span style={{ color: "var(--muted)", fontSize: 13 }}>{filtered.length} chamado(s)</span>
+        <button className="btn btn-primary" style={{ width: "auto", marginLeft: "auto" }} onClick={() => setShowNew(true)}>+ Novo chamado</button>
       </div>
       {filtered.length === 0 ? <div className="panel"><div className="empty">Nenhum chamado neste filtro.</div></div> : (
         <div className="ticket-list">
@@ -206,6 +265,7 @@ function TicketsView({ tickets, onSave, saving }) {
         </div>
       )}
       {current && <TicketDrawer ticket={current} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
+      {showNew && <NewTicketModal departments={departments} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
 }
@@ -270,6 +330,20 @@ export default function App() {
   };
   const onLogout = async () => { try { await api.logout(); } catch { /* ignore */ } setUser(null); setData({}); };
 
+  const createTicket = async (payload) => {
+    setSaving(true);
+    try {
+      const env = await api.createTicket(payload);
+      const ticket = env?.data || env;
+      if (ticket?.id) setData((cur) => ({ ...cur, tickets: [ticket, ...(cur.tickets || [])] }));
+      showToast(`Chamado ${ticket?.id || ""} aberto.`, "ok");
+      return ticket;
+    } catch (err) {
+      showToast(err.message || "Falha ao abrir o chamado.", "err");
+      return null;
+    } finally { setSaving(false); }
+  };
+
   const saveTicket = async (nextTicket) => {
     setSaving(true);
     try {
@@ -317,7 +391,7 @@ export default function App() {
           <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
         </div>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={data.departments || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {collectionCfg && <CollectionView title={collectionCfg.label} items={data[view]} columns={collectionCfg.columns} />}

@@ -46,7 +46,7 @@ const bootstrapSeedState = {
   currentUser: null,
 };
 
-const DOMAIN_COLLECTION_KEYS = [
+export const DOMAIN_COLLECTION_KEYS = [
   "tickets",
   "assets",
   "brands",
@@ -2193,19 +2193,21 @@ export async function writeState(nextState) {
   return primeStateCache(persistedState);
 }
 
-// Gravacao INCREMENTAL de um unico chamado (uma linha em tickets_domain).
-// Evita reescrever o estado inteiro a cada alteracao: rapido, confiavel e sem
-// depender do autosave de estado completo nem das FKs de outras tabelas.
-export async function saveTicketRecord(ticket) {
-  const id = String(ticket?.id || "").trim();
-  if (!id) throw new Error("Chamado sem identificador.");
-  const payload = JSON.stringify(ticket);
-  const updatedAt = getDomainUpdatedAt(ticket);
+// Gravacao INCREMENTAL de UM registro de qualquer colecao de dominio (uma linha).
+// Evita reescrever o estado inteiro: rapido, confiavel e sem FKs de outras
+// tabelas. Usado por chamados e demais cadastros (ativos, projetos, etc.).
+export async function saveDomainRecord(domainKey, item) {
+  const tableName = DOMAIN_TABLES[domainKey];
+  if (!tableName) throw new Error(`Colecao invalida: ${domainKey}`);
+  const id = String(item?.id || "").trim();
+  if (!id) throw new Error("Registro sem identificador.");
+  const payload = JSON.stringify(item);
+  const updatedAt = getDomainUpdatedAt(item);
 
   if (!isPostgresEnabled()) {
     const db = await getSqliteDb();
     db.run(
-      `INSERT INTO tickets_domain (id, payload, updated_at) VALUES (?, ?, ?)
+      `INSERT INTO ${tableName} (id, payload, updated_at) VALUES (?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
       [id, payload, updatedAt],
     );
@@ -2214,22 +2216,47 @@ export async function saveTicketRecord(ticket) {
     await withPostgresRetry(async () => {
       const pool = getPgPool();
       await pool.query(
-        `INSERT INTO tickets_domain (id, payload, updated_at) VALUES ($1, $2::jsonb, $3)
+        `INSERT INTO ${tableName} (id, payload, updated_at) VALUES ($1, $2::jsonb, $3)
          ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
         [id, payload, updatedAt],
       );
-    }, "saveTicketRecord");
+    }, `saveDomainRecord:${domainKey}`);
   }
 
-  // Mantem o cache em memoria consistente para leituras seguintes.
-  if (stateCache && Array.isArray(stateCache.tickets)) {
-    const exists = stateCache.tickets.some((item) => String(item?.id || "").trim() === id);
-    const nextTickets = exists
-      ? stateCache.tickets.map((item) => (String(item?.id || "").trim() === id ? ticket : item))
-      : [ticket, ...stateCache.tickets];
-    stateCache = { ...stateCache, tickets: nextTickets };
+  if (stateCache && Array.isArray(stateCache[domainKey])) {
+    const exists = stateCache[domainKey].some((it) => String(it?.id || "").trim() === id);
+    const next = exists
+      ? stateCache[domainKey].map((it) => (String(it?.id || "").trim() === id ? item : it))
+      : [item, ...stateCache[domainKey]];
+    stateCache = { ...stateCache, [domainKey]: next };
   }
-  return ticket;
+  return item;
+}
+
+export async function removeDomainRecord(domainKey, id) {
+  const tableName = DOMAIN_TABLES[domainKey];
+  if (!tableName) throw new Error(`Colecao invalida: ${domainKey}`);
+  const recordId = String(id || "").trim();
+  if (!recordId) return false;
+  if (!isPostgresEnabled()) {
+    const db = await getSqliteDb();
+    db.run(`DELETE FROM ${tableName} WHERE id = ?`, [recordId]);
+    await persistSqliteDb(db);
+  } else {
+    await withPostgresRetry(async () => {
+      const pool = getPgPool();
+      await pool.query(`DELETE FROM ${tableName} WHERE id = $1`, [recordId]);
+    }, `removeDomainRecord:${domainKey}`);
+  }
+  if (stateCache && Array.isArray(stateCache[domainKey])) {
+    stateCache = { ...stateCache, [domainKey]: stateCache[domainKey].filter((it) => String(it?.id || "").trim() !== recordId) };
+  }
+  return true;
+}
+
+// Compatibilidade: gravacao de chamado delega ao generico.
+export async function saveTicketRecord(ticket) {
+  return saveDomainRecord("tickets", ticket);
 }
 
 // Diagnostico de persistencia: executa o caminho REAL de gravacao e relata o

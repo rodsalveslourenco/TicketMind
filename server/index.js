@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText, normalizeTicketStatus } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
 import { canAccessTicket } from "../src/data/ticketVisibility.js";
-import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, runPersistenceDiagnostic, sanitizeSessionUser, saveTicketRecord, updateUserPassword, writeState } from "./db.js";
+import { DOMAIN_COLLECTION_KEYS, insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveTicketRecord, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -857,6 +857,77 @@ app.get("/api/system-logs", handleAsync(async (request, response) => {
     limit: Number(q.limit) || 25,
   });
   response.json(result);
+}));
+
+const COLLECTION_WRITE_PERMISSIONS = {
+  tickets: ["tickets_create", "tickets_edit", "tickets_admin"],
+  assets: ["assets_create", "assets_edit", "assets_admin"],
+  brands: ["brands_models_create", "brands_models_edit", "brands_models_admin"],
+  models: ["brands_models_create", "brands_models_edit", "brands_models_admin"],
+  projects: ["projects_create", "projects_edit", "projects_manage_tasks", "projects_admin"],
+  knowledgeArticles: ["knowledge_create", "knowledge_edit", "knowledge_admin"],
+  notificationRules: ["notifications_manage", "service_center_manage", "users_admin"],
+  emailLayouts: ["email_layouts_create", "email_layouts_edit", "email_layouts_manage", "users_admin"],
+};
+
+function collectionGuard(domain, requestUser) {
+  if (!DOMAIN_COLLECTION_KEYS.includes(domain)) return { ok: false, code: 404, error: "Colecao nao encontrada." };
+  const perms = COLLECTION_WRITE_PERMISSIONS[domain];
+  if (!perms) return { ok: false, code: 403, error: "Esta colecao nao permite alteracao por aqui." };
+  if (!hasAnyPermission(requestUser, perms)) return { ok: false, code: 403, error: "Voce nao possui permissao para alterar esta colecao." };
+  return { ok: true };
+}
+
+function genId(domain, type) {
+  if (domain === "tickets") {
+    const map = { incidente: "INC", requisicao: "REQ", problema: "PRB" };
+    const prefix = map[normalizeText(type)] || "TCK";
+    return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
+  }
+  return `${domain}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// CRUD INCREMENTAL generico de colecoes (ativos, projetos, base de conhecimento,
+// marcas, modelos, notificacoes...). Uma linha por operacao, confiavel.
+app.post("/api/collections/:domain", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  const domain = String(request.params.domain || "").trim();
+  const guard = collectionGuard(domain, auth.requestUser);
+  if (!guard.ok) { response.status(guard.code).json({ error: guard.error }); return; }
+  const body = request.body && typeof request.body === "object" ? request.body : {};
+  const nowIso = new Date().toISOString();
+  const item = { ...body, id: String(body.id || "").trim() || genId(domain, body.type), createdAt: body.createdAt || nowIso, updatedAt: nowIso };
+  const saved = await saveDomainRecord(domain, item);
+  broadcastStateUpdate(await readState(), getRealtimeSourceClientId(request));
+  response.status(201).json(saved);
+}));
+
+app.put("/api/collections/:domain/:id", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  const domain = String(request.params.domain || "").trim();
+  const guard = collectionGuard(domain, auth.requestUser);
+  if (!guard.ok) { response.status(guard.code).json({ error: guard.error }); return; }
+  const id = String(request.params.id || "").trim();
+  const state = await readState();
+  const existing = (Array.isArray(state[domain]) ? state[domain] : []).find((it) => String(it?.id || "").trim() === id) || {};
+  const body = request.body && typeof request.body === "object" ? request.body : {};
+  const item = { ...existing, ...body, id, updatedAt: new Date().toISOString() };
+  const saved = await saveDomainRecord(domain, item);
+  broadcastStateUpdate(await readState(), getRealtimeSourceClientId(request));
+  response.json(saved);
+}));
+
+app.delete("/api/collections/:domain/:id", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  const domain = String(request.params.domain || "").trim();
+  const guard = collectionGuard(domain, auth.requestUser);
+  if (!guard.ok) { response.status(guard.code).json({ error: guard.error }); return; }
+  await removeDomainRecord(domain, String(request.params.id || "").trim());
+  broadcastStateUpdate(await readState(), getRealtimeSourceClientId(request));
+  response.status(204).end();
 }));
 
 app.use(
