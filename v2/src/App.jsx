@@ -261,7 +261,13 @@ export default function App() {
     })();
   }, []);
 
-  const onLoginSuccess = async (loggedUser) => { if (loggedUser) setUser(loggedUser); setBooting(true); try { await loadState(); } finally { setBooting(false); } };
+  const onLoginSuccess = async (loggedUser) => {
+    // Entra no app imediatamente (sem tela de carregando travando a transicao)
+    // e carrega os dados em segundo plano.
+    if (loggedUser) setUser(loggedUser);
+    setView("dashboard");
+    try { await loadState(); } catch (err) { console.error(err); }
+  };
   const onLogout = async () => { try { await api.logout(); } catch { /* ignore */ } setUser(null); setData({}); };
 
   const saveTicket = async (nextTicket) => {
