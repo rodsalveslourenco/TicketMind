@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText, normalizeTicketStatus } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
 import { canAccessTicket } from "../src/data/ticketVisibility.js";
-import { DOMAIN_COLLECTION_KEYS, insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveTicketRecord, updateUserPassword, writeState } from "./db.js";
+import { DOMAIN_COLLECTION_KEYS, DOMAIN_SINGLETON_KEYS, insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveSingletonRecord, saveTicketRecord, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -857,6 +857,33 @@ app.get("/api/system-logs", handleAsync(async (request, response) => {
     limit: Number(q.limit) || 25,
   });
   response.json(result);
+}));
+
+const SINGLETON_WRITE_PERMISSIONS = {
+  serviceCenter: ["service_center_manage", "service_center_departments_manage", "users_admin"],
+  queues: ["service_center_manage", "users_admin"],
+  smtpSettings: ["notifications_manage", "service_center_manage", "users_admin"],
+  emailServiceSettings: ["notifications_manage", "service_center_manage", "users_admin"],
+  notificationEvents: ["notifications_manage", "users_admin"],
+  emailPlaceholders: ["notifications_manage", "users_admin"],
+  permissionProfiles: ["users_manage_permissions", "users_admin"],
+  permissionCatalog: ["users_manage_permissions", "users_admin"],
+  navigationSections: ["users_manage_permissions", "users_admin"],
+};
+
+// Gravacao de configuracoes (singletons), ex.: Central de Servicos.
+app.put("/api/singletons/:key", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  const key = String(request.params.key || "").trim();
+  if (!DOMAIN_SINGLETON_KEYS.includes(key)) { response.status(404).json({ error: "Configuracao nao encontrada." }); return; }
+  const perms = SINGLETON_WRITE_PERMISSIONS[key];
+  if (!perms || !hasAnyPermission(auth.requestUser, perms)) { response.status(403).json({ error: "Voce nao possui permissao para alterar esta configuracao." }); return; }
+  const value = request.body && typeof request.body === "object" ? { ...request.body, updatedAt: new Date().toISOString() } : request.body;
+  const saved = await saveSingletonRecord(key, value);
+  await insertSystemLog(createSystemLog({ ...buildActorFromUser(auth.requestUser), module: "administracao", eventType: "configuracao", description: `Configuracao ${key} atualizada por ${auth.requestUser.name}.`, origin: getRequestOrigin(request), status: "alerta", metadata: { action: "singleton_update", key } }));
+  broadcastStateUpdate(await readState(), getRealtimeSourceClientId(request));
+  response.json(saved);
 }));
 
 const COLLECTION_WRITE_PERMISSIONS = {

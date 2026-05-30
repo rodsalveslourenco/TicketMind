@@ -60,7 +60,7 @@ export const DOMAIN_COLLECTION_KEYS = [
   "reports",
 ];
 
-const DOMAIN_SINGLETON_KEYS = [
+export const DOMAIN_SINGLETON_KEYS = [
   "permissionCatalog",
   "permissionProfiles",
   "navigationSections",
@@ -2257,6 +2257,33 @@ export async function removeDomainRecord(domainKey, id) {
 // Compatibilidade: gravacao de chamado delega ao generico.
 export async function saveTicketRecord(ticket) {
   return saveDomainRecord("tickets", ticket);
+}
+
+// Gravacao INCREMENTAL de um singleton (ex.: serviceCenter, smtpSettings).
+export async function saveSingletonRecord(key, value) {
+  if (!DOMAIN_SINGLETON_KEYS.includes(key)) throw new Error(`Configuracao invalida: ${key}`);
+  const payload = JSON.stringify(value);
+  const nowIso = new Date().toISOString();
+  if (!isPostgresEnabled()) {
+    const db = await getSqliteDb();
+    db.run(
+      `INSERT INTO ${DOMAIN_SINGLETON_TABLE} (domain_key, payload, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(domain_key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
+      [key, payload, nowIso],
+    );
+    await persistSqliteDb(db);
+  } else {
+    await withPostgresRetry(async () => {
+      const pool = getPgPool();
+      await pool.query(
+        `INSERT INTO ${DOMAIN_SINGLETON_TABLE} (domain_key, payload, updated_at) VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (domain_key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()`,
+        [key, payload],
+      );
+    }, `saveSingletonRecord:${key}`);
+  }
+  if (stateCache) stateCache = { ...stateCache, [key]: value };
+  return value;
 }
 
 // Diagnostico de persistencia: executa o caminho REAL de gravacao e relata o

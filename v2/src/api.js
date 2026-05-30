@@ -35,4 +35,5 @@ export const api = {
   createCollectionItem: (domain, item) => request(`/api/collections/${encodeURIComponent(domain)}`, { method: "POST", body: JSON.stringify(item) }),
   saveCollectionItem: (domain, id, item) => request(`/api/collections/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(item) }),
   removeCollectionItem: (domain, id) => request(`/api/collections/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  saveSingleton: (key, value) => request(`/api/singletons/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify(value) }),
 };

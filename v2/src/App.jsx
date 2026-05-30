@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { Reports, CollectionView, COLLECTIONS } from "./modules.jsx";
+import { Reports, CollectionView, COLLECTIONS, ServiceCenterView } from "./modules.jsx";
 
 const LOGO = `${import.meta.env.BASE_URL}logo-wega.png`;
 const STATUS_OPTIONS = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
@@ -54,8 +54,11 @@ const MENU = [
     { key: "departments", label: "Departamentos", icon: "🏢" },
     { key: "locations", label: "Locais", icon: "📍" },
   ] },
-  { group: "Sistema", items: [
+  { group: "Configuracoes", items: [
+    { key: "serviceCenter", label: "Central de Servicos", icon: "⚙️", perm: ["service_center_manage", "service_center_departments_manage", "users_admin"] },
     { key: "notificationRules", label: "Notificacoes", icon: "🔔" },
+  ] },
+  { group: "Sistema", items: [
     { key: "logs", label: "Logs do Sistema", icon: "🧾", perm: ["system_logs_view", "users_admin"] },
   ] },
 ];
@@ -344,6 +347,34 @@ export default function App() {
     } finally { setSaving(false); }
   };
 
+  const normalizeItem = (item) => {
+    const out = { ...item };
+    if (out.active === "Sim") out.active = true;
+    if (out.active === "Nao") out.active = false;
+    if (out.progress !== undefined && out.progress !== "") out.progress = Number(out.progress) || 0;
+    return out;
+  };
+  const createItem = async (domain, item) => {
+    setSaving(true);
+    try { const saved = await api.createCollectionItem(domain, normalizeItem(item)); setData((cur) => ({ ...cur, [domain]: [saved, ...(cur[domain] || [])] })); showToast("Registro criado."); return true; }
+    catch (err) { showToast(err.message || "Falha ao criar.", "err"); return false; } finally { setSaving(false); }
+  };
+  const saveItem = async (domain, id, item) => {
+    setSaving(true);
+    try { const saved = await api.saveCollectionItem(domain, id, normalizeItem(item)); setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).map((x) => (x.id === id ? { ...x, ...saved } : x)) })); showToast("Registro salvo."); return true; }
+    catch (err) { showToast(err.message || "Falha ao salvar.", "err"); return false; } finally { setSaving(false); }
+  };
+  const deleteItem = async (domain, id) => {
+    setSaving(true);
+    try { await api.removeCollectionItem(domain, id); setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).filter((x) => x.id !== id) })); showToast("Registro excluido."); return true; }
+    catch (err) { showToast(err.message || "Falha ao excluir.", "err"); return false; } finally { setSaving(false); }
+  };
+  const saveServiceCenter = async (sc) => {
+    setSaving(true);
+    try { const saved = await api.saveSingleton("serviceCenter", sc); setData((cur) => ({ ...cur, serviceCenter: saved })); showToast("Central de Servicos salva."); return true; }
+    catch (err) { showToast(err.message || "Falha ao salvar a Central de Servicos.", "err"); return false; } finally { setSaving(false); }
+  };
+
   const saveTicket = async (nextTicket) => {
     setSaving(true);
     try {
@@ -394,7 +425,14 @@ export default function App() {
         {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={data.departments || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
-        {collectionCfg && <CollectionView title={collectionCfg.label} items={data[view]} columns={collectionCfg.columns} />}
+        {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
+        {collectionCfg && (
+          <CollectionView
+            title={collectionCfg.label} items={data[view]} columns={collectionCfg.columns}
+            editable={collectionCfg.editable} fields={collectionCfg.fields} saving={saving}
+            onCreate={(item) => createItem(view, item)} onSave={(id, item) => saveItem(view, id, item)} onDelete={(id) => deleteItem(view, id)}
+          />
+        )}
       </main>
       {toast && <div className={`toast ${toast.kind}`}>{toast.message}</div>}
     </div>

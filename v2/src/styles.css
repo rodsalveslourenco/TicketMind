@@ -151,3 +151,9 @@ textarea.solution { width: 100%; min-height: 96px; padding: 11px 12px; border: 1
 .field select { width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .field textarea.solution { min-height: 90px; }
 @media (max-width: 560px) { .form-row { grid-template-columns: 1fr; } }
+
+/* TOGGLE (Central de Servicos) */
+.toggle { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 14px; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; }
+.data-table input[type="checkbox"] { width: 18px; height: 18px; }
+.panel h2 { margin-top: 0; }
