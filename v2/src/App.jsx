@@ -34,14 +34,21 @@ function hasPerm(user, keys) {
 // receber chamados na Central de Servicos. Se a Central estiver desativada,
 // qualquer departamento ativo pode receber.
 function requestableDepartments(departments, serviceCenter) {
-  const sc = serviceCenter || {};
-  const cfgs = sc.departments || {};
-  return (departments || []).filter((d) => {
-    if (norm(d.status) !== "ativo") return false;
-    if (!sc.enabled) return true;
-    const c = cfgs[d.id];
-    return c ? c.active !== false && !!c.acceptsTickets : false;
-  });
+  const cfgs = (serviceCenter || {}).departments || {};
+  const active = (departments || []).filter((d) => norm(d.status) === "ativo");
+  // Departamentos marcados para RECEBER chamados na Central de Servicos.
+  const accepting = active.filter((d) => { const c = cfgs[d.id]; return c && c.active !== false && !!c.acceptsTickets; });
+  // Fallback: se nenhum estiver configurado, usa todos os ativos (sistema nunca fica sem destino).
+  return accepting.length ? accepting : active;
+}
+// Usuarios que atendem um departamento: pertencem a ele OU sao responsaveis na Central.
+function attendantsForDepartment(users, serviceCenter, departmentId) {
+  const list = users || [];
+  const id = String(departmentId || "").trim();
+  if (!id) return list;
+  const respIds = (serviceCenter?.departments?.[id]?.responsibleUserIds) || [];
+  const eligible = list.filter((u) => String(u.departmentId || "") === id || respIds.includes(u.id));
+  return eligible.length ? eligible : list;
 }
 
 const MENU = [
@@ -158,7 +165,7 @@ function fmtDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
 }
 
-function TicketDrawer({ ticket, departments, users, user, onClose, onSave, saving }) {
+function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, user, onClose, onSave, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
   const [departmentId, setDepartmentId] = useState(ticket.departmentId || "");
@@ -179,6 +186,23 @@ function TicketDrawer({ ticket, departments, users, user, onClose, onSave, savin
 
   const deptList = departments || [];
   const userList = users || [];
+  // Destino: somente departamentos que recebem chamados (Central de Servicos),
+  // garantindo que o destino atual do chamado apareca mesmo se nao listado.
+  const destOptions = (() => {
+    const base = requestableDepts || deptList;
+    if (departmentId && !base.some((d) => String(d.id) === String(departmentId))) {
+      const cur = deptList.find((d) => String(d.id) === String(departmentId));
+      if (cur) return [cur, ...base];
+    }
+    return base;
+  })();
+  // Responsavel: somente quem pertence ao departamento de destino (ou e
+  // responsavel por ele na Central). Mantem o responsavel atual como opcao.
+  const respIds = (serviceCenter?.departments?.[departmentId]?.responsibleUserIds) || [];
+  let eligibleUsers = userList.filter((u) => String(u.departmentId || "") === String(departmentId) || respIds.includes(u.id));
+  if (!departmentId || eligibleUsers.length === 0) eligibleUsers = userList;
+  const assigneeNames = [...new Set(eligibleUsers.map((u) => u.name).filter(Boolean))];
+  if (assignee && !assigneeNames.includes(assignee)) assigneeNames.unshift(assignee);
   const watcherDetails = userList.filter((u) => watcherIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name, email: u.email }));
   const watchersLabel = watcherDetails.map((w) => w.name).join(", ");
   const withDept = (obj) => {
@@ -245,7 +269,7 @@ function TicketDrawer({ ticket, departments, users, user, onClose, onSave, savin
         <div className="drawer-actions">
           <select className="status-select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={{ minWidth: 220 }}>
             <option value="">— Selecionar —</option>
-            {deptList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            {destOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
           <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar departamento</button>
         </div>
@@ -255,7 +279,7 @@ function TicketDrawer({ ticket, departments, users, user, onClose, onSave, savin
           <div className="field"><label>Responsavel</label>
             <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
               <option value="">Sem responsavel</option>
-              {userList.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+              {assigneeNames.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
           <div className="field"><label>Observadores (watchers)</label>
@@ -391,7 +415,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts, users, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts, serviceCenter, users, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [selected, setSelected] = useState(null);
@@ -425,7 +449,7 @@ function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts,
           ))}
         </div>
       )}
-      {current && <TicketDrawer ticket={current} departments={departments} users={users} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
+      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
       {showNew && <NewTicketModal departments={requestableDepts} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
@@ -639,7 +663,7 @@ export default function App() {
           <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
         </div>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} users={data.users || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
