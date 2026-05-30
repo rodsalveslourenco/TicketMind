@@ -138,10 +138,59 @@ function Dashboard({ tickets, onGo }) {
   );
 }
 
-function TicketDrawer({ ticket, onClose, onSave, saving }) {
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
+}
+
+function TicketDrawer({ ticket, departments, user, onClose, onSave, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
-  useEffect(() => { setStatus(ticket.status || "Aberto"); setSolution(ticket.resolutionNotes || ""); }, [ticket.id]);
+  const [departmentId, setDepartmentId] = useState(ticket.departmentId || "");
+  const [followText, setFollowText] = useState("");
+  const [followVis, setFollowVis] = useState("public");
+  useEffect(() => {
+    setStatus(ticket.status || "Aberto");
+    setSolution(ticket.resolutionNotes || "");
+    setDepartmentId(ticket.departmentId || "");
+    setFollowText("");
+  }, [ticket.id]);
+
+  const deptList = departments || [];
+  const withDept = (obj) => {
+    const dept = deptList.find((d) => String(d.id) === String(departmentId));
+    return dept ? { ...obj, departmentId: dept.id, department: dept.name, queue: obj.queue || dept.name } : obj;
+  };
+  const currentDeptName = ticket.department || deptList.find((d) => String(d.id) === String(ticket.departmentId))?.name || ticket.queue || "—";
+  const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
+  const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
+
+  const addFollowUp = () => {
+    if (!followText.trim()) return;
+    const entry = {
+      id: `fu-${Date.now().toString(36)}`,
+      message: followText.trim(),
+      visibility: followVis,
+      authorId: user?.id || "",
+      authorName: user?.name || "Sistema",
+      createdAt: new Date().toISOString(),
+    };
+    onSave(withDept({ ...ticket, followUps: [entry, ...followUps] }));
+    setFollowText("");
+  };
+  const addAttachment = (file) => {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { window.alert("Anexo muito grande (max 4MB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const att = { id: `att-${Date.now().toString(36)}`, name: file.name, type: file.type, size: file.size, dataUrl: reader.result, addedAt: new Date().toISOString(), addedBy: user?.name || "" };
+      onSave(withDept({ ...ticket, attachments: [att, ...attachments] }));
+    };
+    reader.readAsDataURL(file);
+  };
+  const removeAttachment = (id) => onSave(withDept({ ...ticket, attachments: attachments.filter((a) => a.id !== id) }));
+
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <div className="drawer" onClick={(e) => e.stopPropagation()}>
@@ -151,24 +200,66 @@ function TicketDrawer({ ticket, onClose, onSave, saving }) {
         </div>
         <div className="kv">
           <div className="k">Solicitante</div><div>{ticket.requester || "—"}</div>
-          <div className="k">Setor</div><div>{ticket.department || ticket.queue || "—"}</div>
+          <div className="k">Departamento de destino</div><div>{currentDeptName}</div>
           <div className="k">Responsavel</div><div>{ticket.assignee || "Sem responsavel"}</div>
           <div className="k">Prioridade</div><div>{ticket.priority || "Media"}</div>
           <div className="k">Categoria</div><div>{ticket.category || "—"}</div>
-          <div className="k">Aberto em</div><div>{ticket.openedAtLabel || ticket.openedAt || "—"}</div>
+          <div className="k">Aberto em</div><div>{ticket.openedAtLabel || fmtDate(ticket.openedAt)}</div>
         </div>
         {ticket.description && (<><div className="section-title">Descricao</div><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{ticket.description}</p></>)}
+
+        <div className="section-title">Departamento de destino</div>
+        <div className="drawer-actions">
+          <select className="status-select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} style={{ minWidth: 220 }}>
+            <option value="">— Selecionar —</option>
+            {deptList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+          <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar departamento</button>
+        </div>
+
+        <div className="section-title">Acompanhamentos</div>
+        <div className="followup-add">
+          <textarea className="solution" value={followText} onChange={(e) => setFollowText(e.target.value)} placeholder="Escreva um acompanhamento..." style={{ minHeight: 70 }} />
+          <div className="drawer-actions">
+            <select className="status-select" value={followVis} onChange={(e) => setFollowVis(e.target.value)}>
+              <option value="public">Publico</option><option value="private">Interno</option>
+            </select>
+            <button className="btn btn-primary" style={{ width: "auto" }} onClick={addFollowUp} disabled={saving || !followText.trim()}>Adicionar</button>
+          </div>
+        </div>
+        <div className="followup-list">
+          {followUps.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Nenhum acompanhamento ainda.</p> : followUps.map((f) => (
+            <div className="followup" key={f.id || f.createdAt}>
+              <div className="followup-head"><strong>{f.authorName || "—"}</strong><span className={`badge ${f.visibility === "private" ? "s-espera" : "s-andamento"}`}>{f.visibility === "private" ? "Interno" : "Publico"}</span><span className="followup-date">{fmtDate(f.createdAt)}</span></div>
+              <div className="followup-msg">{f.message}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="section-title">Anexos</div>
+        <div className="drawer-actions">
+          <input type="file" onChange={(e) => { addAttachment(e.target.files?.[0]); e.target.value = ""; }} />
+        </div>
+        <div className="attach-list">
+          {attachments.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Nenhum anexo.</p> : attachments.map((a) => (
+            <div className="attach" key={a.id || a.name}>
+              <a href={a.dataUrl || a.url || "#"} download={a.name} target="_blank" rel="noreferrer">📎 {a.name}</a>
+              <button className="attach-rm" onClick={() => removeAttachment(a.id)} title="Remover">✕</button>
+            </div>
+          ))}
+        </div>
+
         <div className="section-title">Solucao</div>
         <textarea className="solution" value={solution} onChange={(e) => setSolution(e.target.value)} placeholder="Descreva a solucao aplicada antes de resolver..." />
         <div className="section-title">Status</div>
         <div className="drawer-actions">
           <select className="status-select" value={status} onChange={(e) => setStatus(e.target.value)}>{STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}</select>
-          <button className="btn btn-ghost" onClick={() => onSave({ ...ticket, status, resolutionNotes: solution })} disabled={saving}>Aplicar status</button>
+          <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Aplicar status</button>
         </div>
         <div className="drawer-actions">
           {norm(ticket.status) !== "resolvido"
-            ? <button className="btn-ok" onClick={() => onSave({ ...ticket, status: "Resolvido", resolutionNotes: solution })} disabled={saving || !solution.trim()}>{saving ? <span className="spinner" /> : "Resolver chamado"}</button>
-            : <button className="btn-reopen" onClick={() => onSave({ ...ticket, status: "Reaberto" })} disabled={saving}>Reabrir chamado</button>}
+            ? <button className="btn-ok" onClick={() => onSave(withDept({ ...ticket, status: "Resolvido", resolutionNotes: solution }))} disabled={saving || !solution.trim()}>{saving ? <span className="spinner" /> : "Resolver chamado"}</button>
+            : <button className="btn-reopen" onClick={() => onSave(withDept({ ...ticket, status: "Reaberto" }))} disabled={saving}>Reabrir chamado</button>}
         </div>
         {norm(ticket.status) !== "resolvido" && !solution.trim() && <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 8 }}>Informe a solucao para habilitar a resolucao.</p>}
       </div>
@@ -216,7 +307,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
           <div className="field"><label>Prioridade</label><select value={form.priority} onChange={set("priority")}><option>Baixa</option><option>Media</option><option>Alta</option><option>Critica</option></select></div>
         </div>
         <div className="form-row">
-          <div className="field"><label>Setor</label><select value={form.departmentId} onChange={set("departmentId")}><option value="">— Selecionar —</option>{(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+          <div className="field"><label>Departamento de destino</label><select value={form.departmentId} onChange={set("departmentId")}><option value="">— Selecionar —</option>{(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
           <div className="field"><label>Categoria</label><input value={form.category} onChange={set("category")} placeholder="Ex.: Infraestrutura" /></div>
         </div>
         <div className="form-row">
@@ -267,7 +358,7 @@ function TicketsView({ tickets, onSave, onCreate, departments, user, saving }) {
           ))}
         </div>
       )}
-      {current && <TicketDrawer ticket={current} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
+      {current && <TicketDrawer ticket={current} departments={departments} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
       {showNew && <NewTicketModal departments={departments} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
