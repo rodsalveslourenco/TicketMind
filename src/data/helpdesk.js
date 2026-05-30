@@ -6,6 +6,11 @@ export const DEFAULT_TICKET_STATUS_PROFILES = {
   problema: ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Resolvido", "Reaberto"],
 };
 
+// Status essenciais do ciclo de vida que devem SEMPRE estar disponiveis,
+// mesmo que a configuracao de perfis de status do Service Center os omita.
+// Sem isso, um perfil mal configurado poderia impedir resolver/reabrir chamados.
+export const ESSENTIAL_TICKET_STATUSES = ["Aberto", "Em andamento", "Resolvido", "Reaberto"];
+
 export const DEFAULT_STATUS_REASON_RULES = {
   pauseStatuses: ["Pausado"],
   waitingStatuses: ["Em espera", "Aguardando usuario"],
@@ -43,9 +48,17 @@ export function getTicketStatusProfiles(serviceCenter = {}) {
     const normalizedStatuses = candidateStatuses
       .map((status) => String(status || "").trim())
       .filter(Boolean);
+    const baseStatuses = normalizedStatuses.length ? normalizedStatuses : [...fallbackStatuses];
+    // Garante a presenca dos status essenciais (ex.: Resolvido/Reaberto), para
+    // que o ciclo do chamado nunca trave por configuracao incompleta.
+    for (const essential of ESSENTIAL_TICKET_STATUSES) {
+      if (!baseStatuses.some((status) => normalizeText(status) === normalizeText(essential))) {
+        baseStatuses.push(essential);
+      }
+    }
     return {
       ...accumulator,
-      [type]: normalizedStatuses.length ? normalizedStatuses : fallbackStatuses,
+      [type]: baseStatuses,
     };
   }, {});
 }

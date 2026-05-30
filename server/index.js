@@ -3,7 +3,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHistoryEntry, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
+import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
 import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, runPersistenceDiagnostic, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
 import {
@@ -796,6 +796,28 @@ app.post("/api/auth/reset-password", handleAsync(async (request, response) => {
   );
 
   response.json({ user: sanitizeSessionUser(persistedUser), expiresAt });
+}));
+
+app.get("/api/diag/resolve", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  if (!hasAnyPermission(auth.requestUser, ["users_admin"])) {
+    response.status(403).json({ error: "Apenas administradores podem executar o diagnostico." });
+    return;
+  }
+  const state = await readState();
+  const serviceCenter = state.serviceCenter || {};
+  const tickets = Array.isArray(state.tickets) ? state.tickets : [];
+  const sample = tickets.slice(0, 8).map((ticket) => {
+    const options = getTicketStatusOptionsForType(ticket.type || "Incidente", serviceCenter);
+    const resolvedAllowed = options.some((status) => normalizeText(status) === "resolvido");
+    return { id: ticket.id, type: ticket.type || "", status: ticket.status || "", resolvedAllowed, options };
+  });
+  response.json({
+    ticketStatusProfiles: serviceCenter.ticketStatusProfiles || null,
+    totalTickets: tickets.length,
+    sample,
+  });
 }));
 
 app.get("/api/diag/persistence", handleAsync(async (request, response) => {
