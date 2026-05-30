@@ -174,6 +174,103 @@ export function Reports({ tickets }) {
   );
 }
 
+/* ---------- Dashboard rico ---------- */
+function pastDue(t) {
+  if (norm(t.status) === "resolvido") return false;
+  if (t.slaBreachedAt) return true;
+  return Boolean(t.slaDeadlineAt && new Date(t.slaDeadlineAt).getTime() < Date.now());
+}
+export function Dashboard({ tickets, onGo }) {
+  const d = useMemo(() => {
+    const list = Array.isArray(tickets) ? tickets : [];
+    const open = list.filter((t) => isOpen(t.status));
+    const resolved = list.filter((t) => norm(t.status) === "resolvido");
+    const breached = list.filter((t) => t.slaBreachedAt);
+    const slaRisco = open.filter(pastDue);
+    const slaOk = list.length ? Math.round(((list.length - breached.length) / list.length) * 100) : 100;
+    const byStatus = countBy(list, (t) => t.status || "Aberto");
+    const byPriority = countBy(list, (t) => t.priority || "Media");
+    const byDept = countBy(list, (t) => t.department || t.queue || "—").slice(0, 8);
+    // volume ultimos 7 dias
+    const days = [];
+    for (let i = 6; i >= 0; i -= 1) { const dt = new Date(); dt.setDate(dt.getDate() - i); days.push(dt.toISOString().slice(0, 10)); }
+    const vol = days.map((day) => [day.slice(8, 10) + "/" + day.slice(5, 7), list.filter((t) => String(t.openedAt || "").slice(0, 10) === day).length]);
+    // performance por tecnico
+    const techMap = new Map();
+    open.forEach((t) => {
+      const a = t.assignee || "Sem responsavel";
+      const e = techMap.get(a) || { abertos: 0, criticos: 0 };
+      e.abertos += 1; if (norm(t.priority) === "critica") e.criticos += 1; techMap.set(a, e);
+    });
+    const tech = [...techMap.entries()].map(([name, v]) => ({ name, ...v })).sort((x, y) => y.abertos - x.abertos).slice(0, 10);
+    // tarefas
+    let tarefasTotal = 0, tarefasFeitas = 0;
+    list.forEach((t) => (Array.isArray(t.checklistItems) ? t.checklistItems : []).forEach((c) => { tarefasTotal += 1; if (c.done) tarefasFeitas += 1; }));
+    return {
+      total: list.length, abertos: open.length,
+      andamento: list.filter((t) => norm(t.status) === "em andamento").length,
+      aguardando: open.filter((t) => norm(t.status).startsWith("aguardando") || norm(t.status) === "em espera" || norm(t.status) === "pausado").length,
+      criticos: open.filter((t) => norm(t.priority) === "critica").length,
+      resolvidos: resolved.length, slaRisco: slaRisco.length, slaOk,
+      byStatus, byPriority, byDept, vol, tech, tarefasTotal, tarefasFeitas,
+      recentes: [...list].sort((a, b) => String(b.updatedAtIso || b.openedAt || "").localeCompare(String(a.updatedAtIso || a.openedAt || ""))).slice(0, 6),
+    };
+  }, [tickets]);
+  const mx = (arr) => Math.max(1, ...arr.map((x) => x[1]));
+  const prioColor = (p) => ({ critica: "var(--crit)", alta: "var(--warn)", media: "var(--info)", baixa: "var(--muted)" }[norm(p)] || "var(--info)");
+  return (
+    <div>
+      <div className="kpi-grid">
+        <div className="kpi" onClick={() => onGo && onGo("tickets")} style={{ cursor: "pointer" }}><div className="label">Total</div><div className="value">{d.total}</div></div>
+        <div className="kpi"><div className="label">Em aberto</div><div className="value warn">{d.abertos}</div></div>
+        <div className="kpi"><div className="label">Em andamento</div><div className="value">{d.andamento}</div></div>
+        <div className="kpi"><div className="label">Aguardando</div><div className="value">{d.aguardando}</div></div>
+        <div className="kpi"><div className="label">Criticos abertos</div><div className="value crit">{d.criticos}</div></div>
+        <div className="kpi"><div className="label">SLA sob risco</div><div className="value crit">{d.slaRisco}</div></div>
+        <div className="kpi"><div className="label">SLA cumprido</div><div className={`value ${d.slaOk >= 90 ? "ok" : d.slaOk >= 70 ? "warn" : "crit"}`}>{d.slaOk}%</div></div>
+        <div className="kpi"><div className="label">Resolvidos</div><div className="value ok">{d.resolvidos}</div></div>
+      </div>
+      <div className="report-grid">
+        <div className="panel"><h2>Distribuicao por status</h2>{d.byStatus.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byStatus)} />)}</div>
+        <div className="panel"><h2>Distribuicao por prioridade</h2>{d.byPriority.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byPriority)} color={prioColor(k)} />)}</div>
+        <div className="panel"><h2>Chamados por departamento</h2>{d.byDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byDept)} color="var(--wega-teal)" />)}</div>
+        <div className="panel"><h2>Volume (ultimos 7 dias)</h2>{d.vol.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.vol)} color="var(--wega-navy)" />)}</div>
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <h2 style={{ padding: "18px 20px 0" }}>Performance dos tecnicos (chamados em aberto)</h2>
+        <table className="data-table">
+          <thead><tr><th>Tecnico</th><th>Em aberto</th><th>Criticos</th></tr></thead>
+          <tbody>
+            {d.tech.length === 0 ? <tr><td colSpan={3}><div className="empty">Sem chamados atribuidos.</div></td></tr> : d.tech.map((t) => (
+              <tr key={t.name}><td>{t.name}</td><td><strong>{t.abertos}</strong></td><td style={{ color: t.criticos ? "var(--crit)" : "inherit" }}>{t.criticos}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="report-grid">
+        <div className="panel"><h2>Tarefas dos chamados</h2>
+          <div className="kpi-grid" style={{ marginBottom: 0 }}>
+            <div className="kpi"><div className="label">Total de tarefas</div><div className="value">{d.tarefasTotal}</div></div>
+            <div className="kpi"><div className="label">Concluidas</div><div className="value ok">{d.tarefasFeitas}</div></div>
+            <div className="kpi"><div className="label">Pendentes</div><div className="value warn">{d.tarefasTotal - d.tarefasFeitas}</div></div>
+          </div>
+        </div>
+        <div className="panel"><h2>Chamados recentes</h2>
+          <div className="ticket-list">
+            {d.recentes.map((t) => (
+              <div key={t.id} className="ticket-card" style={{ gridTemplateColumns: "70px 1fr auto", cursor: "default", borderLeftColor: prioColor(t.priority) }}>
+                <div className="ticket-id">{t.id}</div>
+                <div><div className="ticket-title">{t.title || "(sem titulo)"}</div><div className="ticket-meta">{t.department || t.queue || "—"} · {t.assignee || "Sem responsavel"}</div></div>
+                <div><span className={`badge ${({ resolvido: "s-resolvido", "em andamento": "s-andamento", reaberto: "s-reaberto", aberto: "s-aberto" })[norm(t.status)] || "s-espera"}`}>{t.status || "Aberto"}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Central de Servicos (config funcional) ---------- */
 function Toggle({ label, checked, onChange }) {
   return (

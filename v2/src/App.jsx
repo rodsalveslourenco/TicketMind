@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { Reports, CollectionView, COLLECTIONS, ServiceCenterView } from "./modules.jsx";
+import { Reports, CollectionView, COLLECTIONS, ServiceCenterView, Dashboard } from "./modules.jsx";
 
 const LOGO = `${import.meta.env.BASE_URL}logo-wega.png`;
 const STATUS_OPTIONS = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
@@ -121,44 +121,6 @@ function Login({ onSuccess }) {
         <div className="field"><label>Senha</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
         <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? <span className="spinner" /> : "Entrar"}</button>
       </form>
-    </div>
-  );
-}
-
-function Dashboard({ tickets, onGo }) {
-  const m = useMemo(() => {
-    const open = tickets.filter((t) => isOpen(t.status));
-    return {
-      total: tickets.length, open: open.length,
-      andamento: tickets.filter((t) => norm(t.status) === "em andamento").length,
-      resolvidos: tickets.filter((t) => norm(t.status) === "resolvido").length,
-      criticos: open.filter((t) => norm(t.priority) === "critica").length,
-      aguardando: open.filter((t) => norm(t.status).startsWith("aguardando") || norm(t.status) === "em espera" || norm(t.status) === "pausado").length,
-      recentes: [...tickets].sort((a, b) => String(b.updatedAtIso || b.openedAt || "").localeCompare(String(a.updatedAtIso || a.openedAt || ""))).slice(0, 6),
-    };
-  }, [tickets]);
-  return (
-    <div>
-      <div className="kpi-grid">
-        <div className="kpi" onClick={() => onGo("tickets")} style={{ cursor: "pointer" }}><div className="label">Total de chamados</div><div className="value">{m.total}</div></div>
-        <div className="kpi"><div className="label">Em aberto</div><div className="value warn">{m.open}</div></div>
-        <div className="kpi"><div className="label">Em andamento</div><div className="value">{m.andamento}</div></div>
-        <div className="kpi"><div className="label">Aguardando</div><div className="value">{m.aguardando}</div></div>
-        <div className="kpi"><div className="label">Criticos abertos</div><div className="value crit">{m.criticos}</div></div>
-        <div className="kpi"><div className="label">Resolvidos</div><div className="value ok">{m.resolvidos}</div></div>
-      </div>
-      <div className="panel">
-        <h2>Chamados recentes</h2>
-        <div className="ticket-list">
-          {m.recentes.map((t) => (
-            <div key={t.id} className={`ticket-card ${priorityClass(t.priority)}`} style={{ cursor: "default" }}>
-              <div><div className="ticket-id">{t.id}</div><div className="ticket-meta">{t.priority || "Media"}</div></div>
-              <div><div className="ticket-title">{t.title || "(sem titulo)"}</div><div className="ticket-meta">{t.department || t.queue || "—"} · {t.assignee || "Sem responsavel"}</div></div>
-              <div><span className={`badge ${statusClass(t.status)}`}>{t.status || "Aberto"}</span></div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -745,6 +707,10 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("tm2.collapsed") === "1"; } catch { return false; } });
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const toggleCollapse = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem("tm2.collapsed", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
   const tickets = Array.isArray(data.tickets) ? data.tickets : [];
   const showToast = (message, kind = "ok") => { setToast({ message, kind }); window.setTimeout(() => setToast(null), 3200); };
@@ -900,32 +866,55 @@ export default function App() {
   const collectionCfg = COLLECTIONS[view];
 
   return (
-    <div className="shell">
+    <div className={`shell${collapsed ? " shell-collapsed" : ""}${mobileOpen ? " shell-mobile-open" : ""}`}>
+      {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
       <aside className="sidebar">
-        <Brand light />
+        <div className="sidebar-top">
+          <Brand light />
+          <button className="collapse-btn" title={collapsed ? "Expandir menu" : "Recolher menu"} onClick={toggleCollapse}>{collapsed ? "»" : "«"}</button>
+        </div>
         <nav className="nav">
           {visibleMenu.map((g) => (
             <div key={g.group} className="nav-group">
               <div className="nav-group-title">{g.group}</div>
               {g.items.map((it) => (
-                <button key={it.key} className={`nav-item ${view === it.key ? "active" : ""}`} onClick={() => setView(it.key)}>
-                  <span className="nav-icon">{it.icon}</span> {it.label}
+                <button key={it.key} className={`nav-item ${view === it.key ? "active" : ""}`} title={it.label} onClick={() => { setView(it.key); setMobileOpen(false); }}>
+                  <span className="nav-icon">{it.icon}</span> <span className="nav-label">{it.label}</span>
                 </button>
               ))}
             </div>
           ))}
         </nav>
-        <div className="nav-spacer" />
-        <div className="nav-user">{user.name}<br />{user.email}</div>
-        <button className="nav-item" onClick={onLogout}><span className="nav-icon">↩</span> Sair</button>
       </aside>
       <main className="main">
         <div className="topbar">
-          <div>
-            <h1>{currentItem?.label || "TicketMind 2"}</h1>
-            <div className="sub">{view === "dashboard" ? "Visao geral da operacao" : view === "reports" ? "Indicadores e relatorios" : currentItem?.label}</div>
+          <div className="topbar-left">
+            <button className="icon-btn" title="Menu" onClick={() => { if (typeof window !== "undefined" && window.innerWidth <= 860) setMobileOpen((o) => !o); else toggleCollapse(); }}>☰</button>
+            <div>
+              <h1>{currentItem?.label || "TicketMind 2"}</h1>
+              <div className="sub">{view === "dashboard" ? "Visao geral da operacao" : view === "reports" ? "Indicadores e relatorios" : currentItem?.label}</div>
+            </div>
           </div>
-          <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
+          <div className="topbar-right">
+            <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
+            <div className="user-menu">
+              <button className="user-btn" onClick={() => setUserMenuOpen((o) => !o)}>
+                <span className="user-avatar">{(user.name || "?").slice(0, 1).toUpperCase()}</span>
+                <span className="user-name">{user.name}</span>
+                <span style={{ color: "var(--muted)" }}>▾</span>
+              </button>
+              {userMenuOpen && (
+                <>
+                  <div className="user-menu-backdrop" onClick={() => setUserMenuOpen(false)} />
+                  <div className="user-dropdown">
+                    <div className="user-dropdown-head">{user.name}<br /><small style={{ color: "var(--muted)" }}>{user.email}</small></div>
+                    <button onClick={() => { setView("profile"); setUserMenuOpen(false); }}>Meu Perfil</button>
+                    <button onClick={() => { setUserMenuOpen(false); onLogout(); }}>Sair</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
         {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} user={user} saving={saving} />}
