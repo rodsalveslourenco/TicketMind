@@ -20,6 +20,17 @@ export async function persistAppState(nextState) {
   });
 }
 
+export async function saveTicketRequest(ticketId, ticket) {
+  const envelope = await requestJson(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+    method: "PUT",
+    headers: {
+      "X-TicketMind-Client": REALTIME_CLIENT_ID,
+    },
+    body: JSON.stringify(ticket),
+  });
+  return envelope?.data || envelope || null;
+}
+
 export async function createTicketRequest(payload) {
   const envelope = await requestJson("/api/v1/tickets", {
     method: "POST",

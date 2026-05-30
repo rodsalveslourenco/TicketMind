@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { createTicketRequest, getRealtimeClientId, loadAppState, persistAppState, sendNotificationTestRequest } from "../services/appStateClient";
+import { createTicketRequest, getRealtimeClientId, loadAppState, persistAppState, saveTicketRequest, sendNotificationTestRequest } from "../services/appStateClient";
 import {
   buildEmptyPermissions,
   getRolePermissions,
@@ -1267,6 +1267,32 @@ export function AppDataProvider({ children }) {
     return persistedState;
   };
 
+  // Persiste UM chamado de forma incremental (endpoint dedicado), sem reescrever
+  // o estado inteiro nem depender do autosave/tempo real. Com retentativas.
+  const persistTicket = async (ticket) => {
+    if (!ticket?.id) return false;
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await saveTicketRequest(ticket.id, ticket);
+        dirtyRef.current = false;
+        return true;
+      } catch (error) {
+        console.error(`Falha ao salvar chamado (tentativa ${attempt}/${maxAttempts})`, error);
+        if (attempt >= maxAttempts) {
+          pushToast(
+            "Falha ao salvar",
+            "Nao foi possivel gravar o chamado (banco indisponivel). A alteracao continua na tela; tente novamente em instantes.",
+            "error",
+          );
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+      }
+    }
+    return false;
+  };
+
   useEffect(() => {
     if (!user?.id) {
       setData(EMPTY_DATA);
@@ -1714,10 +1740,10 @@ export function AppDataProvider({ children }) {
         completionAttachments: updates?.completionAttachments,
       };
     }
-    applyState((current) => ({
-      ...current,
-      tickets: current.tickets.map((ticket) => {
-        if (ticket.id !== ticketId) return ticket;
+    const current = data;
+    let savedTicket = null;
+    current.tickets.forEach((ticket) => {
+        if (ticket.id !== ticketId) return;
         if (!canAccessTicket(ticket, user, current.departments || [], current.serviceCenter || defaultServiceCenterSettings)) return ticket;
 
         const assigneeChanged = updates.assignee !== undefined && String(updates.assignee || "").trim() !== String(ticket.assignee || "").trim();
@@ -2142,7 +2168,7 @@ export function AppDataProvider({ children }) {
               ? nowIso
               : "");
 
-        return {
+        savedTicket = {
           ...ticket,
           ...updates,
           status: effectiveStatus,
@@ -2198,8 +2224,16 @@ export function AppDataProvider({ children }) {
           },
           history: appendHistory(ticket, historyEntries),
         };
-      }),
+      });
+    if (!savedTicket) return;
+    // Atualiza a tela imediatamente e grava SO este chamado (incremental),
+    // sem disparar o autosave de estado inteiro (suprimido abaixo).
+    applyState((prev) => ({
+      ...prev,
+      tickets: prev.tickets.map((item) => (item.id === ticketId ? savedTicket : item)),
     }));
+    skipNextPersistenceRef.current = true;
+    void persistTicket(savedTicket);
   };
 
   const deleteTicket = (ticketId) => {

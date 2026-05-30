@@ -3,9 +3,10 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
+import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText, normalizeTicketStatus } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
-import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, runPersistenceDiagnostic, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
+import { canAccessTicket } from "../src/data/ticketVisibility.js";
+import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, runPersistenceDiagnostic, sanitizeSessionUser, saveTicketRecord, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -912,6 +913,70 @@ app.put("/api/state", handleAsync(async (request, response) => {
   const persistedState = await persistStateChange(request, response, auth, mergedState);
   if (!persistedState) return;
   response.json(prepareStateForClient(persistedState, auth.requestUser));
+}));
+
+// Gravacao INCREMENTAL de um unico chamado (resolver, mudar status, editar).
+// Substitui o salvamento de estado inteiro para chamados: confiavel e leve.
+app.put("/api/tickets/:ticketId", handleAsync(async (request, response) => {
+  const previousState = await readState();
+  const auth = await requireAuthenticatedUser(request, response, previousState);
+  if (!auth) return;
+  const ticketId = String(request.params.ticketId || "").trim();
+  const existing = (previousState.tickets || []).find((item) => String(item?.id || "").trim() === ticketId) || null;
+  if (!existing) {
+    response.status(404).json({ error: "Chamado nao encontrado." });
+    return;
+  }
+  if (!canAccessTicket(existing, auth.requestUser, previousState.departments || [], previousState.serviceCenter || {})) {
+    response.status(403).json({ error: "Voce nao tem acesso a este chamado." });
+    return;
+  }
+  if (
+    !hasAnyPermission(auth.requestUser, [
+      "tickets_edit",
+      "tickets_close",
+      "tickets_change_status",
+      "tickets_assign",
+      "tickets_change_priority",
+      "tickets_reopen",
+      "tickets_admin",
+    ])
+  ) {
+    response.status(403).json({ error: "Voce nao possui permissao para alterar chamados." });
+    return;
+  }
+  const incoming = request.body && typeof request.body === "object" ? request.body : {};
+  const nowIso = new Date().toISOString();
+  const nextTicket = {
+    ...existing,
+    ...incoming,
+    id: ticketId,
+    status: normalizeTicketStatus(incoming.status ?? existing.status),
+    openedAt: existing.openedAt || incoming.openedAt || nowIso,
+    updatedAt: nowIso,
+    updatedAtIso: nowIso,
+  };
+  const saved = await saveTicketRecord(nextTicket);
+  await insertSystemLog(
+    createSystemLog({
+      ...buildActorFromUser(auth.requestUser),
+      module: "chamados",
+      eventType: "configuracao",
+      description: `Chamado ${ticketId} atualizado por ${auth.requestUser.name}.`,
+      origin: getRequestOrigin(request),
+      status: "sucesso",
+      metadata: { action: "ticket_update", ticketId, status: nextTicket.status },
+    }),
+  );
+  const refreshedState = await readState();
+  void processTicketNotifications({
+    previousState,
+    nextState: refreshedState,
+    persistState: writeState,
+    baseUrl: process.env.APP_PUBLIC_URL || "",
+  }).catch((error) => console.error("notification processing failed", error));
+  broadcastStateUpdate(refreshedState, getRealtimeSourceClientId(request));
+  response.json(saved);
 }));
 
 app.post("/api/notifications/test", handleAsync(async (request, response) => {

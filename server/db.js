@@ -2193,6 +2193,45 @@ export async function writeState(nextState) {
   return primeStateCache(persistedState);
 }
 
+// Gravacao INCREMENTAL de um unico chamado (uma linha em tickets_domain).
+// Evita reescrever o estado inteiro a cada alteracao: rapido, confiavel e sem
+// depender do autosave de estado completo nem das FKs de outras tabelas.
+export async function saveTicketRecord(ticket) {
+  const id = String(ticket?.id || "").trim();
+  if (!id) throw new Error("Chamado sem identificador.");
+  const payload = JSON.stringify(ticket);
+  const updatedAt = getDomainUpdatedAt(ticket);
+
+  if (!isPostgresEnabled()) {
+    const db = await getSqliteDb();
+    db.run(
+      `INSERT INTO tickets_domain (id, payload, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
+      [id, payload, updatedAt],
+    );
+    await persistSqliteDb(db);
+  } else {
+    await withPostgresRetry(async () => {
+      const pool = getPgPool();
+      await pool.query(
+        `INSERT INTO tickets_domain (id, payload, updated_at) VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
+        [id, payload, updatedAt],
+      );
+    }, "saveTicketRecord");
+  }
+
+  // Mantem o cache em memoria consistente para leituras seguintes.
+  if (stateCache && Array.isArray(stateCache.tickets)) {
+    const exists = stateCache.tickets.some((item) => String(item?.id || "").trim() === id);
+    const nextTickets = exists
+      ? stateCache.tickets.map((item) => (String(item?.id || "").trim() === id ? ticket : item))
+      : [ticket, ...stateCache.tickets];
+    stateCache = { ...stateCache, tickets: nextTickets };
+  }
+  return ticket;
+}
+
 // Diagnostico de persistencia: executa o caminho REAL de gravacao e relata o
 // erro exato (sem alterar dados — grava o estado de volta inalterado).
 export async function runPersistenceDiagnostic() {
