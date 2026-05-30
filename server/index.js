@@ -898,6 +898,7 @@ const COLLECTION_WRITE_PERMISSIONS = {
   knowledgeArticles: ["knowledge_create", "knowledge_edit", "knowledge_admin"],
   notificationRules: ["notifications_manage", "service_center_manage", "users_admin"],
   emailLayouts: ["email_layouts_create", "email_layouts_edit", "email_layouts_manage", "users_admin"],
+  apiConfigs: ["api_rest_configure_integrations", "api_rest_admin", "users_admin"],
 };
 
 function collectionGuard(domain, requestUser) {

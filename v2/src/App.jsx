@@ -70,6 +70,7 @@ const MENU = [
     { key: "users", label: "Usuarios", icon: "👤", perm: ["users_view", "users_admin"] },
     { key: "teams", label: "Equipes", icon: "👥", perm: ["users_view", "users_admin"] },
     { key: "permissionProfiles", label: "Perfis de Permissao", icon: "🔐", perm: ["users_manage_permissions", "users_admin"] },
+    { key: "technicians", label: "Tecnicos", icon: "🛠️" },
   ] },
   { group: "Estrutura", items: [
     { key: "departments", label: "Departamentos", icon: "🏢" },
@@ -78,9 +79,12 @@ const MENU = [
   { group: "Configuracoes", items: [
     { key: "serviceCenter", label: "Central de Servicos", icon: "⚙️", perm: ["service_center_manage", "service_center_departments_manage", "users_admin"] },
     { key: "notificationRules", label: "Notificacoes", icon: "🔔" },
+    { key: "emailLayouts", label: "Layouts de E-mail", icon: "✉️", perm: ["email_layouts_view", "email_layouts_manage", "users_admin"] },
+    { key: "apiConfigs", label: "Config de API", icon: "🔌", perm: ["api_rest_view", "api_rest_admin", "users_admin"] },
   ] },
   { group: "Sistema", items: [
     { key: "logs", label: "Logs do Sistema", icon: "🧾", perm: ["system_logs_view", "users_admin"] },
+    { key: "profile", label: "Meu Perfil", icon: "👤" },
   ] },
 ];
 
@@ -538,6 +542,63 @@ function LogsView() {
   );
 }
 
+function TechniciansView({ users, tickets }) {
+  const agents = (users || []).filter((u) => {
+    const pr = u.permissions || {};
+    return pr.tickets_edit || pr.tickets_assign || pr.tickets_change_status || pr.tickets_admin || norm(u.role) !== "solicitante interno";
+  });
+  const countAll = (name) => (tickets || []).filter((t) => (t.assignee || "") === name).length;
+  const countOpen = (name) => (tickets || []).filter((t) => (t.assignee || "") === name && isOpen(t.status)).length;
+  return (
+    <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+      <table className="data-table">
+        <thead><tr><th>Tecnico</th><th>Perfil</th><th>Setor</th><th>E-mail</th><th>Atribuidos</th><th>Em aberto</th></tr></thead>
+        <tbody>
+          {agents.length === 0 ? <tr><td colSpan={6}><div className="empty">Nenhum tecnico encontrado.</div></td></tr> : agents.map((u) => (
+            <tr key={u.id}>
+              <td>{u.name}</td><td>{u.role || "—"}</td><td>{u.department || "—"}</td><td>{u.email || "—"}</td>
+              <td>{countAll(u.name)}</td><td><strong>{countOpen(u.name)}</strong></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProfileView({ user, onChangePassword }) {
+  const [cur, setCur] = useState("");
+  const [nw, setNw] = useState("");
+  const [cf, setCf] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!cur || !nw) return;
+    if (nw !== cf) { window.alert("A confirmacao da nova senha nao confere."); return; }
+    setBusy(true);
+    const ok = await onChangePassword(cur, nw);
+    setBusy(false);
+    if (ok) { setCur(""); setNw(""); setCf(""); }
+  };
+  return (
+    <div>
+      <div className="panel"><h2>Meus dados</h2>
+        <div className="kv" style={{ gridTemplateColumns: "160px 1fr" }}>
+          <div className="k">Nome</div><div>{user?.name || "—"}</div>
+          <div className="k">E-mail</div><div>{user?.email || "—"}</div>
+          <div className="k">Perfil</div><div>{user?.role || "—"}</div>
+          <div className="k">Setor</div><div>{user?.department || "—"}</div>
+        </div>
+      </div>
+      <div className="panel" style={{ maxWidth: 460 }}><h2>Alterar senha</h2>
+        <div className="field"><label>Senha atual</label><input type="password" value={cur} onChange={(e) => setCur(e.target.value)} /></div>
+        <div className="field"><label>Nova senha</label><input type="password" value={nw} onChange={(e) => setNw(e.target.value)} /></div>
+        <div className="field"><label>Confirmar nova senha</label><input type="password" value={cf} onChange={(e) => setCf(e.target.value)} /></div>
+        <button className="btn btn-primary" style={{ width: "auto" }} disabled={busy || !cur || !nw} onClick={submit}>{busy ? <span className="spinner" /> : "Alterar senha"}</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState(null);
@@ -673,6 +734,10 @@ export default function App() {
     try { const saved = await api.saveSingleton("serviceCenter", sc); setData((cur) => ({ ...cur, serviceCenter: saved })); showToast("Central de Servicos salva."); return true; }
     catch (err) { showToast(err.message || "Falha ao salvar a Central de Servicos.", "err"); return false; } finally { setSaving(false); }
   };
+  const changePassword = async (curPass, newPass) => {
+    try { await api.changePassword(curPass, newPass); showToast("Senha alterada com sucesso."); return true; }
+    catch (err) { showToast(err.message || "Falha ao alterar a senha.", "err"); return false; }
+  };
 
   const saveTicket = async (nextTicket) => {
     setSaving(true);
@@ -725,6 +790,8 @@ export default function App() {
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
+        {view === "technicians" && <TechniciansView users={data.users || []} tickets={tickets} />}
+        {view === "profile" && <ProfileView user={user} onChangePassword={changePassword} />}
         {collectionCfg && (
           <CollectionView
             title={collectionCfg.label} items={data[view]} columns={collectionCfg.columns}
