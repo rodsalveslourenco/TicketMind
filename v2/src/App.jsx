@@ -30,6 +30,20 @@ function hasPerm(user, keys) {
   return keys.some((k) => perms[k]);
 }
 
+// Departamentos de DESTINO (para onde o chamado vai): ativos e habilitados a
+// receber chamados na Central de Servicos. Se a Central estiver desativada,
+// qualquer departamento ativo pode receber.
+function requestableDepartments(departments, serviceCenter) {
+  const sc = serviceCenter || {};
+  const cfgs = sc.departments || {};
+  return (departments || []).filter((d) => {
+    if (norm(d.status) !== "ativo") return false;
+    if (!sc.enabled) return true;
+    const c = cfgs[d.id];
+    return c ? c.active !== false && !!c.acceptsTickets : false;
+  });
+}
+
 const MENU = [
   { group: "Operacao", items: [
     { key: "dashboard", label: "Dashboard", icon: "📊" },
@@ -181,7 +195,7 @@ function TicketDrawer({ ticket, departments, users, user, onClose, onSave, savin
   };
   const toggleCheck = (id) => onSave(withDept({ ...ticket, checklistItems: checklist.map((c) => (c.id === id ? { ...c, done: !c.done } : c)) }));
   const removeCheck = (id) => onSave(withDept({ ...ticket, checklistItems: checklist.filter((c) => c.id !== id) }));
-  const currentDeptName = ticket.department || deptList.find((d) => String(d.id) === String(ticket.departmentId))?.name || ticket.queue || "—";
+  const currentDeptName = deptList.find((d) => String(d.id) === String(ticket.departmentId))?.name || ticket.department || "—";
   const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
   const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
 
@@ -327,6 +341,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const submit = async () => {
     if (!form.title.trim()) return;
+    if ((departments || []).length && !form.departmentId) return;
     const dept = (departments || []).find((d) => String(d.id) === String(form.departmentId));
     const nowIso = new Date().toISOString();
     const payload = {
@@ -359,7 +374,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
           <div className="field"><label>Prioridade</label><select value={form.priority} onChange={set("priority")}><option>Baixa</option><option>Media</option><option>Alta</option><option>Critica</option></select></div>
         </div>
         <div className="form-row">
-          <div className="field"><label>Departamento de destino</label><select value={form.departmentId} onChange={set("departmentId")}><option value="">— Selecionar —</option>{(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+          <div className="field"><label>Departamento de destino *</label><select value={form.departmentId} onChange={set("departmentId")}><option value="">— Para onde vai o chamado —</option>{(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>{!(departments || []).length ? <small style={{ color: "var(--crit)" }}>Nenhum departamento habilitado a receber chamados. Ative em Central de Servicos.</small> : null}</div>
           <div className="field"><label>Categoria</label><input value={form.category} onChange={set("category")} placeholder="Ex.: Infraestrutura" /></div>
         </div>
         <div className="form-row">
@@ -368,7 +383,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
         </div>
         <div className="field"><label>Descricao</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
         <div className="drawer-actions">
-          <button className="btn btn-primary" style={{ width: "auto" }} onClick={submit} disabled={saving || !form.title.trim()}>{saving ? <span className="spinner" /> : "Abrir chamado"}</button>
+          <button className="btn btn-primary" style={{ width: "auto" }} onClick={submit} disabled={saving || !form.title.trim() || ((departments || []).length && !form.departmentId)}>{saving ? <span className="spinner" /> : "Abrir chamado"}</button>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
         </div>
       </div>
@@ -376,7 +391,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, departments, users, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts, users, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [selected, setSelected] = useState(null);
@@ -411,7 +426,7 @@ function TicketsView({ tickets, onSave, onCreate, departments, users, user, savi
         </div>
       )}
       {current && <TicketDrawer ticket={current} departments={departments} users={users} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
-      {showNew && <NewTicketModal departments={departments} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
+      {showNew && <NewTicketModal departments={requestableDepts} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
 }
@@ -624,7 +639,7 @@ export default function App() {
           <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
         </div>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={data.departments || []} users={data.users || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} users={data.users || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
