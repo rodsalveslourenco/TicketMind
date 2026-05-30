@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHistoryEntry, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
-import { insertSystemLog, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
+import { insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, sanitizeSessionUser, updateUserPassword, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -796,6 +796,29 @@ app.post("/api/auth/reset-password", handleAsync(async (request, response) => {
   );
 
   response.json({ user: sanitizeSessionUser(persistedUser), expiresAt });
+}));
+
+app.get("/api/system-logs", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  if (!hasAnyPermission(auth.requestUser, ["system_logs_view", "users_admin"])) {
+    response.status(403).json({ error: "Voce nao possui permissao para visualizar os logs do sistema." });
+    return;
+  }
+  const q = request.query || {};
+  const result = await querySystemLogs({
+    search: String(q.search || "").trim(),
+    module: String(q.module || "").trim(),
+    eventType: String(q.eventType || "").trim(),
+    status: String(q.status || "").trim(),
+    user: String(q.user || "").trim(),
+    department: String(q.department || "").trim(),
+    startDate: String(q.startDate || "").trim(),
+    endDate: String(q.endDate || "").trim(),
+    page: Number(q.page) || 1,
+    limit: Number(q.limit) || 25,
+  });
+  response.json(result);
 }));
 
 app.use(

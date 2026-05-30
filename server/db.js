@@ -2173,21 +2173,30 @@ export async function writeState(nextState) {
 
 export async function insertSystemLog(entry) {
   if (!entry?.id) return null;
-  await persistSystemLogToFiles(entry);
+  // Persiste no banco (consultavel e duravel, inclusive no Render) e mantem
+  // copia em arquivo como redundancia. Falhas nao derrubam o fluxo principal.
+  try {
+    if (isPostgresEnabled()) {
+      await insertPostgresSystemLog(entry);
+    } else {
+      await insertSqliteSystemLog(entry);
+    }
+  } catch (error) {
+    console.error("Falha ao gravar log de sistema no banco:", error);
+  }
+  try {
+    await persistSystemLogToFiles(entry);
+  } catch (error) {
+    console.error("Falha ao gravar log de sistema em arquivo:", error);
+  }
   return entry;
 }
 
 export async function querySystemLogs(filters = {}) {
-  void filters;
-  return {
-    items: [],
-    pagination: {
-      page: 1,
-      limit: 25,
-      total: 0,
-      totalPages: 1,
-    },
-  };
+  if (isPostgresEnabled()) {
+    return queryPostgresSystemLogs(filters);
+  }
+  return querySqliteSystemLogs(filters);
 }
 
 export function sanitizeSessionUser(user) {
