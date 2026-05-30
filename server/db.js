@@ -1759,23 +1759,24 @@ async function writePostgresState(nextState) {
     try {
       await writePostgresDomainCollections(client, protectedState);
       await writePostgresSingletons(client, protectedState);
+      // app_state (JSON legado) gravado na MESMA transacao que dominios e
+      // singletons, garantindo atomicidade (sem estado parcial em falha/timeout).
+      await client.query(
+        `
+          INSERT INTO app_state (id, data, updated_at)
+          VALUES (1, $1::jsonb, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            data = EXCLUDED.data,
+            updated_at = EXCLUDED.updated_at
+        `,
+        [JSON.stringify(buildLegacyAppStatePayload(protectedState))],
+      );
       await client.query("COMMIT");
     } catch (error) {
       await rollbackPgTransaction(client);
       throw error;
     }
   });
-
-  await pool.query(
-    `
-      INSERT INTO app_state (id, data, updated_at)
-      VALUES (1, $1::jsonb, NOW())
-      ON CONFLICT (id) DO UPDATE SET
-        data = EXCLUDED.data,
-        updated_at = EXCLUDED.updated_at
-    `,
-    [JSON.stringify(buildLegacyAppStatePayload(protectedState))],
-  );
 
   return protectedState;
 }

@@ -1034,7 +1034,11 @@ function TicketsPage() {
     setCompletionAttachments([]);
     setActiveDetailWorkspace("");
     setActiveDetailTab("data");
-  }, [detailTicket]);
+    // Depende apenas do ID: reinicializa o formulario ao abrir/trocar de chamado,
+    // mas nao sobrescreve o que o usuario esta digitando quando o estado e
+    // atualizado em segundo plano (autosave/tempo real).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailTicketId]);
 
   useEffect(() => {
     if (!showCreateForm) return undefined;

@@ -457,8 +457,23 @@ async function requireAuthenticatedUser(request, response, stateOverride = null)
   return { state, requestUser, session };
 }
 
+const SERVER_STARTED_AT = new Date().toISOString();
+const SERVER_COMMIT = String(
+  process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || process.env.SOURCE_VERSION || "",
+).trim();
+
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, apiVersion: "v1" });
+  response.json({ ok: true, apiVersion: "v1", commit: SERVER_COMMIT || "desconhecido", startedAt: SERVER_STARTED_AT });
+});
+
+// Diagnostico: permite confirmar exatamente qual versao/commit esta no ar.
+app.get("/api/version", (_request, response) => {
+  response.json({
+    commit: SERVER_COMMIT || "desconhecido",
+    startedAt: SERVER_STARTED_AT,
+    node: process.version,
+    storage: process.env.DATABASE_URL ? "postgres" : "sqlite",
+  });
 });
 
 app.post("/api/auth/login", handleAsync(async (request, response) => {

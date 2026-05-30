@@ -1332,7 +1332,14 @@ export function AppDataProvider({ children }) {
       try {
         await persistAppState(data);
       } catch (error) {
-        if (active) console.error(error);
+        console.error(error);
+        if (active) {
+          pushToast(
+            "Falha ao salvar",
+            "Suas alteracoes podem nao ter sido gravadas. Verifique a conexao e tente novamente.",
+            "error",
+          );
+        }
       }
     }, 150);
 
