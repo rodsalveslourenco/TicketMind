@@ -165,12 +165,20 @@ function fmtDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
 }
 
-function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, user, onClose, onSave, saving }) {
+function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, onClose, onSave, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
   const [departmentId, setDepartmentId] = useState(ticket.departmentId || "");
   const [assignee, setAssignee] = useState(ticket.assignee || "");
   const [watcherIds, setWatcherIds] = useState(() => (Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((w) => w.id).filter(Boolean) : []));
+  const [priority, setPriority] = useState(ticket.priority || "Media");
+  const [category, setCategory] = useState(ticket.category || "");
+  const [urgency, setUrgency] = useState(ticket.urgency || ticket.priority || "Media");
+  const [impact, setImpact] = useState(ticket.impact || ticket.priority || "Media");
+  const [dueDate, setDueDate] = useState(ticket.dueDate ? String(ticket.dueDate).slice(0, 10) : "");
+  const [assetId, setAssetId] = useState(ticket.assetId || "");
+  const [projectId, setProjectId] = useState(ticket.projectId || "");
+  const [knowledgeIds, setKnowledgeIds] = useState(() => (Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : []));
   const [followText, setFollowText] = useState("");
   const [followVis, setFollowVis] = useState("public");
   const [checkText, setCheckText] = useState("");
@@ -180,6 +188,14 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
     setDepartmentId(ticket.departmentId || "");
     setAssignee(ticket.assignee || "");
     setWatcherIds(Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((w) => w.id).filter(Boolean) : []);
+    setPriority(ticket.priority || "Media");
+    setCategory(ticket.category || "");
+    setUrgency(ticket.urgency || ticket.priority || "Media");
+    setImpact(ticket.impact || ticket.priority || "Media");
+    setDueDate(ticket.dueDate ? String(ticket.dueDate).slice(0, 10) : "");
+    setAssetId(ticket.assetId || "");
+    setProjectId(ticket.projectId || "");
+    setKnowledgeIds(Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : []);
     setFollowText("");
     setCheckText("");
   }, [ticket.id]);
@@ -207,7 +223,15 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
   const watchersLabel = watcherDetails.map((w) => w.name).join(", ");
   const withDept = (obj) => {
     const dept = deptList.find((d) => String(d.id) === String(departmentId));
-    const base = { ...obj, assignee, watchers: watchersLabel, watcherDetails };
+    const asset = (assets || []).find((a) => String(a.id) === String(assetId));
+    const project = (projects || []).find((pr) => String(pr.id) === String(projectId));
+    const base = {
+      ...obj, assignee, watchers: watchersLabel, watcherDetails,
+      priority, category, urgency, impact, dueDate,
+      assetId, assetName: asset ? (asset.assetTag || asset.name || "") : "",
+      projectId, projectName: project?.name || "",
+      knowledgeArticleIds: knowledgeIds,
+    };
     return dept ? { ...base, departmentId: dept.id, department: dept.name, queue: obj.queue || dept.name } : base;
   };
   const checklist = Array.isArray(ticket.checklistItems) ? ticket.checklistItems : [];
@@ -292,6 +316,29 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
           <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar atendimento</button>
         </div>
 
+        <div className="section-title">Dados do chamado</div>
+        <div className="form-row">
+          <div className="field"><label>Prioridade</label><select value={priority} onChange={(e) => setPriority(e.target.value)}>{["Baixa", "Media", "Alta", "Critica"].map((o) => <option key={o}>{o}</option>)}</select></div>
+          <div className="field"><label>Categoria</label><input value={category} onChange={(e) => setCategory(e.target.value)} /></div>
+        </div>
+        <div className="form-row">
+          <div className="field"><label>Urgencia</label><select value={urgency} onChange={(e) => setUrgency(e.target.value)}>{["Baixa", "Media", "Alta", "Critica"].map((o) => <option key={o}>{o}</option>)}</select></div>
+          <div className="field"><label>Impacto</label><select value={impact} onChange={(e) => setImpact(e.target.value)}>{["Baixa", "Media", "Alta", "Critica"].map((o) => <option key={o}>{o}</option>)}</select></div>
+        </div>
+        <div className="form-row">
+          <div className="field"><label>Prazo (SLA)</label><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+          <div className="field"><label>&nbsp;</label><button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar dados</button></div>
+        </div>
+        {ticket.slaDeadlineAt && <p style={{ fontSize: 12.5, color: ticket.slaBreachedAt ? "var(--crit)" : "var(--muted)" }}>{ticket.slaBreachedAt ? `SLA violado em ${fmtDate(ticket.slaBreachedAt)}` : `Prazo SLA: ${fmtDate(ticket.slaDeadlineAt)}`}</p>}
+
+        <div className="section-title">Vinculos</div>
+        <div className="form-row">
+          <div className="field"><label>Ativo</label><select value={assetId} onChange={(e) => setAssetId(e.target.value)}><option value="">— Nenhum —</option>{(assets || []).map((a) => <option key={a.id} value={a.id}>{a.assetTag || a.name || a.id}</option>)}</select></div>
+          <div className="field"><label>Projeto</label><select value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">— Nenhum —</option>{(projects || []).map((pr) => <option key={pr.id} value={pr.id}>{pr.name || pr.id}</option>)}</select></div>
+        </div>
+        <div className="field"><label>Base de conhecimento</label><select multiple value={knowledgeIds} onChange={(e) => setKnowledgeIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 80 }}>{(knowledgeArticles || []).map((k) => <option key={k.id} value={k.id}>{k.title || k.id}</option>)}</select></div>
+        <div className="drawer-actions"><button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar vinculos</button></div>
+
         <div className="section-title">Tarefas / checklist</div>
         <div className="drawer-actions">
           <input className="search" style={{ flex: 1 }} value={checkText} onChange={(e) => setCheckText(e.target.value)} placeholder="Nova tarefa..." onKeyDown={(e) => { if (e.key === "Enter") addCheck(); }} />
@@ -337,6 +384,17 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
               <button className="attach-rm" onClick={() => removeAttachment(a.id)} title="Remover">✕</button>
             </div>
           ))}
+        </div>
+
+        <div className="section-title">Historico</div>
+        <div className="followup-list">
+          {(Array.isArray(ticket.history) ? ticket.history.slice().reverse().slice(0, 30) : []).map((h, i) => (
+            <div className="followup" key={h.id || i}>
+              <div className="followup-head"><strong>{h.actorName || "Sistema"}</strong><span className="followup-date">{fmtDate(h.createdAt || h.at)}</span></div>
+              <div className="followup-msg">{h.message || h.type || ""}</div>
+            </div>
+          ))}
+          {(!ticket.history || !ticket.history.length) && <p style={{ color: "var(--muted)", fontSize: 13 }}>Sem historico registrado.</p>}
         </div>
 
         <div className="section-title">Solucao</div>
@@ -415,7 +473,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts, serviceCenter, users, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [selected, setSelected] = useState(null);
@@ -449,7 +507,7 @@ function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts,
           ))}
         </div>
       )}
-      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
+      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} assets={assets} projects={projects} knowledgeArticles={knowledgeArticles} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
       {showNew && <NewTicketModal departments={requestableDepts} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
@@ -663,7 +721,7 @@ export default function App() {
           <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
         </div>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
