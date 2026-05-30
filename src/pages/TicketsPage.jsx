@@ -389,7 +389,7 @@ function TicketsPage() {
   const watcherBoxRef = useRef(null);
   const canCreateTicket = hasAnyPermission(user, ["tickets_create", "tickets_admin"]);
   const canEditTicket = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
-  const canCloseTicket = hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
+  const canCloseTicket = hasAnyPermission(user, ["tickets_close", "tickets_change_status", "tickets_admin"]);
   const canRecordResolution = hasAnyPermission(user, ["tickets_edit", "tickets_close", "tickets_admin"]);
   const canReopenTicket = hasAnyPermission(user, ["tickets_reopen", "tickets_admin"]);
   const canDeleteTicket = hasAnyPermission(user, ["tickets_delete", "tickets_admin"]);

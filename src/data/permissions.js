@@ -361,7 +361,7 @@ export function canViewOwnTickets(user) {
 }
 
 export function isSystemAdministrator(user) {
-  return normalizeText(user?.role) === "administrador da plataforma" || hasPermission(user, "users_admin");
+  return normalizeText(user?.role) === "administrador da plataforma" || String(user?.permissionProfileId || "").trim() === "profile-admin";
 }
 
 export function canViewAllTickets(user) {

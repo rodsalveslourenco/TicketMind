@@ -6,10 +6,7 @@ import {
   getRolePermissions,
   hydratePermissionProfiles,
   getUserPermissionProfile,
-  canViewAllTickets,
-  canViewOwnTickets,
   hasAnyPermission,
-  isSystemAdministrator,
   listPermissionKeys,
   normalizeRoleName,
   normalizeUserPermissions,
@@ -63,6 +60,14 @@ import {
   progressApprovalWorkflow,
   resolveApprovalWorkflow,
 } from "./ticketAutomation";
+import {
+  canAccessTicket as canAccessTicketShared,
+  canViewDepartmentTicketsForUser,
+  filterTicketsForUser as filterTicketsForUserShared,
+  getLinkedDepartmentIds,
+  getScopedDepartmentIds,
+  isGlobalTicketViewer,
+} from "./ticketVisibility";
 
 const AppDataContext = createContext(null);
 
@@ -828,64 +833,31 @@ function getServiceCenterDepartmentConfig(serviceCenter = defaultServiceCenterSe
   return sanitizeServiceCenterDepartmentConfig(serviceCenter?.departments?.[normalizedDepartmentId] || {}, serviceCenter?.departments?.[normalizedDepartmentId] || {});
 }
 
+// As regras de visibilidade vivem em ./ticketVisibility (fonte unica
+// compartilhada com o servidor). As funcoes abaixo apenas delegam, mantendo
+// as assinaturas usadas pelo restante do contexto.
 function getLinkedServiceDepartmentIds(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
-  if (!user?.id) return [];
-  return departments
-    .filter((department) => {
-      const config = getServiceCenterDepartmentConfig(serviceCenter, department.id);
-      return config.active && config.responsibleUserIds.includes(user.id);
-    })
-    .map((department) => department.id);
+  return getLinkedDepartmentIds(user, departments, serviceCenter);
 }
 
 function getScopedServiceDepartmentIds(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
-  if (!user || !serviceCenter?.enabled) return [];
-  const scopedDepartmentIds = new Set(getLinkedServiceDepartmentIds(user, departments, serviceCenter));
-  const userDepartmentId = String(user.departmentId || "").trim();
-
-  if (userDepartmentId) {
-    const department = departments.find((candidate) => candidate.id === userDepartmentId);
-    if (department && normalizeText(department.status) === "ativo") {
-      const config = getServiceCenterDepartmentConfig(serviceCenter, userDepartmentId);
-      if (config.active) scopedDepartmentIds.add(userDepartmentId);
-    }
-  }
-
-  return Array.from(scopedDepartmentIds);
+  return getScopedDepartmentIds(user, departments, serviceCenter);
 }
 
 function canViewAllTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
-  if (!user) return false;
-  return isSystemAdministrator(user) || canViewAllTickets(user);
+  return isGlobalTicketViewer(user);
 }
 
 function canViewDepartmentTicketsForContext(user, departments = [], serviceCenter = defaultServiceCenterSettings) {
-  if (!user || !serviceCenter?.enabled) return false;
-  if (!hasAnyPermission(user, ["service_center_view_department_tickets", "service_center_attend_linked_departments", "tickets_admin"])) {
-    return false;
-  }
-  return getScopedServiceDepartmentIds(user, departments, serviceCenter).length > 0;
+  return canViewDepartmentTicketsForUser(user, departments, serviceCenter);
 }
 
 function filterTicketsForUser(tickets, user, departments = [], serviceCenter = defaultServiceCenterSettings) {
-  if (!user) return [];
-  if (canViewAllTicketsForContext(user, departments, serviceCenter)) return tickets;
-  const scopedDepartmentIds = new Set(getScopedServiceDepartmentIds(user, departments, serviceCenter));
-  const canViewDepartmentTickets = canViewDepartmentTicketsForContext(user, departments, serviceCenter);
-  if (!canViewOwnTickets(user) && !canViewDepartmentTickets) return [];
-  return tickets.filter((ticket) => {
-    if (canViewOwnTickets(user) && ticket.requesterId === user.id) return true;
-    if (!canViewDepartmentTickets) return false;
-    return scopedDepartmentIds.has(String(ticket.departmentId || "").trim());
-  });
+  return filterTicketsForUserShared(tickets, user, departments, serviceCenter);
 }
 
 function canAccessTicket(ticket, user, departments = [], serviceCenter = defaultServiceCenterSettings) {
-  if (!ticket || !user) return false;
-  if (canViewAllTicketsForContext(user, departments, serviceCenter)) return true;
-  if (ticket.requesterId === user.id) return true;
-  if (!canViewDepartmentTicketsForContext(user, departments, serviceCenter)) return false;
-  return getScopedServiceDepartmentIds(user, departments, serviceCenter).includes(String(ticket.departmentId || "").trim());
+  return canAccessTicketShared(ticket, user, departments, serviceCenter);
 }
 
 function mergeCollections(stored) {
@@ -1700,7 +1672,7 @@ export function AppDataProvider({ children }) {
   const updateTicket = (ticketId, updates) => {
     const isResolutionUpdate = normalizeText(updates?.status) === "resolvido";
     const canEditTicketPayload = hasAnyPermission(user, ["tickets_edit", "tickets_admin"]);
-    const canCloseTicketPayload = isResolutionUpdate && hasAnyPermission(user, ["tickets_close", "tickets_admin"]);
+    const canCloseTicketPayload = isResolutionUpdate && hasAnyPermission(user, ["tickets_close", "tickets_change_status", "tickets_admin"]);
     if (!canEditTicketPayload && !canCloseTicketPayload) return;
     if (!canEditTicketPayload && canCloseTicketPayload) {
       updates = {
@@ -1772,7 +1744,7 @@ export function AppDataProvider({ children }) {
             return ticket;
           }
           if (isApprovalWorkflowAction && !canExecuteApprovalAction) return ticket;
-          if (normalizeText(updates.status) === "resolvido" && !hasAnyPermission(user, ["tickets_close", "tickets_admin"])) {
+          if (normalizeText(updates.status) === "resolvido" && !hasAnyPermission(user, ["tickets_close", "tickets_change_status", "tickets_admin"])) {
             return ticket;
           }
           if (

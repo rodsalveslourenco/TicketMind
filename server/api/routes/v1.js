@@ -1,6 +1,19 @@
 import { Router } from "express";
 import { hasAnyPermission } from "../../../src/data/permissions.js";
+import { canAccessTicket, filterTicketsForUser } from "../../../src/data/ticketVisibility.js";
+import { prepareStateForClient } from "../../notifications.js";
 import { buildEnvelope } from "../envelope.js";
+
+function sanitizeUserRecord(user) {
+  if (!user || typeof user !== "object") return user;
+  const { password, passwordReveal, ...rest } = user;
+  return { ...rest, hasPassword: Boolean(String(password || "").trim()) };
+}
+
+function sanitizeCollectionItems(domainKey, items) {
+  if (domainKey !== "users") return items;
+  return (Array.isArray(items) ? items : []).map(sanitizeUserRecord);
+}
 
 function handleAsync(handler) {
   return (request, response, next) => {
@@ -81,6 +94,9 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
     const auth = await requireAuthenticatedUser(request, response);
     if (!auth) return;
     const state = await stateService.getState();
+    // Aplica o mesmo saneamento/visibilidade da rota /api/state: nunca expoe
+    // senhas/segredos e filtra os chamados pelo escopo do usuario autenticado.
+    const safeState = prepareStateForClient(state, auth.requestUser);
     response.json(
       buildEnvelope(
         {
@@ -90,7 +106,7 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
           schemaUpdatedAt: state.schemaUpdatedAt,
           domainVersions: state.domainVersions,
         },
-        state,
+        safeState,
       ),
     );
   }));
@@ -98,6 +114,7 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
   router.get("/tickets", handleAsync(async (request, response) => {
     const auth = await requireAuthenticatedUser(request, response);
     if (!auth) return;
+    const state = await stateService.getState();
     const result = await ticketService.listTickets({
       status: String(request.query.status || "").trim(),
       priority: String(request.query.priority || "").trim(),
@@ -108,6 +125,12 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
       q: String(request.query.q || "").trim(),
       limit: Number(request.query.limit) || 100,
     });
+    const visibleItems = filterTicketsForUser(
+      result.items,
+      auth.requestUser,
+      Array.isArray(state.departments) ? state.departments : [],
+      state.serviceCenter || {},
+    );
     response.json(
       buildEnvelope(
         {
@@ -116,10 +139,10 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
           schemaVersion: result.schemaVersion,
           domain: "tickets",
           domainVersion: result.domainVersion,
-          total: result.total,
+          total: visibleItems.length,
           limit: result.limit,
         },
-        result.items,
+        visibleItems,
       ),
     );
   }));
@@ -129,7 +152,15 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
     if (!auth) return;
     const state = await stateService.getState();
     const ticket = await ticketService.getTicketById(request.params.ticketId);
-    if (!ticket) {
+    if (
+      !ticket ||
+      !canAccessTicket(
+        ticket,
+        auth.requestUser,
+        Array.isArray(state.departments) ? state.departments : [],
+        state.serviceCenter || {},
+      )
+    ) {
       response.status(404).json({ error: "Chamado nao encontrado." });
       return;
     }
@@ -141,7 +172,8 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
       const auth = await requireAuthenticatedUser(request, response);
       if (!auth) return;
       const { items, state } = await collectionService.list(domainKey);
-      response.json(toCollectionEnvelope(state, domainKey, items, { total: items.length }));
+      const safeItems = sanitizeCollectionItems(domainKey, items);
+      response.json(toCollectionEnvelope(state, domainKey, safeItems, { total: safeItems.length }));
     }));
 
     router.get(`/${domainKey}/:itemId`, handleAsync(async (request, response) => {
@@ -152,7 +184,8 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         response.status(404).json({ error: "Registro nao encontrado." });
         return;
       }
-      response.json(toCollectionEnvelope(state, domainKey, item));
+      const safeItem = domainKey === "users" ? sanitizeUserRecord(item) : item;
+      response.json(toCollectionEnvelope(state, domainKey, safeItem));
     }));
   }
 

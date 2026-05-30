@@ -175,6 +175,7 @@ function normalizeUserRecord(
     email: String(record.email || "").trim().toLowerCase(),
     password: String(record.password || "").trim(),
     passwordReveal: safeDecryptSecret(record.passwordReveal || record.password_reveal || ""),
+    mustChangePassword: Boolean(record.mustChangePassword ?? record.must_change_password),
     status: String(record.status || "Ativo").trim() || "Ativo",
     role: normalizedRole,
     permissionProfileId: String(permissionProfile?.id || record.permissionProfileId || "").trim(),
@@ -937,9 +938,18 @@ async function writeSqliteDomainCollections(state = {}) {
   const db = await getSqliteDb();
 
   for (const [key, tableName] of Object.entries(DOMAIN_TABLES)) {
-    db.run(`DELETE FROM ${tableName}`);
     const items = Array.isArray(state?.[key]) ? state[key] : [];
-    if (!items.length) continue;
+    // Salvaguarda contra perda de dados: nunca esvazia uma colecao inteira por
+    // causa de um save parcial/vazio. So apaga+reescreve quando ha itens novos.
+    if (!items.length) {
+      const existingRows = db.exec(`SELECT COUNT(*) FROM ${tableName}`);
+      const existingCount = existingRows?.[0]?.values?.[0]?.[0] || 0;
+      if (existingCount > 0) {
+        console.warn(`[db] Ignorando gravacao vazia em ${tableName}; ${existingCount} registros preservados.`);
+      }
+      continue;
+    }
+    db.run(`DELETE FROM ${tableName}`);
     const insertStatement = db.prepare(`INSERT INTO ${tableName} (id, payload, updated_at) VALUES (?, ?, ?)`);
     items.forEach((item, index) => {
       insertStatement.run([
@@ -1621,8 +1631,18 @@ async function readPostgresSingletons() {
 
 async function writePostgresDomainCollections(client, state = {}) {
   for (const [key, tableName] of Object.entries(DOMAIN_TABLES)) {
-    await client.query(`TRUNCATE TABLE ${tableName}`);
     const items = Array.isArray(state?.[key]) ? state[key] : [];
+    // Salvaguarda contra perda de dados: nao esvazia a colecao inteira por
+    // causa de um save parcial/vazio. So trunca quando ha itens novos a gravar.
+    if (!items.length) {
+      const existing = await client.query(`SELECT COUNT(*)::int AS total FROM ${tableName}`);
+      const existingCount = existing?.rows?.[0]?.total || 0;
+      if (existingCount > 0) {
+        console.warn(`[db] Ignorando gravacao vazia em ${tableName}; ${existingCount} registros preservados.`);
+      }
+      continue;
+    }
+    await client.query(`TRUNCATE TABLE ${tableName}`);
     for (const [index, item] of items.entries()) {
       await client.query(
         `INSERT INTO ${tableName} (id, payload, updated_at) VALUES ($1, $2::jsonb, $3)`,
