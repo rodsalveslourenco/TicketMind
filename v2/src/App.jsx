@@ -144,24 +144,43 @@ function fmtDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
 }
 
-function TicketDrawer({ ticket, departments, user, onClose, onSave, saving }) {
+function TicketDrawer({ ticket, departments, users, user, onClose, onSave, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
   const [departmentId, setDepartmentId] = useState(ticket.departmentId || "");
+  const [assignee, setAssignee] = useState(ticket.assignee || "");
+  const [watcherIds, setWatcherIds] = useState(() => (Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((w) => w.id).filter(Boolean) : []));
   const [followText, setFollowText] = useState("");
   const [followVis, setFollowVis] = useState("public");
+  const [checkText, setCheckText] = useState("");
   useEffect(() => {
     setStatus(ticket.status || "Aberto");
     setSolution(ticket.resolutionNotes || "");
     setDepartmentId(ticket.departmentId || "");
+    setAssignee(ticket.assignee || "");
+    setWatcherIds(Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((w) => w.id).filter(Boolean) : []);
     setFollowText("");
+    setCheckText("");
   }, [ticket.id]);
 
   const deptList = departments || [];
+  const userList = users || [];
+  const watcherDetails = userList.filter((u) => watcherIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  const watchersLabel = watcherDetails.map((w) => w.name).join(", ");
   const withDept = (obj) => {
     const dept = deptList.find((d) => String(d.id) === String(departmentId));
-    return dept ? { ...obj, departmentId: dept.id, department: dept.name, queue: obj.queue || dept.name } : obj;
+    const base = { ...obj, assignee, watchers: watchersLabel, watcherDetails };
+    return dept ? { ...base, departmentId: dept.id, department: dept.name, queue: obj.queue || dept.name } : base;
   };
+  const checklist = Array.isArray(ticket.checklistItems) ? ticket.checklistItems : [];
+  const addCheck = () => {
+    if (!checkText.trim()) return;
+    const item = { id: `ck-${Date.now().toString(36)}`, label: checkText.trim(), done: false };
+    onSave(withDept({ ...ticket, checklistItems: [...checklist, item] }));
+    setCheckText("");
+  };
+  const toggleCheck = (id) => onSave(withDept({ ...ticket, checklistItems: checklist.map((c) => (c.id === id ? { ...c, done: !c.done } : c)) }));
+  const removeCheck = (id) => onSave(withDept({ ...ticket, checklistItems: checklist.filter((c) => c.id !== id) }));
   const currentDeptName = ticket.department || deptList.find((d) => String(d.id) === String(ticket.departmentId))?.name || ticket.queue || "—";
   const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
   const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
@@ -215,6 +234,39 @@ function TicketDrawer({ ticket, departments, user, onClose, onSave, saving }) {
             {deptList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
           <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar departamento</button>
+        </div>
+
+        <div className="section-title">Atendimento</div>
+        <div className="form-row">
+          <div className="field"><label>Responsavel</label>
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+              <option value="">Sem responsavel</option>
+              {userList.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Observadores (watchers)</label>
+            <select multiple value={watcherIds} onChange={(e) => setWatcherIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 90 }}>
+              {userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="drawer-actions">
+          <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar atendimento</button>
+        </div>
+
+        <div className="section-title">Tarefas / checklist</div>
+        <div className="drawer-actions">
+          <input className="search" style={{ flex: 1 }} value={checkText} onChange={(e) => setCheckText(e.target.value)} placeholder="Nova tarefa..." onKeyDown={(e) => { if (e.key === "Enter") addCheck(); }} />
+          <button className="btn btn-primary" style={{ width: "auto" }} onClick={addCheck} disabled={saving || !checkText.trim()}>Adicionar</button>
+        </div>
+        <div className="check-list">
+          {checklist.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Nenhuma tarefa.</p> : checklist.map((c) => (
+            <label className="check-item" key={c.id}>
+              <input type="checkbox" checked={!!c.done} onChange={() => toggleCheck(c.id)} />
+              <span style={{ textDecoration: c.done ? "line-through" : "none", color: c.done ? "var(--muted)" : "var(--text)" }}>{c.label}</span>
+              <button className="attach-rm" onClick={(e) => { e.preventDefault(); removeCheck(c.id); }}>✕</button>
+            </label>
+          ))}
         </div>
 
         <div className="section-title">Acompanhamentos</div>
@@ -324,7 +376,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, departments, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, departments, users, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [selected, setSelected] = useState(null);
@@ -358,7 +410,7 @@ function TicketsView({ tickets, onSave, onCreate, departments, user, saving }) {
           ))}
         </div>
       )}
-      {current && <TicketDrawer ticket={current} departments={departments} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
+      {current && <TicketDrawer ticket={current} departments={departments} users={users} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
       {showNew && <NewTicketModal departments={departments} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
@@ -572,7 +624,7 @@ export default function App() {
           <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
         </div>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={data.departments || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={data.departments || []} users={data.users || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
