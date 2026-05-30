@@ -879,7 +879,10 @@ app.put("/api/singletons/:key", handleAsync(async (request, response) => {
   if (!DOMAIN_SINGLETON_KEYS.includes(key)) { response.status(404).json({ error: "Configuracao nao encontrada." }); return; }
   const perms = SINGLETON_WRITE_PERMISSIONS[key];
   if (!perms || !hasAnyPermission(auth.requestUser, perms)) { response.status(403).json({ error: "Voce nao possui permissao para alterar esta configuracao." }); return; }
-  const value = request.body && typeof request.body === "object" ? { ...request.body, updatedAt: new Date().toISOString() } : request.body;
+  const body = request.body;
+  const value = (body && typeof body === "object" && !Array.isArray(body))
+    ? { ...body, updatedAt: new Date().toISOString() }
+    : body;
   const saved = await saveSingletonRecord(key, value);
   await insertSystemLog(createSystemLog({ ...buildActorFromUser(auth.requestUser), module: "administracao", eventType: "configuracao", description: `Configuracao ${key} atualizada por ${auth.requestUser.name}.`, origin: getRequestOrigin(request), status: "alerta", metadata: { action: "singleton_update", key } }));
   broadcastStateUpdate(await readState(), getRealtimeSourceClientId(request));

@@ -354,20 +354,79 @@ export default function App() {
     if (out.progress !== undefined && out.progress !== "") out.progress = Number(out.progress) || 0;
     return out;
   };
+  const writeVia = (domain) => COLLECTIONS[domain]?.writeVia || "collection";
+
   const createItem = async (domain, item) => {
     setSaving(true);
-    try { const saved = await api.createCollectionItem(domain, normalizeItem(item)); setData((cur) => ({ ...cur, [domain]: [saved, ...(cur[domain] || [])] })); showToast("Registro criado."); return true; }
-    catch (err) { showToast(err.message || "Falha ao criar.", "err"); return false; } finally { setSaving(false); }
+    try {
+      const via = writeVia(domain);
+      if (via === "v1") {
+        const env = await api.createV1(domain, normalizeItem(item));
+        const saved = env?.data || env;
+        setData((cur) => ({ ...cur, [domain]: [saved, ...(cur[domain] || [])] }));
+      } else if (via === "profiles") {
+        const id = `profile-${Date.now().toString(36)}`;
+        const next = [{ id, ...normalizeItem(item), permissions: Array.isArray(item.permissions) ? item.permissions : [] }, ...(data.permissionProfiles || [])];
+        const saved = await api.saveSingleton("permissionProfiles", next);
+        setData((cur) => ({ ...cur, permissionProfiles: Array.isArray(saved) ? saved : next }));
+      } else {
+        const saved = await api.createCollectionItem(domain, normalizeItem(item));
+        setData((cur) => ({ ...cur, [domain]: [saved, ...(cur[domain] || [])] }));
+      }
+      showToast("Registro criado."); return true;
+    } catch (err) { showToast(err.message || "Falha ao criar.", "err"); return false; } finally { setSaving(false); }
   };
   const saveItem = async (domain, id, item) => {
     setSaving(true);
-    try { const saved = await api.saveCollectionItem(domain, id, normalizeItem(item)); setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).map((x) => (x.id === id ? { ...x, ...saved } : x)) })); showToast("Registro salvo."); return true; }
-    catch (err) { showToast(err.message || "Falha ao salvar.", "err"); return false; } finally { setSaving(false); }
+    try {
+      const via = writeVia(domain);
+      if (via === "v1") {
+        const env = await api.saveV1(domain, id, normalizeItem(item));
+        const saved = env?.data || env;
+        setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).map((x) => (x.id === id ? { ...x, ...saved } : x)) }));
+      } else if (via === "profiles") {
+        const next = (data.permissionProfiles || []).map((p) => {
+          if (p.id !== id) return p;
+          const wasAll = p.permissions === "ALL";
+          return { ...p, name: item.name, description: item.description, status: item.status, permissions: wasAll ? "ALL" : (Array.isArray(item.permissions) ? item.permissions : []) };
+        });
+        const saved = await api.saveSingleton("permissionProfiles", next);
+        setData((cur) => ({ ...cur, permissionProfiles: Array.isArray(saved) ? saved : next }));
+      } else {
+        const saved = await api.saveCollectionItem(domain, id, normalizeItem(item));
+        setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).map((x) => (x.id === id ? { ...x, ...saved } : x)) }));
+      }
+      showToast("Registro salvo."); return true;
+    } catch (err) { showToast(err.message || "Falha ao salvar.", "err"); return false; } finally { setSaving(false); }
   };
   const deleteItem = async (domain, id) => {
     setSaving(true);
-    try { await api.removeCollectionItem(domain, id); setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).filter((x) => x.id !== id) })); showToast("Registro excluido."); return true; }
-    catch (err) { showToast(err.message || "Falha ao excluir.", "err"); return false; } finally { setSaving(false); }
+    try {
+      const via = writeVia(domain);
+      if (via === "v1") {
+        await api.deleteV1(domain, id);
+        setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).filter((x) => x.id !== id) }));
+      } else if (via === "profiles") {
+        const next = (data.permissionProfiles || []).filter((p) => p.id !== id);
+        const saved = await api.saveSingleton("permissionProfiles", next);
+        setData((cur) => ({ ...cur, permissionProfiles: Array.isArray(saved) ? saved : next }));
+      } else {
+        await api.removeCollectionItem(domain, id);
+        setData((cur) => ({ ...cur, [domain]: (cur[domain] || []).filter((x) => x.id !== id) }));
+      }
+      showToast("Registro excluido."); return true;
+    } catch (err) { showToast(err.message || "Falha ao excluir.", "err"); return false; } finally { setSaving(false); }
+  };
+
+  const resolveFields = (cfg) => {
+    if (!cfg?.fields) return cfg?.fields;
+    const opts = {
+      departments: (data.departments || []).map((d) => ({ value: d.id, label: d.name })),
+      profiles: (data.permissionProfiles || []).map((p) => ({ value: p.id, label: p.name })),
+      permissions: (Array.isArray(data.permissionCatalog) ? data.permissionCatalog : []).flatMap((m) =>
+        (Array.isArray(m.permissions) ? m.permissions : []).map((pp) => ({ value: pp.key || pp, label: `${m.label || m.module || ""} · ${pp.label || pp.key || pp}` }))),
+    };
+    return cfg.fields.map((f) => (f.optionsFrom ? { ...f, options: opts[f.optionsFrom] || [] } : f));
   };
   const saveServiceCenter = async (sc) => {
     setSaving(true);
@@ -429,7 +488,7 @@ export default function App() {
         {collectionCfg && (
           <CollectionView
             title={collectionCfg.label} items={data[view]} columns={collectionCfg.columns}
-            editable={collectionCfg.editable} fields={collectionCfg.fields} saving={saving}
+            editable={collectionCfg.editable} fields={resolveFields(collectionCfg)} saving={saving}
             onCreate={(item) => createItem(view, item)} onSave={(id, item) => saveItem(view, id, item)} onDelete={(id) => deleteItem(view, id)}
           />
         )}

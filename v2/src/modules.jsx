@@ -12,32 +12,39 @@ function val(item, key) {
 }
 
 /* ---------- Formulario generico ---------- */
+function optValue(o) { return o && typeof o === "object" ? o.value : o; }
+function optLabel(o) { return o && typeof o === "object" ? o.label : o; }
+
 function RecordForm({ item, fields, onCancel, onSubmit, onDelete, saving, title }) {
   const [form, setForm] = useState(() => {
     const base = {};
-    fields.forEach((f) => { base[f.key] = item?.[f.key] ?? (f.type === "number" ? "" : ""); });
+    fields.forEach((f) => { base[f.key] = item?.[f.key] ?? (f.type === "multiselect" ? [] : ""); });
     return base;
   });
-  const set = (k, type) => (e) => {
-    const v = type === "number" ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value;
-    setForm((cur) => ({ ...cur, [k]: v }));
-  };
+  const setVal = (k, v) => setForm((cur) => ({ ...cur, [k]: v }));
   return (
     <div className="drawer-overlay" onClick={onCancel}>
       <div className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel}>Fechar</button></div>
         {fields.map((f) => (
           <div className="field" key={f.key}>
-            <label>{f.label}</label>
+            <label>{f.label}{f.required ? " *" : ""}</label>
             {f.type === "textarea" ? (
-              <textarea className="solution" value={form[f.key] || ""} onChange={set(f.key)} />
+              <textarea className="solution" value={form[f.key] || ""} onChange={(e) => setVal(f.key, e.target.value)} />
             ) : f.type === "select" ? (
-              <select value={form[f.key] || ""} onChange={set(f.key)}>
+              <select value={form[f.key] || ""} onChange={(e) => setVal(f.key, e.target.value)}>
                 <option value="">— Selecionar —</option>
-                {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                {(f.options || []).map((o) => <option key={optValue(o)} value={optValue(o)}>{optLabel(o)}</option>)}
               </select>
+            ) : f.type === "multiselect" ? (
+              <select multiple value={Array.isArray(form[f.key]) ? form[f.key] : []} style={{ minHeight: 130, width: "100%" }}
+                onChange={(e) => setVal(f.key, Array.from(e.target.selectedOptions).map((o) => o.value))}>
+                {(f.options || []).map((o) => <option key={optValue(o)} value={optValue(o)}>{optLabel(o)}</option>)}
+              </select>
+            ) : f.type === "password" ? (
+              <input type="password" value={form[f.key] || ""} placeholder={item?.id ? "(deixe em branco para manter)" : ""} onChange={(e) => setVal(f.key, e.target.value)} />
             ) : (
-              <input value={form[f.key] || ""} onChange={set(f.key, f.type)} />
+              <input value={form[f.key] || ""} onChange={(e) => setVal(f.key, f.type === "number" ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value)} />
             )}
           </div>
         ))}
@@ -246,10 +253,22 @@ export function ServiceCenterView({ serviceCenter, departments, users, onSave, s
                   <td><input type="checkbox" checked={cfg.active !== false} onChange={(e) => setDept(d.id, { active: e.target.checked })} /></td>
                   <td><input type="checkbox" checked={!!cfg.acceptsTickets} onChange={(e) => setDept(d.id, { acceptsTickets: e.target.checked })} /></td>
                   <td><input type="checkbox" checked={!!cfg.showInRequestPortal} onChange={(e) => setDept(d.id, { showInRequestPortal: e.target.checked })} /></td>
-                  <td style={{ minWidth: 200 }}>
-                    <select multiple value={cfg.responsibleUserIds || []} onChange={(e) => setDept(d.id, { responsibleUserIds: Array.from(e.target.selectedOptions).map((o) => o.value) })} style={{ width: "100%", minHeight: 64 }}>
-                      {(users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
+                  <td style={{ minWidth: 240 }}>
+                    <div className="resp-list">
+                      {(users || []).map((u) => {
+                        const checked = (cfg.responsibleUserIds || []).includes(u.id);
+                        return (
+                          <label key={u.id} className="resp-item">
+                            <input type="checkbox" checked={checked} onChange={(e) => {
+                              const set = new Set(cfg.responsibleUserIds || []);
+                              if (e.target.checked) set.add(u.id); else set.delete(u.id);
+                              setDept(d.id, { responsibleUserIds: [...set] });
+                            }} /> {u.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="resp-count">{(cfg.responsibleUserIds || []).length} responsavel(is)</div>
                   </td>
                 </tr>
               );
@@ -301,14 +320,36 @@ export const COLLECTIONS = {
       { key: "status", label: "Status", type: "select", options: STATUS_ATIVO },
       { key: "problemDescription", label: "Descricao do problema", type: "textarea" }, { key: "solutionApplied", label: "Solucao aplicada", type: "textarea" },
     ] },
-  users: { label: "Usuarios", columns: [
-    { key: "name", label: "Nome" }, { key: "email", label: "E-mail" }, { key: "role", label: "Perfil" }, { key: "department", label: "Setor" },
-    { key: "status", label: "Status", render: (i) => <span className={`badge ${norm(i.status) === "ativo" ? "s-resolvido" : "s-espera"}`}>{i.status || "—"}</span> },
-  ] },
+  users: { label: "Usuarios", editable: true, writeVia: "v1", domain: "users",
+    columns: [
+      { key: "name", label: "Nome" }, { key: "email", label: "E-mail" }, { key: "role", label: "Perfil" }, { key: "department", label: "Setor" },
+      { key: "status", label: "Status", render: (i) => <span className={`badge ${norm(i.status) === "ativo" ? "s-resolvido" : "s-espera"}`}>{i.status || "—"}</span> },
+    ],
+    fields: [
+      { key: "name", label: "Nome", required: true }, { key: "email", label: "E-mail", required: true },
+      { key: "permissionProfileId", label: "Perfil de permissao", type: "select", optionsFrom: "profiles" },
+      { key: "departmentId", label: "Setor", type: "select", optionsFrom: "departments" },
+      { key: "status", label: "Status", type: "select", options: ["Ativo", "Inativo"] },
+      { key: "password", label: "Senha", type: "password" },
+    ] },
   teams: { label: "Equipes", columns: [{ key: "name", label: "Equipe" }, { key: "department", label: "Setor" }, { key: "status", label: "Status" }] },
-  permissionProfiles: { label: "Perfis de Permissao", columns: [{ key: "name", label: "Perfil" }, { key: "description", label: "Descricao" }, { key: "status", label: "Status" }] },
-  departments: { label: "Departamentos", columns: [{ key: "code", label: "Codigo" }, { key: "name", label: "Nome" }, { key: "status", label: "Status" }] },
-  locations: { label: "Locais", columns: [{ key: "code", label: "Codigo" }, { key: "name", label: "Nome" }, { key: "status", label: "Status" }] },
+  permissionProfiles: { label: "Perfis de Permissao", editable: true, writeVia: "profiles", domain: "permissionProfiles",
+    columns: [
+      { key: "name", label: "Perfil" }, { key: "description", label: "Descricao" },
+      { key: "permissions", label: "Permissoes", render: (i) => (i.permissions === "ALL" ? "Acesso total" : `${(i.permissions || []).length} permissao(oes)`) },
+      { key: "status", label: "Status" },
+    ],
+    fields: [
+      { key: "name", label: "Nome do perfil", required: true }, { key: "description", label: "Descricao", type: "textarea" },
+      { key: "status", label: "Status", type: "select", options: ["Ativo", "Inativo"] },
+      { key: "permissions", label: "Permissoes", type: "multiselect", optionsFrom: "permissions" },
+    ] },
+  departments: { label: "Departamentos", editable: true, writeVia: "v1", domain: "departments",
+    columns: [{ key: "code", label: "Codigo" }, { key: "name", label: "Nome" }, { key: "status", label: "Status" }],
+    fields: [{ key: "code", label: "Codigo" }, { key: "name", label: "Nome", required: true }, { key: "color", label: "Cor (hex)" }, { key: "status", label: "Status", type: "select", options: ["Ativo", "Inativo"] }] },
+  locations: { label: "Locais", editable: true, writeVia: "v1", domain: "locations",
+    columns: [{ key: "code", label: "Codigo" }, { key: "name", label: "Nome" }, { key: "status", label: "Status" }],
+    fields: [{ key: "code", label: "Codigo" }, { key: "name", label: "Nome", required: true }, { key: "departmentId", label: "Setor", type: "select", optionsFrom: "departments" }, { key: "status", label: "Status", type: "select", options: ["Ativo", "Inativo"] }] },
   notificationRules: { label: "Notificacoes", editable: true,
     columns: [{ key: "name", label: "Regra" }, { key: "event", label: "Evento" }, { key: "active", label: "Ativa", render: (i) => (i.active ? "Sim" : "Nao") }],
     fields: [{ key: "name", label: "Nome da regra" }, { key: "event", label: "Evento" }, { key: "active", label: "Ativa (Sim/Nao)", type: "select", options: ["Sim", "Nao"] }] },

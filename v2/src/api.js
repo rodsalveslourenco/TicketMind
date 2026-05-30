@@ -36,4 +36,7 @@ export const api = {
   saveCollectionItem: (domain, id, item) => request(`/api/collections/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(item) }),
   removeCollectionItem: (domain, id) => request(`/api/collections/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "DELETE" }),
   saveSingleton: (key, value) => request(`/api/singletons/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify(value) }),
+  createV1: (domain, item) => request(`/api/v1/${encodeURIComponent(domain)}`, { method: "POST", body: JSON.stringify(item) }),
+  saveV1: (domain, id, item) => request(`/api/v1/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(item) }),
+  deleteV1: (domain, id) => request(`/api/v1/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
