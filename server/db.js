@@ -1249,7 +1249,10 @@ function getPgPool() {
       ssl: databaseUrl.includes("render.com") ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: Number(process.env.POSTGRES_CONNECTION_TIMEOUT_MS) || 10000,
       idleTimeoutMillis: Number(process.env.POSTGRES_IDLE_TIMEOUT_MS) || 30000,
+      max: Number(process.env.POSTGRES_POOL_MAX) || 5,
       keepAlive: true,
+      keepAliveInitialDelayMillis: 5000,
+      allowExitOnIdle: false,
     });
     const rawQuery = pgPool.query.bind(pgPool);
     pgPool.query = (...args) => {
@@ -1270,11 +1273,16 @@ function isTransientPostgresError(error) {
   const message = String(error?.message || "").trim().toLowerCase();
   return (
     ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P01", "57P02", "57P03", "08006", "08001"].includes(code) ||
-    message.includes("connection terminated unexpectedly") ||
+    message.includes("connection terminated") ||
     message.includes("connect econnrefused") ||
     message.includes("connection timeout") ||
+    message.includes("timeout exceeded") ||
     message.includes("terminating connection") ||
-    message.includes("the database system is starting up")
+    message.includes("server closed the connection") ||
+    message.includes("client has encountered a connection error") ||
+    message.includes("connection ended") ||
+    message.includes("the database system is starting up") ||
+    message.includes("the database system is shutting down")
   );
 }
 
@@ -2178,7 +2186,10 @@ export async function writeState(nextState) {
     const persistedState = await writeSqliteState(nextState);
     return primeStateCache(persistedState);
   }
-  const persistedState = await writePostgresState(nextState);
+  // A gravacao no Postgres e idempotente (truncate+reinsert+upsert). Em caso de
+  // queda transitoria de conexao, reexecuta a transacao inteira com nova
+  // conexao, em vez de falhar com 503 ("banco temporariamente indisponivel").
+  const persistedState = await withPostgresRetry(() => writePostgresState(nextState), "writeState");
   return primeStateCache(persistedState);
 }
 

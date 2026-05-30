@@ -1329,16 +1329,26 @@ export function AppDataProvider({ children }) {
 
     let active = true;
     const timeoutId = window.setTimeout(async () => {
-      try {
-        await persistAppState(data);
-      } catch (error) {
-        console.error(error);
-        if (active) {
-          pushToast(
-            "Falha ao salvar",
-            "Suas alteracoes podem nao ter sido gravadas. Verifique a conexao e tente novamente.",
-            "error",
-          );
+      // Tenta gravar com algumas retentativas: cobre quedas transitorias de
+      // conexao com o banco (Render) sem alarmar o usuario a toa.
+      const maxAttempts = 4;
+      for (let attempt = 1; attempt <= maxAttempts && active; attempt += 1) {
+        try {
+          await persistAppState(data);
+          return;
+        } catch (error) {
+          console.error(`Falha ao salvar (tentativa ${attempt}/${maxAttempts})`, error);
+          if (attempt >= maxAttempts) {
+            if (active) {
+              pushToast(
+                "Falha ao salvar",
+                "Nao foi possivel gravar suas alteracoes (banco indisponivel). Elas continuam na tela; tente novamente em instantes.",
+                "error",
+              );
+            }
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
         }
       }
     }, 150);
