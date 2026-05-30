@@ -261,7 +261,7 @@ export default function App() {
     })();
   }, []);
 
-  const onLoginSuccess = async () => { setBooting(true); try { await loadState(); } finally { setBooting(false); } };
+  const onLoginSuccess = async (loggedUser) => { if (loggedUser) setUser(loggedUser); setBooting(true); try { await loadState(); } finally { setBooting(false); } };
   const onLogout = async () => { try { await api.logout(); } catch { /* ignore */ } setUser(null); setData({}); };
 
   const saveTicket = async (nextTicket) => {
