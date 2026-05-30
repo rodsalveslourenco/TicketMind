@@ -1245,8 +1245,14 @@ export function AppDataProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [serverReady, setServerReady] = useState(false);
   const skipNextPersistenceRef = useRef(true);
+  // Controle de "alteracao local pendente": evita que a atualizacao em tempo
+  // real (SSE) sobrescreva e descarte uma edicao do usuario ainda nao salva.
+  const dirtyRef = useRef(false);
+  const mutationSeqRef = useRef(0);
 
   const applyState = (updater) => {
+    mutationSeqRef.current += 1;
+    dirtyRef.current = true;
     setData((current) => {
       const candidate = typeof updater === "function" ? updater(current) : updater;
       return mergeCollections(candidate);
@@ -1255,6 +1261,7 @@ export function AppDataProvider({ children }) {
 
   const persistStateImmediately = async (nextState) => {
     const persistedState = await persistAppState(nextState);
+    dirtyRef.current = false;
     skipNextPersistenceRef.current = true;
     setData(mergeCollections(persistedState));
     return persistedState;
@@ -1303,6 +1310,10 @@ export function AppDataProvider({ children }) {
         const payload = JSON.parse(event.data || "{}");
         if (payload?.sourceClientId && payload.sourceClientId === clientId) return;
         if (!payload?.state) return;
+        // Nao sobrescreve edicoes locais ainda nao salvas: so aplica o tempo
+        // real quando nao ha alteracao local pendente (evita perder o que o
+        // usuario acabou de fazer e impedir a gravacao).
+        if (dirtyRef.current) return;
         skipNextPersistenceRef.current = true;
         setData(mergeCollections(payload.state));
       } catch (error) {
@@ -1328,6 +1339,7 @@ export function AppDataProvider({ children }) {
     }
 
     let active = true;
+    const persistSeq = mutationSeqRef.current;
     const timeoutId = window.setTimeout(async () => {
       // Tenta gravar com algumas retentativas: cobre quedas transitorias de
       // conexao com o banco (Render) sem alarmar o usuario a toa.
@@ -1335,6 +1347,8 @@ export function AppDataProvider({ children }) {
       for (let attempt = 1; attempt <= maxAttempts && active; attempt += 1) {
         try {
           await persistAppState(data);
+          // Se nenhuma nova alteracao ocorreu desde o agendamento, marca limpo.
+          if (mutationSeqRef.current === persistSeq) dirtyRef.current = false;
           return;
         } catch (error) {
           console.error(`Falha ao salvar (tentativa ${attempt}/${maxAttempts})`, error);
