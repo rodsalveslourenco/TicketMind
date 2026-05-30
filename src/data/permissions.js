@@ -142,11 +142,14 @@ export function hydratePermissionProfiles(storedProfiles) {
         normalizedStored.find((profile) => profile.name === defaultProfile.name) ||
         null;
       if (!storedProfile) return applyProfilePermissionBackfill(defaultProfile);
-      return applyProfilePermissionBackfill({
+      // Perfil ja salvo: respeita exatamente as permissoes gravadas pelo
+      // administrador. Nao aplica backfill aqui, senao permissoes removidas
+      // voltariam a cada recarga ("nao grava e volta ao que era").
+      return {
         ...defaultProfile,
         ...storedProfile,
         permissions: storedProfile.permissions === "ALL" ? "ALL" : [...(storedProfile.permissions || [])],
-      });
+      };
     })
     .concat(normalizedStored.filter((profile) => !normalizedDefaults.some((candidate) => candidate.id === profile.id)))
     .sort((left, right) => left.name.localeCompare(right.name));

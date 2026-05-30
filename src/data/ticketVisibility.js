@@ -3,8 +3,8 @@
 // duas camadas, que antes mantinham copias quase identicas (e ja divergentes).
 //
 // Modelo de visibilidade (definido pelos perfis padrao):
-//   - Visao global  -> Administrador da Plataforma ou quem possui
-//       tickets_admin / tickets_view_all / service_center_view_all_tickets.
+//   - Visao global  -> SOMENTE o administrador do sistema (Administrador da
+//       Plataforma / perfil profile-admin).
 //   - Visao por setor -> quem possui service_center_view_department_tickets
 //       ou service_center_attend_linked_departments, limitado ao(s) seu(s)
 //       departamento(s) e aos departamentos vinculados (responsavel no Service Center).
@@ -14,7 +14,6 @@
 import { normalizeText } from "./helpdesk.js";
 import { canViewOwnTickets, hasAnyPermission, isSystemAdministrator } from "./permissions.js";
 
-const GLOBAL_VIEW_PERMISSIONS = ["tickets_admin", "tickets_view_all", "service_center_view_all_tickets"];
 const DEPARTMENT_VIEW_PERMISSIONS = [
   "service_center_view_department_tickets",
   "service_center_attend_linked_departments",
@@ -33,8 +32,10 @@ function getDepartmentConfig(serviceCenter, departmentId) {
 }
 
 export function isGlobalTicketViewer(user) {
+  // Apenas o administrador do sistema enxerga todos os chamados de todos os
+  // setores. Demais perfis sao limitados ao proprio escopo (setor + proprios).
   if (!user) return false;
-  return isSystemAdministrator(user) || hasAnyPermission(user, GLOBAL_VIEW_PERMISSIONS);
+  return isSystemAdministrator(user);
 }
 
 // Mantido como alias para compatibilidade com chamadas existentes.
