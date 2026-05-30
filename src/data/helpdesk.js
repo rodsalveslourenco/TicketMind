@@ -480,7 +480,8 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
   const resolvedAtMs = resolvedAt ? new Date(resolvedAt).getTime() : Number.NaN;
   const slaDeadlineAtMs = new Date(slaDeadlineAt).getTime();
   if (isResolved && Number.isFinite(resolvedAtMs) && Number.isFinite(slaDeadlineAtMs)) {
-    slaBreachedAt = resolvedAtMs > slaDeadlineAtMs ? slaBreachedAt || resolvedAt : "";
+    // Preserva o registro de violacao ja existente (nao apaga ao resolver no prazo).
+    slaBreachedAt = resolvedAtMs > slaDeadlineAtMs ? slaBreachedAt || resolvedAt : slaBreachedAt;
   }
   if (!isResolved && new Date(nowIso).getTime() > slaDeadlineAtMs && !slaBreachedAt) {
     slaBreachedAt = nowIso;

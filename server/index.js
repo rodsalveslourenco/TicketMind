@@ -1092,9 +1092,24 @@ function resolveEscalationTargets(state = {}, ticket = {}) {
   return (state.users || []).filter((candidate) => responsibleIds.includes(candidate.id) && normalizeText(candidate.status || "Ativo") === "ativo");
 }
 
+const ESCALATION_PAUSED_STATUSES = new Set([
+  "pausado",
+  "em espera",
+  "aguardando usuario",
+  "aguardando aprovacao",
+]);
+
 function buildEscalationChange(ticket, state = {}, nowIso = new Date().toISOString()) {
   const rules = state.serviceCenter?.escalationRules || {};
-  if (rules.enabled === false || !isOpenTicketStatus(ticket.status)) return null;
+  // Nao escala chamados legitimamente parados (pausa/espera/aprovacao): o relogio
+  // de atraso nao deve correr contra o time enquanto se aguarda terceiro/usuario.
+  if (
+    rules.enabled === false ||
+    !isOpenTicketStatus(ticket.status) ||
+    ESCALATION_PAUSED_STATUSES.has(normalizeText(ticket.status))
+  ) {
+    return null;
+  }
 
   const escalation = ticket.escalation && typeof ticket.escalation === "object" ? ticket.escalation : {};
   const maxLevel = Math.max(1, Number(rules.maxEscalationLevel) || 3);
