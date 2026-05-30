@@ -1497,7 +1497,7 @@ function TicketsPage() {
   const handleApprovalAction = (action) => {
     if (!detailTicket || !detailForm) return;
     const selectedApprover = approvalCandidates.find((candidate) => candidate.id === detailForm.approvalApproverId) || null;
-    const approvalOwnerId = String(detailTicket.approval?.approverId || detailForm.approvalApproverId || "").trim();
+    const approvalOwnerId = String(detailTicket.approval?.currentApproverId || detailTicket.approval?.approverId || detailForm.approvalApproverId || "").trim();
     const canCurrentUserDecide =
       canDecideApproval && (!approvalOwnerId || approvalOwnerId === String(user?.id || "").trim() || hasAnyPermission(user, ["tickets_admin"]));
     if (action === "request" && !selectedApprover) {

@@ -1751,6 +1751,17 @@ export function AppDataProvider({ children }) {
             return ticket;
           }
           if (isApprovalWorkflowAction && !canExecuteApprovalAction) return ticket;
+          if (
+            (approvalAction === "approve" || approvalAction === "reject") &&
+            !hasAnyPermission(user, ["tickets_admin"])
+          ) {
+            const designatedApproverId = String(
+              ticket.approval?.currentApproverId || ticket.approval?.approverId || "",
+            ).trim();
+            if (designatedApproverId && designatedApproverId !== String(user?.id || "").trim()) {
+              return ticket;
+            }
+          }
           if (normalizeText(updates.status) === "resolvido" && !hasAnyPermission(user, ["tickets_close", "tickets_change_status", "tickets_admin"])) {
             return ticket;
           }
@@ -1896,6 +1907,10 @@ export function AppDataProvider({ children }) {
           return ticket;
         }
         if (statusRequiresWaitingReason(effectiveStatus, current.serviceCenter || defaultServiceCenterSettings) && !nextWaitingReason) {
+          return ticket;
+        }
+        // Solucao obrigatoria ao resolver (garantia alem da validacao da tela).
+        if (normalizeText(effectiveStatus) === "resolvido" && !nextResolutionNotes) {
           return ticket;
         }
 

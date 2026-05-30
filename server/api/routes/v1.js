@@ -197,7 +197,7 @@ export function createV1Router({ requireAuthenticatedUser, stateService, ticketS
         response.status(403).json({ error: "Voce nao possui permissao para alterar este dominio." });
         return;
       }
-      const result = await collectionService.prepareUpsert(domainKey, request.body || {}, { stateOverride: auth.state });
+      const result = await collectionService.prepareUpsert(domainKey, request.body || {}, { stateOverride: auth.state, avoidCollision: true });
       const persistedState = await persistStateChange({
         request,
         response,
