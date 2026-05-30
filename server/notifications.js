@@ -753,15 +753,38 @@ export async function sendPasswordRecoveryEmail(
   if (!normalizedSubmittedEmail) {
     throw new Error("Dados insuficientes para enviar a recuperacao de senha.");
   }
-  const message = buildPasswordRecoveryForwardMessage({
-    submittedEmail: normalizedSubmittedEmail,
-    recipientName,
-    matchedUserEmail: recipientEmail,
-    resetUrl,
-  });
-  if (!message.to.length) {
-    throw new Error("Caixa operacional de encaminhamento nao configurada.");
+  const normalizedRecipient = String(recipientEmail || "").trim().toLowerCase();
+  // Envia o link de redefinicao diretamente ao titular da conta. Se nao houver
+  // conta ativa correspondente, nao envia nada (resposta generica do endpoint
+  // evita enumeracao de usuarios).
+  if (!normalizedRecipient || !String(resetUrl || "").trim()) {
+    return;
   }
+  const safeName = String(recipientName || "").trim() || "usuario";
+  const link = String(resetUrl).trim();
+  const message = {
+    to: [normalizedRecipient],
+    subject: "Recuperacao de senha - TicketMind",
+    text: [
+      `Ola, ${safeName}.`,
+      "",
+      "Recebemos uma solicitacao para redefinir a sua senha no TicketMind.",
+      `Acesse o link para criar uma nova senha: ${link}`,
+      "",
+      "Se voce nao solicitou, ignore este e-mail.",
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
+        <h2 style="margin-bottom:12px">Recuperacao de senha</h2>
+        <p>Ola, ${safeName}.</p>
+        <p>Recebemos uma solicitacao para redefinir a sua senha no TicketMind.</p>
+        <p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px">Redefinir senha</a></p>
+        <p>Se o botao nao abrir, use este link:</p>
+        <p><a href="${link}">${link}</a></p>
+        <p style="color:#64748b">Se voce nao solicitou, ignore este e-mail.</p>
+      </div>
+    `,
+  };
   await deliverEmail(persistedState, message);
 }
 

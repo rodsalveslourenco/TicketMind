@@ -1,4 +1,6 @@
 import express from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHistoryEntry, isOpenTicketStatus, normalizeText } from "../src/data/helpdesk.js";
@@ -53,7 +55,29 @@ let approvalReminderTimer = null;
 let escalationTimer = null;
 const realtimeClients = new Set();
 
+app.set("trust proxy", 1);
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(express.json({ limit: "15mb" }));
+
+// Rate limiting nas rotas sensiveis (anti brute force / abuso / DoS).
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
+});
+const intakeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.INTAKE_RATE_LIMIT) || 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas solicitacoes. Tente novamente mais tarde." },
+});
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/reset-password", authLimiter);
+app.use("/api/public/intake", intakeLimiter);
 
 function handleAsync(handler) {
   return (request, response, next) => {
@@ -709,9 +733,10 @@ app.post("/api/auth/forgot-password", handleAsync(async (request, response) => {
     );
     response.json({ ok: true, message: "Se o e-mail existir e estiver ativo, enviaremos o link de recuperacao." });
   } catch (error) {
-    response.status(400).json({
-      error: error instanceof Error ? error.message : "Falha ao enviar a recuperacao de senha.",
-    });
+    // Nao vaza detalhes do provedor nem a existencia da conta: registra
+    // internamente e responde de forma generica (anti-enumeracao).
+    console.error("Falha ao enviar recuperacao de senha:", error);
+    response.json({ ok: true, message: "Se o e-mail existir e estiver ativo, enviaremos o link de recuperacao." });
   }
 }));
 
