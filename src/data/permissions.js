@@ -179,6 +179,23 @@ export function normalizeUserPermissions(
     Object.keys(user.additionalPermissions || {}).length > 0 || Object.keys(user.restrictedPermissions || {}).length > 0;
   const shouldApplyExplicitPermissionMap = !hasProfileLink && !hasUserOverrides;
 
+  // Usuario VINCULADO a um perfil: as permissoes vem exclusivamente do perfil
+  // (mais os overrides por usuario). NAO aplica o backfill de flags legadas
+  // gravadas no usuario, senao permissoes removidas do perfil voltariam pelo
+  // mapa antigo do usuario ("alterei o perfil e o sistema nao acatou") — alem
+  // de liberar modulos que o perfil restringiu.
+  if (hasProfileLink) {
+    const additional = normalizePermissionOverrideMap(user.additionalPermissions, permissionCatalog);
+    Object.entries(additional).forEach(([key, value]) => {
+      if (value) nextPermissions[key] = true;
+    });
+    const restricted = normalizePermissionOverrideMap(user.restrictedPermissions, permissionCatalog);
+    Object.entries(restricted).forEach(([key, value]) => {
+      if (value) nextPermissions[key] = false;
+    });
+    return nextPermissions;
+  }
+
   if (shouldApplyExplicitPermissionMap) {
     let hasExplicitPermission = false;
     permissionKeys.forEach((key) => {

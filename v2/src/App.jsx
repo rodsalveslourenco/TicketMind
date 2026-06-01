@@ -52,35 +52,37 @@ function attendantsForDepartment(users, serviceCenter, departmentId) {
   return eligible.length ? eligible : list;
 }
 
+// Cada item de menu e travado pelas mesmas permissoes do v1 (modulo). Itens sem
+// "perm" sao visiveis a qualquer usuario autenticado (Dashboard e Meu Perfil).
 const MENU = [
   { group: "Operacao", items: [
-    { key: "dashboard", label: "Dashboard", icon: "📊" },
-    { key: "tickets", label: "Chamados", icon: "🎫" },
-    { key: "reports", label: "Relatorios", icon: "📈" },
+    { key: "dashboard", label: "Dashboard", icon: "📊", perm: ["dashboard_view", "tickets_view_own", "tickets_view_all", "tickets_admin"] },
+    { key: "tickets", label: "Chamados", icon: "🎫", perm: ["tickets_view_own", "tickets_view_all", "tickets_create", "tickets_admin"] },
+    { key: "reports", label: "Relatorios", icon: "📈", perm: ["helpdesk_indicators_view", "sla_alerts_view", "tickets_view_all", "tickets_admin"] },
   ] },
   { group: "Ativos", items: [
-    { key: "assets", label: "Ativos", icon: "💻" },
-    { key: "inventory", label: "Inventario", icon: "📊" },
-    { key: "brands", label: "Marcas", icon: "🏷️" },
-    { key: "models", label: "Modelos", icon: "📦" },
+    { key: "assets", label: "Ativos", icon: "💻", perm: ["assets_view", "assets_admin"] },
+    { key: "inventory", label: "Inventario", icon: "📊", perm: ["inventory_view", "inventory_admin", "assets_admin"] },
+    { key: "brands", label: "Marcas", icon: "🏷️", perm: ["brands_models_view", "brands_models_admin", "assets_admin"] },
+    { key: "models", label: "Modelos", icon: "📦", perm: ["brands_models_view", "brands_models_admin", "assets_admin"] },
   ] },
   { group: "Gestao", items: [
-    { key: "projects", label: "Projetos", icon: "📁" },
-    { key: "knowledgeArticles", label: "Base de Conhecimento", icon: "📚" },
+    { key: "projects", label: "Projetos", icon: "📁", perm: ["projects_view", "projects_admin"] },
+    { key: "knowledgeArticles", label: "Base de Conhecimento", icon: "📚", perm: ["knowledge_view", "knowledge_admin"] },
   ] },
   { group: "Pessoas", items: [
     { key: "users", label: "Usuarios", icon: "👤", perm: ["users_view", "users_admin"] },
     { key: "teams", label: "Equipes", icon: "👥", perm: ["users_view", "users_admin"] },
     { key: "permissionProfiles", label: "Perfis de Permissao", icon: "🔐", perm: ["users_manage_permissions", "users_admin"] },
-    { key: "technicians", label: "Tecnicos", icon: "🛠️" },
+    { key: "technicians", label: "Tecnicos", icon: "🛠️", perm: ["technicians_performance_view", "technicians_workload_view", "tickets_admin", "users_admin"] },
   ] },
   { group: "Estrutura", items: [
-    { key: "departments", label: "Departamentos", icon: "🏢" },
-    { key: "locations", label: "Locais", icon: "📍" },
+    { key: "departments", label: "Departamentos", icon: "🏢", perm: ["users_view", "users_admin"] },
+    { key: "locations", label: "Locais", icon: "📍", perm: ["assets_view", "assets_admin", "users_admin"] },
   ] },
   { group: "Configuracoes", items: [
     { key: "serviceCenter", label: "Central de Servicos", icon: "⚙️", perm: ["service_center_manage", "service_center_departments_manage", "users_admin"] },
-    { key: "notificationRules", label: "Notificacoes", icon: "🔔" },
+    { key: "notificationRules", label: "Notificacoes", icon: "🔔", perm: ["notifications_view", "notifications_manage", "users_admin"] },
     { key: "emailLayouts", label: "Layouts de E-mail", icon: "✉️", perm: ["email_layouts_view", "email_layouts_manage", "users_admin"] },
     { key: "apiConfigs", label: "Config de API", icon: "🔌", perm: ["api_rest_view", "api_rest_admin", "users_admin"] },
   ] },
@@ -836,6 +838,14 @@ export default function App() {
     try { setAvatar(localStorage.getItem(`tm2.avatar.${user.id}`) || ""); } catch { setAvatar(""); }
   }, [user?.id]);
 
+  // Se o usuario estiver numa tela sem permissao (ex.: apos restringir o perfil),
+  // redireciona para a primeira tela permitida do menu.
+  useEffect(() => {
+    if (!user) return;
+    const allowed = MENU.flatMap((g) => g.items).filter((it) => !it.perm || hasPerm(user, it.perm)).map((it) => it.key);
+    if (allowed.length && !allowed.includes(view)) setView(allowed[0]);
+  }, [user, view]);
+
   const createTicket = async (payload) => {
     setSaving(true);
     try {
@@ -975,6 +985,7 @@ export default function App() {
   const visibleMenu = MENU.map((g) => ({ ...g, items: g.items.filter((it) => !it.perm || hasPerm(user, it.perm)) })).filter((g) => g.items.length);
   const currentItem = MENU.flatMap((g) => g.items).find((it) => it.key === view);
   const collectionCfg = COLLECTIONS[view];
+  const canSeeView = !currentItem || !currentItem.perm || hasPerm(user, currentItem.perm);
 
   return (
     <div className={`shell${collapsed ? " shell-collapsed" : ""}${mobileOpen ? " shell-mobile-open" : ""}${density === "compact" ? " density-compact" : ""}`}>
@@ -1033,6 +1044,9 @@ export default function App() {
             <button className="btn btn-ghost" style={{ width: "auto" }} onClick={() => setView("profile")}>Alterar agora</button>
           </div>
         )}
+        {!canSeeView ? (
+          <div className="panel"><div className="empty">Voce nao tem permissao para acessar este modulo. Fale com o administrador do sistema.</div></div>
+        ) : (<>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
         {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} onDelete={deleteTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
@@ -1048,6 +1062,7 @@ export default function App() {
             onCreate={(item) => createItem(view, item)} onSave={(id, item) => saveItem(view, id, item)} onDelete={(id) => deleteItem(view, id)}
           />
         )}
+        </>)}
       </main>
       {toast && <div className={`toast ${toast.kind}`}>{toast.message}</div>}
     </div>
