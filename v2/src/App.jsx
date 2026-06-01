@@ -5,6 +5,7 @@ import { Reports, CollectionView, COLLECTIONS, ServiceCenterView, Dashboard, Aut
 const LOGO = `${import.meta.env.BASE_URL}logo-wega.png`;
 const STATUS_OPTIONS = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
 const OPEN_STATUSES = ["aberto", "em andamento", "em espera", "pausado", "aguardando usuario", "aguardando aprovacao", "reaberto"];
+const SLA_BY_PRIORITY = { critica: 15, alta: 60, media: 240, baixa: 480 };
 
 function norm(v) { return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 function isOpen(s) { return OPEN_STATUSES.includes(norm(s)); }
@@ -146,6 +147,11 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
   const [assetId, setAssetId] = useState(ticket.assetId || "");
   const [projectId, setProjectId] = useState(ticket.projectId || "");
   const [knowledgeIds, setKnowledgeIds] = useState(() => (Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : []));
+  const [location, setLocation] = useState(ticket.location || "");
+  const [source, setSource] = useState(ticket.source || "Portal");
+  const [pauseReason, setPauseReason] = useState(ticket.pauseReason || "");
+  const [waitingReason, setWaitingReason] = useState(ticket.waitingReason || "");
+  const [reopenReason, setReopenReason] = useState(ticket.reopenReason || "");
   const [followText, setFollowText] = useState("");
   const [followVis, setFollowVis] = useState("public");
   const [checkText, setCheckText] = useState("");
@@ -165,6 +171,11 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
     setAssetId(ticket.assetId || "");
     setProjectId(ticket.projectId || "");
     setKnowledgeIds(Array.isArray(ticket.knowledgeArticleIds) ? ticket.knowledgeArticleIds : []);
+    setLocation(ticket.location || "");
+    setSource(ticket.source || "Portal");
+    setPauseReason(ticket.pauseReason || "");
+    setWaitingReason(ticket.waitingReason || "");
+    setReopenReason(ticket.reopenReason || "");
     setFollowText("");
     setCheckText("");
     setApproverId(ticket.approval?.currentApproverId || ticket.approval?.approverId || "");
@@ -202,6 +213,7 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
       assetId, assetName: asset ? (asset.assetTag || asset.name || "") : "",
       projectId, projectName: project?.name || "",
       knowledgeArticleIds: knowledgeIds,
+      location, source, pauseReason, waitingReason, reopenReason,
     };
     return dept ? { ...base, departmentId: dept.id, department: dept.name, queue: obj.queue || dept.name } : base;
   };
@@ -320,6 +332,10 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
           <div className="field"><label>&nbsp;</label><button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar dados</button></div>
         </div>
         {ticket.slaDeadlineAt && <p style={{ fontSize: 12.5, color: ticket.slaBreachedAt ? "var(--crit)" : "var(--muted)" }}>{ticket.slaBreachedAt ? `SLA violado em ${fmtDate(ticket.slaBreachedAt)}` : `Prazo SLA: ${fmtDate(ticket.slaDeadlineAt)}`}</p>}
+        <div className="form-row">
+          <div className="field"><label>Localizacao</label><input value={location} onChange={(e) => setLocation(e.target.value)} /></div>
+          <div className="field"><label>Origem</label><select value={source} onChange={(e) => setSource(e.target.value)}><option>Portal</option><option>E-mail</option><option>Telefone</option><option>Monitoramento</option><option>Presencial</option></select></div>
+        </div>
 
         <div className="section-title">Vinculos</div>
         <div className="form-row">
@@ -422,6 +438,9 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
           <select className="status-select" value={status} onChange={(e) => setStatus(e.target.value)}>{STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}</select>
           <button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Aplicar status</button>
         </div>
+        {norm(status) === "pausado" && <div className="field"><label>Motivo da pausa</label><input value={pauseReason} onChange={(e) => setPauseReason(e.target.value)} /></div>}
+        {norm(status) === "em espera" && <div className="field"><label>Motivo da espera</label><input value={waitingReason} onChange={(e) => setWaitingReason(e.target.value)} /></div>}
+        {norm(status) === "reaberto" && <div className="field"><label>Motivo da reabertura</label><input value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} /></div>}
         <div className="drawer-actions">
           {norm(ticket.status) !== "resolvido"
             ? <button className="btn-ok" onClick={() => onSave(withDept({ ...ticket, status: "Resolvido", resolutionNotes: solution }))} disabled={saving || !solution.trim()}>{saving ? <span className="spinner" /> : "Resolver chamado"}</button>
@@ -435,7 +454,7 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
 
 function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   const [form, setForm] = useState({
-    title: "", type: "Incidente", priority: "Media", departmentId: "", category: "",
+    title: "", type: "Incidente", priority: "Media", departmentId: "", category: "", location: "", source: "Portal",
     description: "", requester: user?.name || "", requesterEmail: user?.email || "",
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -457,9 +476,10 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
       requester: form.requester.trim() || user?.name || "",
       requesterId: user?.id || "",
       requesterEmail: form.requesterEmail.trim().toLowerCase(),
-      source: "TicketMind 2",
+      source: form.source || "Portal",
+      location: form.location || "",
       openedAt: nowIso,
-      slaTargetMinutes: 240,
+      slaTargetMinutes: SLA_BY_PRIORITY[(form.priority || "media").toLowerCase()] || 240,
     };
     const created = await onCreate(payload);
     if (created) onClose();
@@ -476,6 +496,10 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
         <div className="form-row">
           <div className="field"><label>Departamento de destino *</label><select value={form.departmentId} onChange={set("departmentId")}><option value="">— Para onde vai o chamado —</option>{(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>{!(departments || []).length ? <small style={{ color: "var(--crit)" }}>Nenhum departamento habilitado a receber chamados. Ative em Central de Servicos.</small> : null}</div>
           <div className="field"><label>Categoria</label><input value={form.category} onChange={set("category")} placeholder="Ex.: Infraestrutura" /></div>
+        </div>
+        <div className="form-row">
+          <div className="field"><label>Localizacao</label><input value={form.location} onChange={set("location")} /></div>
+          <div className="field"><label>Origem</label><select value={form.source} onChange={set("source")}><option>Portal</option><option>E-mail</option><option>Telefone</option><option>Monitoramento</option><option>Presencial</option></select></div>
         </div>
         <div className="form-row">
           <div className="field"><label>Solicitante</label><input value={form.requester} onChange={set("requester")} /></div>
