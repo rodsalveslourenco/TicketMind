@@ -110,7 +110,8 @@ export function CollectionView({ title, items, columns, editable, fields, onCrea
       <div className="toolbar">
         <input className="search" placeholder={`Buscar em ${title.toLowerCase()}...`} value={search} onChange={(e) => setSearch(e.target.value)} />
         <span style={{ color: "var(--muted)", fontSize: 13 }}>{filtered.length} registro(s)</span>
-        {editable && <button className="btn btn-primary" style={{ width: "auto", marginLeft: "auto" }} onClick={() => setEditing({ mode: "new", item: {} })}>+ Novo</button>}
+        <button className="btn btn-ghost" style={{ width: "auto", marginLeft: "auto" }} onClick={() => exportCollectionCsv(title, columns, filtered)} disabled={!filtered.length}>Exportar CSV</button>
+        {editable && <button className="btn btn-primary" style={{ width: "auto" }} onClick={() => setEditing({ mode: "new", item: {} })}>+ Novo</button>}
       </div>
       {filtered.length === 0 ? (
         <div className="panel"><div className="empty">Nenhum registro encontrado.</div></div>
@@ -168,6 +169,61 @@ function countBy(items, keyFn) {
   items.forEach((it) => { const k = keyFn(it) || "—"; map.set(k, (map.get(k) || 0) + 1); });
   return [...map.entries()].sort((a, b) => b[1] - a[1]);
 }
+/* ---------- Metricas e exportacao ---------- */
+function avgResponseMin(list) {
+  const w = list.filter((t) => t.firstResponseAt && t.openedAt);
+  if (!w.length) return 0;
+  const tot = w.reduce((sum, t) => { const o = new Date(t.openedAt).getTime(); const r = new Date(t.firstResponseAt).getTime(); if (!Number.isFinite(o) || !Number.isFinite(r) || r < o) return sum; return sum + Math.round((r - o) / 60000); }, 0);
+  return Math.round(tot / w.length);
+}
+function avgResolutionMin(list) {
+  const r = list.filter((t) => Number.isFinite(Number(t.resolutionMinutes)) && Number(t.resolutionMinutes) > 0);
+  if (r.length) return Math.round(r.reduce((sum, t) => sum + Number(t.resolutionMinutes), 0) / r.length);
+  const res = list.filter((t) => norm(t.status) === "resolvido" && t.resolvedAt && t.openedAt);
+  if (!res.length) return 0;
+  const tot = res.reduce((sum, t) => { const d = (new Date(t.resolvedAt) - new Date(t.openedAt)) / 60000; return sum + (Number.isFinite(d) && d >= 0 ? d : 0); }, 0);
+  return Math.round(tot / res.length);
+}
+function csatAvg(list) {
+  const vals = list.map((t) => Number(t.csat ?? t.satisfactionRating ?? t.rating)).filter((v) => Number.isFinite(v) && v > 0);
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+function slaPct(list) {
+  const m = list.filter((t) => isOpen(t.status) || norm(t.status) === "resolvido");
+  if (!m.length) return 100;
+  const breached = m.filter((t) => t.isOverdue || t.slaResolvedLate || t.slaBreachedAt || (t.slaDeadlineAt && norm(t.status) !== "resolvido" && new Date(t.slaDeadlineAt).getTime() < Date.now())).length;
+  return Math.round(((m.length - breached) / m.length) * 100);
+}
+function fmtMin(m) {
+  if (!m || m <= 0) return "—";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60); const mm = m % 60;
+  return mm ? `${h}h ${mm}min` : `${h}h`;
+}
+function slaColor(p) { return p >= 90 ? "var(--ok)" : p >= 70 ? "var(--warn)" : "var(--crit)"; }
+function technicianProductivity(list) {
+  const names = [...new Set(list.filter((t) => t.assignee).map((t) => t.assignee))];
+  return names.map((name) => {
+    const a = list.filter((t) => t.assignee === name);
+    return { name, assigned: a.length, open: a.filter((t) => isOpen(t.status)).length, resolved: a.filter((t) => norm(t.status) === "resolvido").length, critical: a.filter((t) => norm(t.priority) === "critica" && isOpen(t.status)).length, sla: slaPct(a), avgRes: avgResolutionMin(a), firstResp: avgResponseMin(a) };
+  }).sort((x, y) => y.assigned - x.assigned);
+}
+function downloadCsv(filename, rows) {
+  const esc = (v) => { const str = v == null ? "" : String(v); return /[";\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str; };
+  const csv = rows.map((r) => r.map(esc).join(";")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+export function exportCollectionCsv(title, columns, items) {
+  const cols = (columns || []).filter((c) => c && c.key);
+  const header = cols.map((c) => c.label || c.key);
+  const rows = (items || []).map((it) => cols.map((c) => { const raw = it[c.key]; if (raw == null) return ""; if (Array.isArray(raw)) return `${raw.length} item(ns)`; if (typeof raw === "object") return ""; return raw; }));
+  downloadCsv(`${norm(title).replace(/\s+/g, "-") || "dados"}-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
+}
+
 export function Reports({ tickets }) {
   const data = useMemo(() => {
     const list = Array.isArray(tickets) ? tickets : [];
@@ -176,28 +232,57 @@ export function Reports({ tickets }) {
     const byDept = countBy(list, (t) => t.department || t.queue || "—").slice(0, 8);
     const byAssignee = countBy(list.filter((t) => t.assignee), (t) => t.assignee).slice(0, 8);
     const resolved = list.filter((t) => norm(t.status) === "resolvido");
-    const breached = list.filter((t) => t.slaBreachedAt);
-    const slaOk = list.length ? Math.round(((list.length - breached.length) / list.length) * 100) : 100;
-    const durations = resolved.map((t) => (t.resolvedAt && t.openedAt ? (new Date(t.resolvedAt) - new Date(t.openedAt)) / 3600000 : null)).filter((d) => d !== null && Number.isFinite(d) && d >= 0);
-    const avgH = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
-    return { list, byStatus, byPriority, byDept, byAssignee, resolved: resolved.length, breached: breached.length, slaOk, avgH };
+    const breached = list.filter((t) => t.slaBreachedAt || t.isOverdue);
+    const sla = slaPct(list);
+    const deptNames = [...new Set(list.map((t) => t.department || t.queue || "—"))].filter((x) => x && x !== "—");
+    const slaByDept = deptNames.map((dn) => [dn, slaPct(list.filter((t) => (t.department || t.queue || "—") === dn))]).sort((a, b) => a[1] - b[1]).slice(0, 8);
+    const tech = technicianProductivity(list).slice(0, 15);
+    return { list, byStatus, byPriority, byDept, byAssignee, slaByDept, tech, resolved: resolved.length, breached: breached.length, sla, avgRes: avgResolutionMin(list), firstResp: avgResponseMin(list), csat: csatAvg(list) };
   }, [tickets]);
   const mx = (arr) => Math.max(1, ...arr.map((x) => x[1]));
   const prioColor = (p) => ({ critica: "var(--crit)", alta: "var(--warn)", media: "var(--info)", baixa: "var(--muted)" }[norm(p)] || "var(--info)");
+  const exportTickets = () => {
+    const header = ["ID", "Titulo", "Status", "Prioridade", "Departamento", "Solicitante", "Responsavel", "Aberto em", "Resolvido em", "SLA prazo", "SLA violado"];
+    const rows = data.list.map((t) => [t.id, t.title || "", t.status || "", t.priority || "", t.department || t.queue || "", t.requester || "", t.assignee || "", t.openedAt || "", t.resolvedAt || "", t.slaDeadlineAt || "", t.slaBreachedAt ? "Sim" : "Nao"]);
+    downloadCsv(`chamados-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
+  };
+  const exportProd = () => {
+    const header = ["Tecnico", "Atribuidos", "Em aberto", "Resolvidos", "Criticos", "SLA %", "Tempo medio resolucao (min)", "1a resposta (min)"];
+    const rows = data.tech.map((t) => [t.name, t.assigned, t.open, t.resolved, t.critical, t.sla, t.avgRes, t.firstResp]);
+    downloadCsv(`produtividade-tecnica-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
+  };
   return (
     <div>
+      <div className="toolbar">
+        <span style={{ color: "var(--muted)", fontSize: 13 }}>Indicadores consolidados de {data.list.length} chamado(s).</span>
+        <button className="btn btn-ghost" style={{ width: "auto", marginLeft: "auto" }} onClick={exportTickets} disabled={!data.list.length}>Exportar chamados (CSV)</button>
+        <button className="btn btn-ghost" style={{ width: "auto" }} onClick={exportProd} disabled={!data.tech.length}>Exportar produtividade (CSV)</button>
+      </div>
       <div className="kpi-grid">
         <div className="kpi"><div className="label">Total</div><div className="value">{data.list.length}</div></div>
         <div className="kpi"><div className="label">Resolvidos</div><div className="value ok">{data.resolved}</div></div>
-        <div className="kpi"><div className="label">SLA no prazo</div><div className={`value ${data.slaOk >= 90 ? "ok" : data.slaOk >= 70 ? "warn" : "crit"}`}>{data.slaOk}%</div></div>
+        <div className="kpi"><div className="label">SLA no prazo</div><div className={`value ${data.sla >= 90 ? "ok" : data.sla >= 70 ? "warn" : "crit"}`}>{data.sla}%</div></div>
         <div className="kpi"><div className="label">SLA violado</div><div className="value crit">{data.breached}</div></div>
-        <div className="kpi"><div className="label">Tempo medio resolucao</div><div className="value">{data.avgH}h</div></div>
+        <div className="kpi"><div className="label">Tempo medio resolucao</div><div className="value">{fmtMin(data.avgRes)}</div></div>
+        <div className="kpi"><div className="label">1a resposta media</div><div className="value">{fmtMin(data.firstResp)}</div></div>
+        <div className="kpi"><div className="label">CSAT</div><div className="value">{data.csat ? `${data.csat.toFixed(1)}/5` : "—"}</div></div>
       </div>
       <div className="report-grid">
         <div className="panel"><h2>Por status</h2>{data.byStatus.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(data.byStatus)} />)}</div>
         <div className="panel"><h2>Por prioridade</h2>{data.byPriority.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(data.byPriority)} color={prioColor(k)} />)}</div>
         <div className="panel"><h2>Por setor / fila</h2>{data.byDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(data.byDept)} color="var(--wega-teal)" />)}</div>
-        <div className="panel"><h2>Por responsavel</h2>{data.byAssignee.length ? data.byAssignee.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(data.byAssignee)} color="var(--wega-navy)" />) : <div className="empty">Sem responsaveis atribuidos.</div>}</div>
+        <div className="panel"><h2>SLA por departamento</h2>{data.slaByDept.length ? data.slaByDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={100} color={slaColor(v)} />) : <div className="empty">Sem dados de SLA.</div>}</div>
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <h2 style={{ padding: "18px 20px 0" }}>Produtividade dos tecnicos</h2>
+        <table className="data-table">
+          <thead><tr><th>Tecnico</th><th>Atribuidos</th><th>Em aberto</th><th>Resolvidos</th><th>SLA %</th><th>Tempo medio</th><th>1a resposta</th></tr></thead>
+          <tbody>
+            {data.tech.length === 0 ? <tr><td colSpan={7}><div className="empty">Sem chamados atribuidos.</div></td></tr> : data.tech.map((t) => (
+              <tr key={t.name}><td>{t.name}</td><td>{t.assigned}</td><td><strong>{t.open}</strong></td><td>{t.resolved}</td><td style={{ color: slaColor(t.sla), fontWeight: 700 }}>{t.sla}%</td><td>{fmtMin(t.avgRes)}</td><td>{fmtMin(t.firstResp)}</td></tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -214,25 +299,22 @@ export function Dashboard({ tickets, onGo }) {
     const list = Array.isArray(tickets) ? tickets : [];
     const open = list.filter((t) => isOpen(t.status));
     const resolved = list.filter((t) => norm(t.status) === "resolvido");
-    const breached = list.filter((t) => t.slaBreachedAt);
     const slaRisco = open.filter(pastDue);
-    const slaOk = list.length ? Math.round(((list.length - breached.length) / list.length) * 100) : 100;
+    const sla = slaPct(list);
     const byStatus = countBy(list, (t) => t.status || "Aberto");
     const byPriority = countBy(list, (t) => t.priority || "Media");
     const byDept = countBy(list, (t) => t.department || t.queue || "—").slice(0, 8);
-    // volume ultimos 7 dias
-    const days = [];
-    for (let i = 6; i >= 0; i -= 1) { const dt = new Date(); dt.setDate(dt.getDate() - i); days.push(dt.toISOString().slice(0, 10)); }
-    const vol = days.map((day) => [day.slice(8, 10) + "/" + day.slice(5, 7), list.filter((t) => String(t.openedAt || "").slice(0, 10) === day).length]);
-    // performance por tecnico
-    const techMap = new Map();
-    open.forEach((t) => {
-      const a = t.assignee || "Sem responsavel";
-      const e = techMap.get(a) || { abertos: 0, criticos: 0 };
-      e.abertos += 1; if (norm(t.priority) === "critica") e.criticos += 1; techMap.set(a, e);
-    });
-    const tech = [...techMap.entries()].map(([name, v]) => ({ name, ...v })).sort((x, y) => y.abertos - x.abertos).slice(0, 10);
-    // tarefas
+    const deptNames = [...new Set(list.map((t) => t.department || t.queue || "—"))].filter((x) => x && x !== "—");
+    const slaByDept = deptNames.map((dn) => [dn, slaPct(list.filter((t) => (t.department || t.queue || "—") === dn))]).sort((a, b) => a[1] - b[1]).slice(0, 6);
+    const months = []; const base = new Date(); base.setDate(1);
+    for (let i = 5; i >= 0; i -= 1) { const dt = new Date(base.getFullYear(), base.getMonth() - i, 1); months.push(dt); }
+    const vol6 = months.map((dt) => { const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`; const label = dt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""); return [label, list.filter((t) => String(t.openedAt || "").slice(0, 7) === key).length]; });
+    const tech = technicianProductivity(list).slice(0, 8);
+    const agenda = open.filter((t) => t.slaDeadlineAt && !t.slaBreachedAt).map((t) => ({ id: t.id, title: t.title, when: t.slaDeadlineAt, assignee: t.assignee, dept: t.department || t.queue })).sort((a, b) => String(a.when).localeCompare(String(b.when))).slice(0, 6);
+    const alertas = [];
+    slaRisco.slice(0, 6).forEach((t) => alertas.push({ kind: "crit", text: `SLA em risco: ${t.id} — ${t.title || ""}` }));
+    open.filter((t) => !t.assignee).slice(0, 6).forEach((t) => alertas.push({ kind: "warn", text: `Sem responsavel: ${t.id} — ${t.title || ""}` }));
+    open.filter((t) => norm(t.status) === "aguardando aprovacao").slice(0, 6).forEach((t) => alertas.push({ kind: "info", text: `Aguardando aprovacao: ${t.id} — ${t.title || ""}` }));
     let tarefasTotal = 0, tarefasFeitas = 0;
     list.forEach((t) => (Array.isArray(t.checklistItems) ? t.checklistItems : []).forEach((c) => { tarefasTotal += 1; if (c.done) tarefasFeitas += 1; }));
     return {
@@ -240,8 +322,9 @@ export function Dashboard({ tickets, onGo }) {
       andamento: list.filter((t) => norm(t.status) === "em andamento").length,
       aguardando: open.filter((t) => norm(t.status).startsWith("aguardando") || norm(t.status) === "em espera" || norm(t.status) === "pausado").length,
       criticos: open.filter((t) => norm(t.priority) === "critica").length,
-      resolvidos: resolved.length, slaRisco: slaRisco.length, slaOk,
-      byStatus, byPriority, byDept, vol, tech, tarefasTotal, tarefasFeitas,
+      resolvidos: resolved.length, slaRisco: slaRisco.length, sla,
+      csat: csatAvg(list), firstResp: avgResponseMin(list), avgRes: avgResolutionMin(list),
+      byStatus, byPriority, byDept, slaByDept, vol6, tech, agenda, alertas: alertas.slice(0, 10), tarefasTotal, tarefasFeitas,
       recentes: [...list].sort((a, b) => String(b.updatedAtIso || b.openedAt || "").localeCompare(String(a.updatedAtIso || a.openedAt || ""))).slice(0, 6),
     };
   }, [tickets]);
@@ -256,35 +339,54 @@ export function Dashboard({ tickets, onGo }) {
         <div className="kpi"><div className="label">Aguardando</div><div className="value">{d.aguardando}</div></div>
         <div className="kpi"><div className="label">Criticos abertos</div><div className="value crit">{d.criticos}</div></div>
         <div className="kpi"><div className="label">SLA sob risco</div><div className="value crit">{d.slaRisco}</div></div>
-        <div className="kpi"><div className="label">SLA cumprido</div><div className={`value ${d.slaOk >= 90 ? "ok" : d.slaOk >= 70 ? "warn" : "crit"}`}>{d.slaOk}%</div></div>
+        <div className="kpi"><div className="label">SLA cumprido</div><div className={`value ${d.sla >= 90 ? "ok" : d.sla >= 70 ? "warn" : "crit"}`}>{d.sla}%</div></div>
         <div className="kpi"><div className="label">Resolvidos</div><div className="value ok">{d.resolvidos}</div></div>
+        <div className="kpi"><div className="label">CSAT</div><div className="value">{d.csat ? `${d.csat.toFixed(1)}/5` : "—"}</div></div>
+        <div className="kpi"><div className="label">1a resposta</div><div className="value">{fmtMin(d.firstResp)}</div></div>
+        <div className="kpi"><div className="label">Tempo medio resolucao</div><div className="value">{fmtMin(d.avgRes)}</div></div>
       </div>
       <div className="report-grid">
         <div className="panel"><h2>Distribuicao por status</h2>{d.byStatus.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byStatus)} />)}</div>
         <div className="panel"><h2>Distribuicao por prioridade</h2>{d.byPriority.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byPriority)} color={prioColor(k)} />)}</div>
         <div className="panel"><h2>Chamados por departamento</h2>{d.byDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byDept)} color="var(--wega-teal)" />)}</div>
-        <div className="panel"><h2>Volume (ultimos 7 dias)</h2>{d.vol.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.vol)} color="var(--wega-navy)" />)}</div>
+        <div className="panel"><h2>Volume (ultimos 6 meses)</h2>{d.vol6.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.vol6)} color="var(--wega-navy)" />)}</div>
+      </div>
+      <div className="report-grid">
+        <div className="panel"><h2>SLA por departamento</h2>{d.slaByDept.length ? d.slaByDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={100} color={slaColor(v)} />) : <div className="empty">Sem dados de SLA.</div>}</div>
+        <div className="panel"><h2>Alertas operacionais</h2>
+          <div className="followup-list">
+            {d.alertas.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Nenhum alerta no momento.</p> : d.alertas.map((a, i) => (
+              <div className="followup" key={i} style={{ borderLeft: `3px solid ${a.kind === "crit" ? "var(--crit)" : a.kind === "warn" ? "var(--warn)" : "var(--info)"}` }}><div className="followup-msg">{a.text}</div></div>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-        <h2 style={{ padding: "18px 20px 0" }}>Performance dos tecnicos (chamados em aberto)</h2>
+        <h2 style={{ padding: "18px 20px 0" }}>Produtividade dos tecnicos</h2>
         <table className="data-table">
-          <thead><tr><th>Tecnico</th><th>Em aberto</th><th>Criticos</th></tr></thead>
+          <thead><tr><th>Tecnico</th><th>Em aberto</th><th>Resolvidos</th><th>Criticos</th><th>SLA %</th><th>Tempo medio</th><th>1a resposta</th></tr></thead>
           <tbody>
-            {d.tech.length === 0 ? <tr><td colSpan={3}><div className="empty">Sem chamados atribuidos.</div></td></tr> : d.tech.map((t) => (
-              <tr key={t.name}><td>{t.name}</td><td><strong>{t.abertos}</strong></td><td style={{ color: t.criticos ? "var(--crit)" : "inherit" }}>{t.criticos}</td></tr>
+            {d.tech.length === 0 ? <tr><td colSpan={7}><div className="empty">Sem chamados atribuidos.</div></td></tr> : d.tech.map((t) => (
+              <tr key={t.name}><td>{t.name}</td><td><strong>{t.open}</strong></td><td>{t.resolved}</td><td style={{ color: t.critical ? "var(--crit)" : "inherit" }}>{t.critical}</td><td style={{ color: slaColor(t.sla), fontWeight: 700 }}>{t.sla}%</td><td>{fmtMin(t.avgRes)}</td><td>{fmtMin(t.firstResp)}</td></tr>
             ))}
           </tbody>
         </table>
       </div>
       <div className="report-grid">
+        <div className="panel"><h2>Agenda executiva — proximos vencimentos</h2>
+          <div className="followup-list">
+            {d.agenda.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Sem prazos de SLA proximos.</p> : d.agenda.map((a) => (
+              <div className="followup" key={a.id}><div className="followup-head"><strong>{a.id}</strong><span className="followup-date">{new Date(a.when).toLocaleString("pt-BR")}</span></div><div className="followup-msg">{a.title || ""} · {a.dept || "—"} · {a.assignee || "Sem responsavel"}</div></div>
+            ))}
+          </div>
+        </div>
         <div className="panel"><h2>Tarefas dos chamados</h2>
-          <div className="kpi-grid" style={{ marginBottom: 0 }}>
+          <div className="kpi-grid" style={{ marginBottom: 12 }}>
             <div className="kpi"><div className="label">Total de tarefas</div><div className="value">{d.tarefasTotal}</div></div>
             <div className="kpi"><div className="label">Concluidas</div><div className="value ok">{d.tarefasFeitas}</div></div>
             <div className="kpi"><div className="label">Pendentes</div><div className="value warn">{d.tarefasTotal - d.tarefasFeitas}</div></div>
           </div>
-        </div>
-        <div className="panel"><h2>Chamados recentes</h2>
+          <h2 style={{ marginTop: 4 }}>Chamados recentes</h2>
           <div className="ticket-list">
             {d.recentes.map((t) => (
               <div key={t.id} className="ticket-card" style={{ gridTemplateColumns: "70px 1fr auto", cursor: "default", borderLeftColor: prioColor(t.priority) }}>

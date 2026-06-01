@@ -1081,6 +1081,41 @@ app.put("/api/tickets/:ticketId", handleAsync(async (request, response) => {
   response.json(saved);
 }));
 
+app.delete("/api/tickets/:ticketId", handleAsync(async (request, response) => {
+  const previousState = await readState();
+  const auth = await requireAuthenticatedUser(request, response, previousState);
+  if (!auth) return;
+  const ticketId = String(request.params.ticketId || "").trim();
+  const existing = (previousState.tickets || []).find((item) => String(item?.id || "").trim() === ticketId) || null;
+  if (!existing) {
+    response.status(404).json({ error: "Chamado nao encontrado." });
+    return;
+  }
+  if (!canAccessTicket(existing, auth.requestUser, previousState.departments || [], previousState.serviceCenter || {})) {
+    response.status(403).json({ error: "Voce nao tem acesso a este chamado." });
+    return;
+  }
+  if (!hasAnyPermission(auth.requestUser, ["tickets_delete", "tickets_admin"])) {
+    response.status(403).json({ error: "Voce nao possui permissao para excluir chamados." });
+    return;
+  }
+  await removeDomainRecord("tickets", ticketId);
+  await insertSystemLog(
+    createSystemLog({
+      ...buildActorFromUser(auth.requestUser),
+      module: "chamados",
+      eventType: "exclusao",
+      description: `Chamado ${ticketId} (${existing.title || "sem titulo"}) excluido por ${auth.requestUser.name}.`,
+      origin: getRequestOrigin(request),
+      status: "sucesso",
+      metadata: { action: "ticket_delete", ticketId },
+    }),
+  );
+  const refreshedState = await readState();
+  broadcastStateUpdate(refreshedState, getRealtimeSourceClientId(request));
+  response.json({ ok: true, id: ticketId });
+}));
+
 app.post("/api/notifications/test", handleAsync(async (request, response) => {
   const auth = await requireAuthenticatedUser(request, response);
   if (!auth) return;

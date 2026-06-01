@@ -133,7 +133,7 @@ function fmtDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
 }
 
-function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, onClose, onSave, saving }) {
+function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, onClose, onSave, onDelete, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
   const [departmentId, setDepartmentId] = useState(ticket.departmentId || "");
@@ -447,6 +447,15 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
             : <button className="btn-reopen" onClick={() => onSave(withDept({ ...ticket, status: "Reaberto" }))} disabled={saving}>Reabrir chamado</button>}
         </div>
         {norm(ticket.status) !== "resolvido" && !solution.trim() && <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 8 }}>Informe a solucao para habilitar a resolucao.</p>}
+        {onDelete && hasPerm(user, ["tickets_delete", "tickets_admin"]) && (
+          <>
+            <div className="section-title">Zona de risco</div>
+            <div className="drawer-actions">
+              <button className="btn-reopen" disabled={saving} onClick={() => { if (window.confirm(`Excluir definitivamente o chamado ${ticket.id}? Esta acao nao pode ser desfeita.`)) { onDelete(ticket.id); onClose(); } }}>Excluir chamado</button>
+            </div>
+            <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 6 }}>Disponivel apenas para perfis com permissao de exclusao (ex.: Gestor de TI).</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -515,7 +524,7 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, onDelete, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [selected, setSelected] = useState(null);
@@ -549,7 +558,7 @@ function TicketsView({ tickets, onSave, onCreate, departments, requestableDepts,
           ))}
         </div>
       )}
-      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} assets={assets} projects={projects} knowledgeArticles={knowledgeArticles} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} />}
+      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} assets={assets} projects={projects} knowledgeArticles={knowledgeArticles} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} onDelete={onDelete} />}
       {showNew && <NewTicketModal departments={requestableDepts} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
@@ -604,7 +613,7 @@ function TechniciansView({ users, tickets }) {
   );
 }
 
-function ProfileView({ user, onChangePassword }) {
+function ProfileView({ user, onChangePassword, density, onDensity, avatar, onAvatar }) {
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
@@ -617,15 +626,41 @@ function ProfileView({ user, onChangePassword }) {
     setBusy(false);
     if (ok) { setCur(""); setNw(""); setCf(""); }
   };
+  const pickPhoto = (file) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { window.alert("Imagem muito grande (max 2MB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => onAvatar(reader.result);
+    reader.readAsDataURL(file);
+  };
   return (
     <div>
+      {user?.mustChangePassword && <div className="error-banner" style={{ marginBottom: 14 }}>Sua senha precisa ser alterada. Defina uma nova senha abaixo.</div>}
       <div className="panel"><h2>Meus dados</h2>
-        <div className="kv" style={{ gridTemplateColumns: "160px 1fr" }}>
-          <div className="k">Nome</div><div>{user?.name || "—"}</div>
-          <div className="k">E-mail</div><div>{user?.email || "—"}</div>
-          <div className="k">Perfil</div><div>{user?.role || "—"}</div>
-          <div className="k">Setor</div><div>{user?.department || "—"}</div>
+        <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ textAlign: "center" }}>
+            <span className="profile-avatar">{avatar ? <img src={avatar} alt="" /> : (user?.name || "?").slice(0, 1).toUpperCase()}</span>
+            <div className="drawer-actions" style={{ justifyContent: "center", marginTop: 8 }}>
+              <label className="btn btn-ghost" style={{ width: "auto", cursor: "pointer" }}>Trocar foto<input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = ""; }} /></label>
+              {avatar && <button className="btn btn-ghost" style={{ width: "auto" }} onClick={() => onAvatar("")}>Remover</button>}
+            </div>
+          </div>
+          <div className="kv" style={{ gridTemplateColumns: "160px 1fr", flex: 1, minWidth: 280 }}>
+            <div className="k">Nome</div><div>{user?.name || "—"}</div>
+            <div className="k">E-mail</div><div>{user?.email || "—"}</div>
+            <div className="k">Perfil</div><div>{user?.role || "—"}</div>
+            <div className="k">Setor</div><div>{user?.department || "—"}</div>
+          </div>
         </div>
+      </div>
+      <div className="panel" style={{ maxWidth: 460 }}><h2>Preferencias</h2>
+        <div className="field"><label>Densidade da tela</label>
+          <select value={density || "comfortable"} onChange={(e) => onDensity(e.target.value)}>
+            <option value="comfortable">Confortavel</option>
+            <option value="compact">Compacta</option>
+          </select>
+        </div>
+        <small style={{ color: "var(--muted)" }}>A densidade compacta reduz espacamentos para exibir mais informacao por tela. A foto e a densidade ficam salvas neste dispositivo.</small>
       </div>
       <div className="panel" style={{ maxWidth: 460 }}><h2>Alterar senha</h2>
         <div className="field"><label>Senha atual</label><input type="password" value={cur} onChange={(e) => setCur(e.target.value)} /></div>
@@ -762,6 +797,10 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const toggleCollapse = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem("tm2.collapsed", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  const [density, setDensity] = useState(() => { try { return localStorage.getItem("tm2.density") || "comfortable"; } catch { return "comfortable"; } });
+  const applyDensity = (d) => { setDensity(d); try { localStorage.setItem("tm2.density", d); } catch { /* ignore */ } };
+  const [avatar, setAvatar] = useState("");
+  const saveAvatar = (dataUrl) => { setAvatar(dataUrl || ""); try { if (user?.id) { if (dataUrl) localStorage.setItem(`tm2.avatar.${user.id}`, dataUrl); else localStorage.removeItem(`tm2.avatar.${user.id}`); } } catch { /* ignore */ } };
 
   const tickets = Array.isArray(data.tickets) ? data.tickets : [];
   const showToast = (message, kind = "ok") => { setToast({ message, kind }); window.setTimeout(() => setToast(null), 3200); };
@@ -791,6 +830,11 @@ export default function App() {
     try { await loadState(); } catch (err) { console.error(err); }
   };
   const onLogout = async () => { try { await api.logout(); } catch { /* ignore */ } setUser(null); setData({}); };
+
+  useEffect(() => {
+    if (!user?.id) { setAvatar(""); return; }
+    try { setAvatar(localStorage.getItem(`tm2.avatar.${user.id}`) || ""); } catch { setAvatar(""); }
+  }, [user?.id]);
 
   const createTicket = async (payload) => {
     setSaving(true);
@@ -913,6 +957,17 @@ export default function App() {
     finally { setSaving(false); }
   };
 
+  const deleteTicket = async (ticketId) => {
+    setSaving(true);
+    try {
+      await api.deleteTicket(ticketId);
+      setData((cur) => ({ ...cur, tickets: (cur.tickets || []).filter((t) => t.id !== ticketId) }));
+      showToast(`Chamado ${ticketId} excluido.`, "ok");
+      return true;
+    } catch (err) { showToast(err.message || "Falha ao excluir o chamado.", "err"); return false; }
+    finally { setSaving(false); }
+  };
+
   if (portalToken) return <PublicPortal token={portalToken} />;
   if (booting) return <div className="center-load"><span className="spinner" style={{ borderTopColor: "#1565c0", borderColor: "#cbd5e1" }} /> &nbsp;Carregando...</div>;
   if (!user) return <Login onSuccess={onLoginSuccess} />;
@@ -922,7 +977,7 @@ export default function App() {
   const collectionCfg = COLLECTIONS[view];
 
   return (
-    <div className={`shell${collapsed ? " shell-collapsed" : ""}${mobileOpen ? " shell-mobile-open" : ""}`}>
+    <div className={`shell${collapsed ? " shell-collapsed" : ""}${mobileOpen ? " shell-mobile-open" : ""}${density === "compact" ? " density-compact" : ""}`}>
       {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
       <aside className="sidebar">
         <div className="sidebar-top">
@@ -955,7 +1010,7 @@ export default function App() {
             <button className="btn btn-ghost" onClick={() => loadState().then(() => showToast("Atualizado.")).catch(() => showToast("Falha ao atualizar.", "err"))}>Atualizar</button>
             <div className="user-menu">
               <button className="user-btn" onClick={() => setUserMenuOpen((o) => !o)}>
-                <span className="user-avatar">{(user.name || "?").slice(0, 1).toUpperCase()}</span>
+                <span className="user-avatar">{avatar ? <img src={avatar} alt="" /> : (user.name || "?").slice(0, 1).toUpperCase()}</span>
                 <span className="user-name">{user.name}</span>
                 <span style={{ color: "var(--muted)" }}>▾</span>
               </button>
@@ -972,14 +1027,20 @@ export default function App() {
             </div>
           </div>
         </div>
+        {user.mustChangePassword && view !== "profile" && (
+          <div className="error-banner" style={{ margin: "0 0 14px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span>Por seguranca, defina uma nova senha de acesso.</span>
+            <button className="btn btn-ghost" style={{ width: "auto" }} onClick={() => setView("profile")}>Alterar agora</button>
+          </div>
+        )}
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} onDelete={deleteTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
         {view === "technicians" && <TechniciansView users={data.users || []} tickets={tickets} />}
         {view === "inventory" && <InventoryView assets={data.assets || []} />}
-        {view === "profile" && <ProfileView user={user} onChangePassword={changePassword} />}
+        {view === "profile" && <ProfileView user={user} onChangePassword={changePassword} density={density} onDensity={applyDensity} avatar={avatar} onAvatar={saveAvatar} />}
         {collectionCfg && (
           <CollectionView
             title={collectionCfg.label} items={data[view]} columns={collectionCfg.columns}

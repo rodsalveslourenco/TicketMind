@@ -31,6 +31,7 @@ export const api = {
   logout: () => request("/api/auth/logout", { method: "POST" }),
   state: () => request("/api/state"),
   saveTicket: (id, ticket) => request(`/api/tickets/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(ticket) }),
+  deleteTicket: (id) => request(`/api/tickets/${encodeURIComponent(id)}`, { method: "DELETE" }),
   createTicket: (payload) => request("/api/v1/tickets", { method: "POST", body: JSON.stringify(payload) }),
   createCollectionItem: (domain, item) => request(`/api/collections/${encodeURIComponent(domain)}`, { method: "POST", body: JSON.stringify(item) }),
   saveCollectionItem: (domain, id, item) => request(`/api/collections/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(item) }),
