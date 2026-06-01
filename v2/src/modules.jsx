@@ -454,7 +454,7 @@ export function ServiceCenterView({ serviceCenter, departments, users, onSave, s
           {!intake.accessToken && <button className="btn btn-ghost" onClick={() => updPath("publicIntake", { accessToken: `portal-${Math.random().toString(36).slice(2, 10)}` })}>Gerar token</button>}
         </div>
         {intake.accessToken ? (() => {
-          const link = `${typeof window !== "undefined" ? window.location.origin : ""}/v2/?portal=${encodeURIComponent(intake.accessToken)}`;
+          const link = `${typeof window !== "undefined" ? window.location.origin : ""}/?portal=${encodeURIComponent(intake.accessToken)}`;
           return (
             <div className="field"><label>Link do portal publico (compartilhe com solicitantes)</label>
               <div style={{ display: "flex", gap: 8 }}>

@@ -1258,7 +1258,7 @@ app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, 
   );
 }));
 
-app.use(express.static(distPath));
+app.use(express.static(distPath, { index: false }));
 
 app.use((error, request, response, next) => {
   if (response.headersSent) {
@@ -1280,7 +1280,9 @@ app.use((error, request, response, next) => {
   response.status(statusCode).send(message);
 });
 
-// TicketMind 2 (app novo, mesmo backend/banco) servido em /v2.
+// TicketMind 2 e o app oficial: servido na raiz (link do antigo v1) e tambem
+// em /v2 para compatibilidade com links existentes (ex.: portal publico).
+// O v1 fica ARQUIVADO no repositorio (dist/index.html) e nao e mais servido.
 app.get(["/v2", "/v2/*"], (request, response) => {
   response.sendFile(path.join(distPath, "v2", "index.html"));
 });
@@ -1291,7 +1293,7 @@ app.get("*", (request, response) => {
     return;
   }
 
-  response.sendFile(path.join(distPath, "index.html"));
+  response.sendFile(path.join(distPath, "v2", "index.html"));
 });
 
 app.listen(port, () => {
