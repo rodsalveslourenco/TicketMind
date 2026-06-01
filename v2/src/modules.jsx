@@ -429,8 +429,58 @@ export function ServiceCenterView({ serviceCenter, departments, users, onSave, s
   );
 }
 
+/* ---------- Inventario (consolidado de ativos) ---------- */
+export function InventoryView({ assets }) {
+  const [sel, setSel] = useState(null);
+  const groups = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(assets) ? assets : []).forEach((a) => {
+      const key = `${a.type || "—"}||${a.manufacturer || "—"}||${a.model || "—"}`;
+      const g = map.get(key) || { key, type: a.type || "—", manufacturer: a.manufacturer || "—", model: a.model || "—", qty: 0, serials: [] };
+      g.qty += 1;
+      const s = a.serial || a.assetTag; if (s) g.serials.push(s);
+      map.set(key, g);
+    });
+    return [...map.values()].sort((x, y) => y.qty - x.qty);
+  }, [assets]);
+  const total = (assets || []).length;
+  return (
+    <div>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="label">Ativos cadastrados</div><div className="value">{total}</div></div>
+        <div className="kpi"><div className="label">Itens de catalogo</div><div className="value">{groups.length}</div></div>
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <table className="data-table">
+          <thead><tr><th>Tipo</th><th>Fabricante</th><th>Modelo</th><th>Quantidade</th></tr></thead>
+          <tbody>
+            {groups.length === 0 ? <tr><td colSpan={4}><div className="empty">Nenhum ativo cadastrado.</div></td></tr> : groups.map((g) => (
+              <tr key={g.key} onClick={() => setSel(g)}>
+                <td>{g.type}</td><td>{g.manufacturer}</td><td>{g.model}</td><td><strong>{g.qty}</strong></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {sel && (
+        <div className="drawer-overlay" onClick={() => setSel(null)}>
+          <div className="drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-head"><h3>{sel.type} · {sel.manufacturer} · {sel.model}</h3><button className="btn btn-ghost" onClick={() => setSel(null)}>Fechar</button></div>
+            <p style={{ color: "var(--muted)" }}>{sel.qty} unidade(s). Numeros de serie / patrimonio:</p>
+            <div className="followup-list">
+              {sel.serials.length ? sel.serials.map((s, i) => <div className="followup" key={i}><div className="followup-msg">{s}</div></div>) : <p style={{ color: "var(--muted)" }}>Sem numero de serie registrado.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Config de colecoes (menus) ---------- */
 const STATUS_ATIVO = ["Ativo", "Inativo"];
+const KNOWLEDGE_CATEGORIES = ["Procedimento", "Acesso", "Aplicacoes", "Infraestrutura", "Rede", "Seguranca"];
+const ASSET_TYPES = ["Notebook", "Desktop", "Celular", "Monitor", "Impressora", "Servidor", "Rede", "Outros"];
 export const COLLECTIONS = {
   assets: { label: "Ativos", editable: true,
     columns: [
@@ -440,9 +490,14 @@ export const COLLECTIONS = {
       { key: "status", label: "Status", render: (i) => <span className={`badge ${i.status === "Ativo" ? "s-resolvido" : "s-espera"}`}>{i.status || "—"}</span> },
     ],
     fields: [
-      { key: "name", label: "Nome" }, { key: "assetTag", label: "Tag" }, { key: "type", label: "Tipo" },
-      { key: "manufacturer", label: "Fabricante" }, { key: "model", label: "Modelo" }, { key: "serial", label: "Numero de serie" },
-      { key: "owner", label: "Responsavel" }, { key: "location", label: "Local" }, { key: "criticality", label: "Criticidade" },
+      { key: "name", label: "Nome", required: true }, { key: "assetTag", label: "Patrimonio / Tag" },
+      { key: "type", label: "Tipo", type: "select", options: ASSET_TYPES }, { key: "manufacturer", label: "Fabricante" },
+      { key: "model", label: "Modelo" }, { key: "serial", label: "Numero de serie" },
+      { key: "ram", label: "Memoria RAM" }, { key: "storage", label: "Armazenamento" }, { key: "processor", label: "Processador" },
+      { key: "imei", label: "IMEI (celular)" }, { key: "phoneLine", label: "Linha telefonica (celular)" },
+      { key: "technicalSpec", label: "Especificacao tecnica", type: "textarea" },
+      { key: "owner", label: "Responsavel" }, { key: "location", label: "Local" },
+      { key: "criticality", label: "Criticidade", type: "select", options: ["Baixa", "Media", "Alta", "Critica"] },
       { key: "status", label: "Status", type: "select", options: STATUS_ATIVO },
     ] },
   brands: { label: "Marcas", editable: true,
@@ -459,13 +514,15 @@ export const COLLECTIONS = {
     ],
     fields: [
       { key: "name", label: "Projeto" }, { key: "manager", label: "Gerente" }, { key: "sponsor", label: "Patrocinador" },
-      { key: "status", label: "Status", type: "select", options: ["Planejado", "Em andamento", "Concluido", "Pausado"] },
+      { key: "status", label: "Status", type: "select", options: ["Planejado", "Em andamento", "Em risco", "Concluido", "Pausado"] },
       { key: "progress", label: "Progresso (%)", type: "number" }, { key: "dueDate", label: "Prazo (AAAA-MM-DD)" }, { key: "summary", label: "Resumo", type: "textarea" },
     ] },
   knowledgeArticles: { label: "Base de Conhecimento", editable: true,
     columns: [{ key: "title", label: "Titulo" }, { key: "category", label: "Categoria" }, { key: "owner", label: "Autor" }, { key: "lastUpdateLabel", label: "Atualizado" }, { key: "status", label: "Status" }],
     fields: [
-      { key: "title", label: "Titulo" }, { key: "category", label: "Categoria" }, { key: "owner", label: "Autor" },
+      { key: "title", label: "Titulo", required: true },
+      { key: "category", label: "Categoria", type: "select", options: KNOWLEDGE_CATEGORIES },
+      { key: "owner", label: "Autor" }, { key: "keywords", label: "Palavras-chave (separadas por virgula)" },
       { key: "status", label: "Status", type: "select", options: STATUS_ATIVO },
       { key: "problemDescription", label: "Descricao do problema", type: "textarea" }, { key: "solutionApplied", label: "Solucao aplicada", type: "textarea" },
     ] },
@@ -478,8 +535,10 @@ export const COLLECTIONS = {
       { key: "name", label: "Nome", required: true }, { key: "email", label: "E-mail", required: true },
       { key: "permissionProfileId", label: "Perfil de permissao", type: "select", optionsFrom: "profiles" },
       { key: "departmentId", label: "Setor", type: "select", optionsFrom: "departments" },
+      { key: "team", label: "Equipe", type: "select", optionsFrom: "teams" },
       { key: "status", label: "Status", type: "select", options: ["Ativo", "Inativo"] },
       { key: "password", label: "Senha", type: "password" },
+      { key: "mustChangePassword", label: "Exigir troca de senha no proximo acesso", type: "select", options: ["Sim", "Nao"] },
     ] },
   teams: { label: "Equipes", columns: [{ key: "name", label: "Equipe" }, { key: "department", label: "Setor" }, { key: "status", label: "Status" }] },
   permissionProfiles: { label: "Perfis de Permissao", editable: true, writeVia: "profiles", domain: "permissionProfiles",

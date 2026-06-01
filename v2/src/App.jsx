@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { Reports, CollectionView, COLLECTIONS, ServiceCenterView, Dashboard, Autocomplete } from "./modules.jsx";
+import { Reports, CollectionView, COLLECTIONS, ServiceCenterView, Dashboard, Autocomplete, InventoryView } from "./modules.jsx";
 
 const LOGO = `${import.meta.env.BASE_URL}logo-wega.png`;
 const STATUS_OPTIONS = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguardando usuario", "Aguardando aprovacao", "Resolvido", "Reaberto"];
@@ -59,6 +59,7 @@ const MENU = [
   ] },
   { group: "Ativos", items: [
     { key: "assets", label: "Ativos", icon: "💻" },
+    { key: "inventory", label: "Inventario", icon: "📊" },
     { key: "brands", label: "Marcas", icon: "🏷️" },
     { key: "models", label: "Modelos", icon: "📦" },
   ] },
@@ -786,6 +787,8 @@ export default function App() {
     if (out.active === "Sim") out.active = true;
     if (out.active === "Nao") out.active = false;
     if (out.progress !== undefined && out.progress !== "") out.progress = Number(out.progress) || 0;
+    if (out.mustChangePassword === "Sim") out.mustChangePassword = true;
+    if (out.mustChangePassword === "Nao") out.mustChangePassword = false;
     return out;
   };
   const writeVia = (domain) => COLLECTIONS[domain]?.writeVia || "collection";
@@ -804,7 +807,9 @@ export default function App() {
         const saved = await api.saveSingleton("permissionProfiles", next);
         setData((cur) => ({ ...cur, permissionProfiles: Array.isArray(saved) ? saved : next }));
       } else {
-        const saved = await api.createCollectionItem(domain, normalizeItem(item));
+        const payload = normalizeItem(item);
+        if (domain === "knowledgeArticles" && !payload.owner) payload.owner = user?.name || "";
+        const saved = await api.createCollectionItem(domain, payload);
         setData((cur) => ({ ...cur, [domain]: [saved, ...(cur[domain] || [])] }));
       }
       showToast("Registro criado."); return true;
@@ -857,6 +862,7 @@ export default function App() {
     const opts = {
       departments: (data.departments || []).map((d) => ({ value: d.id, label: d.name })),
       profiles: (data.permissionProfiles || []).map((p) => ({ value: p.id, label: p.name })),
+      teams: (data.teams || []).map((t) => ({ value: t.name, label: t.name })),
       permissions: (Array.isArray(data.permissionCatalog) ? data.permissionCatalog : []).flatMap((m) =>
         (Array.isArray(m.permissions) ? m.permissions : []).map((pp) => ({ value: pp.key || pp, label: `${m.label || m.module || ""} · ${pp.label || pp.key || pp}` }))),
     };
@@ -948,6 +954,7 @@ export default function App() {
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
         {view === "technicians" && <TechniciansView users={data.users || []} tickets={tickets} />}
+        {view === "inventory" && <InventoryView assets={data.assets || []} />}
         {view === "profile" && <ProfileView user={user} onChangePassword={changePassword} />}
         {collectionCfg && (
           <CollectionView
