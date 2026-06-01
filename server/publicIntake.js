@@ -192,6 +192,11 @@ export function sanitizePublicIntakeConfig(payload = {}, currentConfig = {}) {
           currentConfig.portalDescription ||
           "Canal controlado para abertura de chamados sem login no TicketMind.",
       ).trim() || "Canal controlado para abertura de chamados sem login no TicketMind.",
+    legacyAccessTokens: Array.isArray(payload.legacyAccessTokens)
+      ? payload.legacyAccessTokens.map((token) => String(token || "").trim()).filter(Boolean)
+      : Array.isArray(currentConfig.legacyAccessTokens)
+        ? currentConfig.legacyAccessTokens.map((token) => String(token || "").trim()).filter(Boolean)
+        : [],
     updatedAt: String(payload.updatedAt || currentConfig.updatedAt || nowIso).trim() || nowIso,
   };
 }
@@ -200,9 +205,27 @@ export function getPublicIntakeConfig(state = {}) {
   return sanitizePublicIntakeConfig(state.serviceCenter?.publicIntake || {}, state.serviceCenter?.publicIntake || {});
 }
 
+// Tokens legados do portal externo (links do v1 ja divulgados) que devem
+// resolver para o portal de chamados atual. Configuravel por env
+// (PORTAL_LEGACY_TOKENS, separados por virgula) e por
+// serviceCenter.publicIntake.legacyAccessTokens.
+const LEGACY_PUBLIC_INTAKE_TOKENS = String(
+  process.env.PORTAL_LEGACY_TOKENS || "206d6e37ff9eda4099b35ed7a55b19b5efced78161b89533",
+)
+  .split(",")
+  .map((token) => token.trim())
+  .filter(Boolean);
+
 export function isValidPublicIntakeToken(state = {}, accessToken = "") {
   const config = getPublicIntakeConfig(state);
-  return Boolean(config.enabled && config.accessToken && String(config.accessToken) === String(accessToken || "").trim());
+  if (!config.enabled) return false;
+  const provided = String(accessToken || "").trim();
+  if (!provided) return false;
+  if (config.accessToken && provided === String(config.accessToken)) return true;
+  const configured = Array.isArray(config.legacyAccessTokens)
+    ? config.legacyAccessTokens.map((token) => String(token || "").trim()).filter(Boolean)
+    : [];
+  return LEGACY_PUBLIC_INTAKE_TOKENS.includes(provided) || configured.includes(provided);
 }
 
 export function buildPublicIntakeBootstrap(state = {}) {
