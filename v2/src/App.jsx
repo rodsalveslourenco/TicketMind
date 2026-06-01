@@ -814,7 +814,16 @@ export default function App() {
     if (d.currentUser) setUser(d.currentUser);
   };
 
-  const portalToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("portal") : null;
+  // Token do portal publico. Aceita o formato novo (?portal=token) E o link do
+  // portal externo do v1 (/#/public/request/<token>), para que os links ja
+  // divulgados continuem abrindo o portal de chamados.
+  const portalToken = (() => {
+    if (typeof window === "undefined") return null;
+    const fromQuery = new URLSearchParams(window.location.search).get("portal");
+    if (fromQuery) return fromQuery;
+    const m = (window.location.hash || "").match(/public\/request\/([^/?&#]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  })();
   useEffect(() => {
     if (portalToken) { setBooting(false); return; }
     (async () => {
