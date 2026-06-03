@@ -2386,6 +2386,29 @@ export async function runPersistenceDiagnostic() {
   return report;
 }
 
+export async function getDatabaseStorageReport() {
+  if (!isPostgresEnabled()) {
+    return { storage: "sqlite", note: "Tamanho por tabela so disponivel no Postgres." };
+  }
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const dbSize = await pool.query(
+    "SELECT pg_database_size(current_database()) AS bytes, pg_size_pretty(pg_database_size(current_database())) AS pretty",
+  );
+  const tables = await pool.query(`
+    SELECT c.relname AS table,
+           pg_total_relation_size(c.oid) AS total_bytes,
+           pg_size_pretty(pg_total_relation_size(c.oid)) AS total_pretty,
+           COALESCE(s.n_live_tup, 0) AS approx_rows
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+    WHERE n.nspname = 'public' AND c.relkind = 'r'
+    ORDER BY pg_total_relation_size(c.oid) DESC
+  `);
+  return { storage: "postgres", database: dbSize.rows[0], tables: tables.rows };
+}
+
 export async function insertSystemLog(entry) {
   if (!entry?.id) return null;
   // Persiste no banco (consultavel e duravel, inclusive no Render) e mantem
