@@ -30,8 +30,15 @@ const systemLogsJsonPath = path.join(logsDir, "system-logs.jsonl");
 const systemLogsTxtPath = path.join(logsDir, "system-logs.txt");
 const wasmPath = path.join(rootDir, "node_modules", "sql.js", "dist");
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
-const postgresRetryAttempts = Math.max(1, Number(process.env.POSTGRES_RETRY_ATTEMPTS) || 5);
-const postgresRetryBaseDelayMs = Math.max(100, Number(process.env.POSTGRES_RETRY_BASE_DELAY_MS) || 250);
+const postgresRetryAttempts = Math.max(1, Number(process.env.POSTGRES_RETRY_ATTEMPTS) || 8);
+const postgresRetryBaseDelayMs = Math.max(100, Number(process.env.POSTGRES_RETRY_BASE_DELAY_MS) || 300);
+// Teto do backoff exponencial: sem isso, muitas tentativas gerariam esperas
+// gigantescas. Com teto, o orcamento total (~16s) cobre o cold start do
+// Postgres free do Render sem travar a requisicao por minutos.
+const postgresRetryMaxDelayMs = Math.max(
+  postgresRetryBaseDelayMs,
+  Number(process.env.POSTGRES_RETRY_MAX_DELAY_MS) || 4000,
+);
 
 const staticSeedState = {
   ...seedData,
@@ -1268,7 +1275,7 @@ function getPgPool() {
   return pgPool;
 }
 
-function isTransientPostgresError(error) {
+export function isTransientPostgresError(error) {
   const code = String(error?.code || "").trim().toUpperCase();
   const message = String(error?.message || "").trim().toLowerCase();
   return (
@@ -1302,7 +1309,7 @@ async function withPostgresRetry(operation, label = "postgres operation") {
       if (!isTransientPostgresError(error) || attempt >= postgresRetryAttempts) {
         throw error;
       }
-      const delayMs = postgresRetryBaseDelayMs * 2 ** (attempt - 1);
+      const delayMs = Math.min(postgresRetryMaxDelayMs, postgresRetryBaseDelayMs * 2 ** (attempt - 1));
       console.warn(`${label} failed transiently; retrying in ${delayMs}ms`, {
         attempt,
         code: error?.code,
@@ -1312,6 +1319,54 @@ async function withPostgresRetry(operation, label = "postgres operation") {
     }
   }
   throw lastError;
+}
+
+// Ping leve do banco (reaproveita o retry do pool no Postgres). Usado pelo
+// healthcheck e pelo keep-alive. Em sqlite, garante que o arquivo abriu.
+export async function pingDatabase() {
+  if (isPostgresEnabled()) {
+    const pool = getPgPool();
+    await pool.query("SELECT 1");
+    return { ok: true, storage: "postgres" };
+  }
+  await getSqliteDb();
+  return { ok: true, storage: "sqlite" };
+}
+
+// Aquece a conexao no boot: cria o schema e abre a primeira conexao agora,
+// em vez de pagar o cold start na primeira requisicao do usuario.
+export async function warmupDatabase() {
+  try {
+    if (isPostgresEnabled()) {
+      await ensurePgSchema();
+    }
+    await pingDatabase();
+    return true;
+  } catch (error) {
+    console.warn("db warmup falhou (sera retentado sob demanda)", error?.code || error?.message);
+    return false;
+  }
+}
+
+let databaseKeepAliveTimer = null;
+// Keep-alive: ping periodico para manter a conexao do pool viva e o banco
+// "acordado", descartando sockets mortos de forma proativa (e nao na cara do
+// usuario). Sem efeito em sqlite. O intervalo NAO impede o web service free do
+// Render de dormir — para isso, aponte um monitor externo para /api/health/db.
+export function startDatabaseKeepAlive(intervalMs = Number(process.env.DB_KEEPALIVE_MS) || 4 * 60 * 1000) {
+  if (!isPostgresEnabled() || databaseKeepAliveTimer) return null;
+  const run = async () => {
+    try {
+      await pingDatabase();
+    } catch (error) {
+      console.warn("db keepalive ping falhou", error?.code || error?.message);
+    }
+  };
+  databaseKeepAliveTimer = setInterval(run, Math.max(30 * 1000, intervalMs));
+  if (typeof databaseKeepAliveTimer.unref === "function") {
+    databaseKeepAliveTimer.unref();
+  }
+  return databaseKeepAliveTimer;
 }
 
 function attachPgClientErrorHandler(client) {

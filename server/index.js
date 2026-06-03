@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText, normalizeTicketStatus } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
 import { canAccessTicket } from "../src/data/ticketVisibility.js";
-import { DOMAIN_COLLECTION_KEYS, DOMAIN_SINGLETON_KEYS, insertSystemLog, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveSingletonRecord, saveTicketRecord, updateUserPassword, writeState } from "./db.js";
+import { DOMAIN_COLLECTION_KEYS, DOMAIN_SINGLETON_KEYS, insertSystemLog, isTransientPostgresError, pingDatabase, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveSingletonRecord, saveTicketRecord, startDatabaseKeepAlive, updateUserPassword, warmupDatabase, writeState } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -86,14 +86,10 @@ function handleAsync(handler) {
   };
 }
 
+// Mesma classificacao usada no retry do banco (db.js), para que a resposta 503
+// "banco indisponivel" cubra exatamente os mesmos erros transitorios tratados.
 function isDatabaseConnectionError(error) {
-  const code = String(error?.code || "").trim().toUpperCase();
-  const message = String(error?.message || "").trim().toLowerCase();
-  return (
-    ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P01", "57P02", "57P03"].includes(code) ||
-    message.includes("connection terminated unexpectedly") ||
-    message.includes("connect econnrefused")
-  );
+  return isTransientPostgresError(error);
 }
 
 function isActiveUser(user) {
@@ -490,6 +486,25 @@ const SERVER_COMMIT = String(
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, apiVersion: "v1", commit: SERVER_COMMIT || "desconhecido", startedAt: SERVER_STARTED_AT });
 });
+
+// Healthcheck que TOCA o banco. Aponte um monitor externo (ex.: UptimeRobot) a
+// cada ~5 min para esta rota: mantem o web service free do Render acordado E o
+// banco aquecido, e alerta de verdade quando o banco cai. Retorna 503 se o
+// ping falhar (depois do retry interno).
+app.get(["/api/health/db", "/healthz"], handleAsync(async (_request, response) => {
+  const startedAt = Date.now();
+  try {
+    const result = await pingDatabase();
+    response.json({ ok: true, storage: result.storage, latencyMs: Date.now() - startedAt });
+  } catch (error) {
+    console.error("healthcheck de banco falhou", error?.code || error?.message);
+    response.status(503).json({
+      ok: false,
+      error: "Banco de dados temporariamente indisponivel.",
+      latencyMs: Date.now() - startedAt,
+    });
+  }
+}));
 
 // Diagnostico: permite confirmar exatamente qual versao/commit esta no ar.
 app.get("/api/version", (_request, response) => {
@@ -1298,6 +1313,10 @@ app.get("*", (request, response) => {
 
 app.listen(port, () => {
   console.log(`TicketMind server listening on port ${port}`);
+  // Aquece o banco no boot e mantem a conexao viva, reduzindo o cold start na
+  // primeira requisicao do usuario e descartando sockets mortos proativamente.
+  warmupDatabase();
+  startDatabaseKeepAlive();
 });
 
 function appendEscalationWatchers(watcherDetails = [], users = []) {

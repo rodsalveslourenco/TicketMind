@@ -1,12 +1,40 @@
 // Cliente de API do TicketMind 2 — consome a MESMA API/banco do TicketMind.
 const CLIENT_ID = `tm2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-async function request(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "X-TicketMind-Client": CLIENT_ID, ...(options.headers || {}) },
-    ...options,
-  });
+// Auto-retry para indisponibilidade transitoria do banco (HTTP 503) e falhas de
+// rede. Cobre o cold start do servidor/banco sem o usuario ver erro: o 503 do
+// servidor so ocorre em erro de CONEXAO (pre-commit), entao repetir e seguro,
+// inclusive para POST/PUT (upsert por id no servidor).
+const REQUEST_RETRY_ATTEMPTS = 4;
+const REQUEST_RETRY_BASE_MS = 500;
+const REQUEST_RETRY_MAX_MS = 3000;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function request(path, options = {}, attempt = 1) {
+  let response;
+  try {
+    response = await fetch(path, {
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "X-TicketMind-Client": CLIENT_ID, ...(options.headers || {}) },
+      ...options,
+    });
+  } catch (networkError) {
+    // Falha de rede (servidor acordando, queda momentanea): tenta de novo.
+    if (attempt < REQUEST_RETRY_ATTEMPTS) {
+      await wait(Math.min(REQUEST_RETRY_MAX_MS, REQUEST_RETRY_BASE_MS * 2 ** (attempt - 1)));
+      return request(path, options, attempt + 1);
+    }
+    throw networkError;
+  }
+
+  if (response.status === 503 && attempt < REQUEST_RETRY_ATTEMPTS) {
+    await wait(Math.min(REQUEST_RETRY_MAX_MS, REQUEST_RETRY_BASE_MS * 2 ** (attempt - 1)));
+    return request(path, options, attempt + 1);
+  }
+
   const text = await response.text();
   let payload = null;
   if (text) {
