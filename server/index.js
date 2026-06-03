@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createHistoryEntry, getTicketStatusOptionsForType, isOpenTicketStatus, normalizeText, normalizeTicketStatus } from "../src/data/helpdesk.js";
 import { hasAnyPermission } from "../src/data/permissions.js";
 import { canAccessTicket } from "../src/data/ticketVisibility.js";
-import { DOMAIN_COLLECTION_KEYS, DOMAIN_SINGLETON_KEYS, insertSystemLog, isTransientPostgresError, pingDatabase, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveSingletonRecord, saveTicketRecord, startDatabaseKeepAlive, updateUserPassword, warmupDatabase, writeState, getDatabaseStorageReport } from "./db.js";
+import { DOMAIN_COLLECTION_KEYS, DOMAIN_SINGLETON_KEYS, insertSystemLog, isTransientPostgresError, pingDatabase, querySystemLogs, readState, readUserByEmail, readUserById, removeDomainRecord, runPersistenceDiagnostic, sanitizeSessionUser, saveDomainRecord, saveSingletonRecord, saveTicketRecord, startDatabaseKeepAlive, updateUserPassword, warmupDatabase, writeState, getDatabaseStorageReport, optimizeAppStateStorage } from "./db.js";
 import {
   mergeIncomingState,
   prepareStateForClient,
@@ -504,6 +504,18 @@ app.get(["/api/health/db", "/healthz"], handleAsync(async (_request, response) =
       latencyMs: Date.now() - startedAt,
     });
   }
+}));
+
+// Manutencao: otimiza a app_state (autovacuum agressivo + VACUUM online, sem downtime).
+app.post("/api/admin/optimize-appstate", handleAsync(async (request, response) => {
+  const auth = await requireAuthenticatedUser(request, response);
+  if (!auth) return;
+  if (!hasAnyPermission(auth.requestUser, ["users_admin"])) {
+    response.status(403).json({ error: "Sem permissao." });
+    return;
+  }
+  const result = await optimizeAppStateStorage();
+  response.json(result);
 }));
 
 // Diagnostico de armazenamento (somente leitura): tamanho por tabela e linhas.

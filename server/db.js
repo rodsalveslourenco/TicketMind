@@ -2386,6 +2386,34 @@ export async function runPersistenceDiagnostic() {
   return report;
 }
 
+export async function optimizeAppStateStorage() {
+  if (!isPostgresEnabled()) {
+    return { storage: "sqlite", skipped: true };
+  }
+  await ensurePgSchema();
+  const pool = getPgPool();
+  const sizeQuery =
+    "SELECT pg_total_relation_size('app_state') AS bytes, pg_size_pretty(pg_total_relation_size('app_state')) AS pretty";
+  const before = (await pool.query(sizeQuery)).rows[0];
+  // Autovacuum agressivo na tabela e no TOAST (onde mora o JSON grande),
+  // para que o bloat das regravacoes de estado seja limpo continuamente.
+  await pool.query(`
+    ALTER TABLE app_state SET (
+      autovacuum_vacuum_scale_factor = 0,
+      autovacuum_vacuum_threshold = 20,
+      autovacuum_vacuum_cost_delay = 0,
+      toast.autovacuum_vacuum_scale_factor = 0,
+      toast.autovacuum_vacuum_threshold = 20,
+      toast.autovacuum_vacuum_cost_delay = 0
+    )
+  `);
+  // VACUUM ONLINE (nao trava leitura/escrita): marca o espaco morto como
+  // reutilizavel e pode truncar paginas vazias do fim, sem downtime.
+  await pool.query("VACUUM (ANALYZE) app_state");
+  const after = (await pool.query(sizeQuery)).rows[0];
+  return { storage: "postgres", table: "app_state", before, after };
+}
+
 export async function getDatabaseStorageReport() {
   if (!isPostgresEnabled()) {
     return { storage: "sqlite", note: "Tamanho por tabela so disponivel no Postgres." };
