@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 export function norm(value) { return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 const OPEN_STATUSES = ["aberto", "em andamento", "em espera", "pausado", "aguardando usuario", "aguardando aprovacao", "reaberto"];
@@ -154,10 +154,15 @@ export function CollectionView({ title, items, columns, editable, fields, onCrea
 }
 
 /* ---------- Relatorios ---------- */
-function BarRow({ label, value, max, color }) {
+function BarRow({ label, value, max, color, onClick, active }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
-    <div className="bar-row">
+    <div
+      className={`bar-row${onClick ? " bar-row-click" : ""}${active ? " bar-row-active" : ""}`}
+      onClick={onClick}
+      style={onClick ? { cursor: "pointer", borderRadius: 6, background: active ? "var(--wega-blue-050, rgba(21,101,192,.08))" : undefined } : undefined}
+      title={onClick ? `Filtrar por ${label}` : undefined}
+    >
       <div className="bar-label">{label}</div>
       <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: color || "var(--wega-blue)" }} /></div>
       <div className="bar-value">{value}</div>
@@ -295,8 +300,29 @@ function pastDue(t) {
   return Boolean(t.slaDeadlineAt && new Date(t.slaDeadlineAt).getTime() < Date.now());
 }
 export function Dashboard({ tickets, onGo }) {
+  const [filter, setFilter] = useState(null);
+  const [expandedTech, setExpandedTech] = useState(null);
+  const baseList = Array.isArray(tickets) ? tickets : [];
+  const matchFilter = (t, f) => {
+    if (!f) return true;
+    if (f.dim === "status") return (t.status || "Aberto") === f.val;
+    if (f.dim === "priority") return norm(t.priority || "Media") === norm(f.val);
+    if (f.dim === "dept") return (t.department || t.queue || "—") === f.val;
+    if (f.dim === "kpi") {
+      if (f.val === "abertos") return isOpen(t.status);
+      if (f.val === "andamento") return norm(t.status) === "em andamento";
+      if (f.val === "aguardando") return isOpen(t.status) && (norm(t.status).startsWith("aguardando") || norm(t.status) === "em espera" || norm(t.status) === "pausado");
+      if (f.val === "criticos") return isOpen(t.status) && norm(t.priority) === "critica";
+      if (f.val === "slaRisco") return isOpen(t.status) && pastDue(t);
+      if (f.val === "resolvidos") return norm(t.status) === "resolvido";
+      return true;
+    }
+    return true;
+  };
+  const toggle = (dim, val, label) => { setExpandedTech(null); setFilter((cur) => (cur && cur.dim === dim && cur.val === val ? null : { dim, val, label })); };
+  const fActive = (dim, val) => Boolean(filter && filter.dim === dim && filter.val === val);
   const d = useMemo(() => {
-    const list = Array.isArray(tickets) ? tickets : [];
+    const list = baseList.filter((t) => matchFilter(t, filter));
     const open = list.filter((t) => isOpen(t.status));
     const resolved = list.filter((t) => norm(t.status) === "resolvido");
     const slaRisco = open.filter(pastDue);
@@ -326,29 +352,38 @@ export function Dashboard({ tickets, onGo }) {
       csat: csatAvg(list), firstResp: avgResponseMin(list), avgRes: avgResolutionMin(list),
       byStatus, byPriority, byDept, slaByDept, vol6, tech, agenda, alertas: alertas.slice(0, 10), tarefasTotal, tarefasFeitas,
       recentes: [...list].sort((a, b) => String(b.updatedAtIso || b.openedAt || "").localeCompare(String(a.updatedAtIso || a.openedAt || ""))).slice(0, 6),
+      list,
     };
-  }, [tickets]);
+  }, [tickets, filter]);
   const mx = (arr) => Math.max(1, ...arr.map((x) => x[1]));
   const prioColor = (p) => ({ critica: "var(--crit)", alta: "var(--warn)", media: "var(--info)", baixa: "var(--muted)" }[norm(p)] || "var(--info)");
   return (
     <div>
+      {filter && (
+        <div className="panel" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>Filtro ativo:</span>
+          <strong style={{ fontSize: 13 }}>{filter.label}</strong>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>· {d.total} chamado(s)</span>
+          <button className="btn btn-ghost" style={{ width: "auto", marginLeft: "auto" }} onClick={() => setFilter(null)}>✕ Limpar filtro</button>
+        </div>
+      )}
       <div className="kpi-grid">
-        <div className="kpi" onClick={() => onGo && onGo("tickets")} style={{ cursor: "pointer" }}><div className="label">Total</div><div className="value">{d.total}</div></div>
-        <div className="kpi"><div className="label">Em aberto</div><div className="value warn">{d.abertos}</div></div>
-        <div className="kpi"><div className="label">Em andamento</div><div className="value">{d.andamento}</div></div>
-        <div className="kpi"><div className="label">Aguardando</div><div className="value">{d.aguardando}</div></div>
-        <div className="kpi"><div className="label">Criticos abertos</div><div className="value crit">{d.criticos}</div></div>
-        <div className="kpi"><div className="label">SLA sob risco</div><div className="value crit">{d.slaRisco}</div></div>
+        <div className={`kpi${fActive("kpi", "total") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "total", "Todos os chamados")} style={{ cursor: "pointer" }}><div className="label">Total</div><div className="value">{d.total}</div></div>
+        <div className={`kpi${fActive("kpi", "abertos") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "abertos", "Em aberto")} style={{ cursor: "pointer" }}><div className="label">Em aberto</div><div className="value warn">{d.abertos}</div></div>
+        <div className={`kpi${fActive("kpi", "andamento") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "andamento", "Em andamento")} style={{ cursor: "pointer" }}><div className="label">Em andamento</div><div className="value">{d.andamento}</div></div>
+        <div className={`kpi${fActive("kpi", "aguardando") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "aguardando", "Aguardando")} style={{ cursor: "pointer" }}><div className="label">Aguardando</div><div className="value">{d.aguardando}</div></div>
+        <div className={`kpi${fActive("kpi", "criticos") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "criticos", "Criticos abertos")} style={{ cursor: "pointer" }}><div className="label">Criticos abertos</div><div className="value crit">{d.criticos}</div></div>
+        <div className={`kpi${fActive("kpi", "slaRisco") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "slaRisco", "SLA sob risco")} style={{ cursor: "pointer" }}><div className="label">SLA sob risco</div><div className="value crit">{d.slaRisco}</div></div>
         <div className="kpi"><div className="label">SLA cumprido</div><div className={`value ${d.sla >= 90 ? "ok" : d.sla >= 70 ? "warn" : "crit"}`}>{d.sla}%</div></div>
-        <div className="kpi"><div className="label">Resolvidos</div><div className="value ok">{d.resolvidos}</div></div>
+        <div className={`kpi${fActive("kpi", "resolvidos") ? " kpi-active" : ""}`} onClick={() => toggle("kpi", "resolvidos", "Resolvidos")} style={{ cursor: "pointer" }}><div className="label">Resolvidos</div><div className="value ok">{d.resolvidos}</div></div>
         <div className="kpi"><div className="label">CSAT</div><div className="value">{d.csat ? `${d.csat.toFixed(1)}/5` : "—"}</div></div>
         <div className="kpi"><div className="label">1a resposta</div><div className="value">{fmtMin(d.firstResp)}</div></div>
         <div className="kpi"><div className="label">Tempo medio resolucao</div><div className="value">{fmtMin(d.avgRes)}</div></div>
       </div>
       <div className="report-grid">
-        <div className="panel"><h2>Distribuicao por status</h2>{d.byStatus.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byStatus)} />)}</div>
-        <div className="panel"><h2>Distribuicao por prioridade</h2>{d.byPriority.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byPriority)} color={prioColor(k)} />)}</div>
-        <div className="panel"><h2>Chamados por departamento</h2>{d.byDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byDept)} color="var(--wega-teal)" />)}</div>
+        <div className="panel"><h2>Distribuicao por status</h2>{d.byStatus.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byStatus)} onClick={() => toggle("status", k, `Status: ${k}`)} active={fActive("status", k)} />)}</div>
+        <div className="panel"><h2>Distribuicao por prioridade</h2>{d.byPriority.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byPriority)} color={prioColor(k)} onClick={() => toggle("priority", k, `Prioridade: ${k}`)} active={fActive("priority", k)} />)}</div>
+        <div className="panel"><h2>Chamados por departamento</h2>{d.byDept.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.byDept)} color="var(--wega-teal)" onClick={() => toggle("dept", k, `Departamento: ${k}`)} active={fActive("dept", k)} />)}</div>
         <div className="panel"><h2>Volume (ultimos 6 meses)</h2>{d.vol6.map(([k, v]) => <BarRow key={k} label={k} value={v} max={mx(d.vol6)} color="var(--wega-navy)" />)}</div>
       </div>
       <div className="report-grid">
@@ -362,13 +397,41 @@ export function Dashboard({ tickets, onGo }) {
         </div>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-        <h2 style={{ padding: "18px 20px 0" }}>Produtividade dos tecnicos</h2>
+        <h2 style={{ padding: "18px 20px 0" }}>Produtividade dos tecnicos <span style={{ fontSize: 12, fontWeight: 400, color: "var(--muted)" }}>— clique num tecnico para ver os chamados em aberto</span></h2>
         <table className="data-table">
           <thead><tr><th>Tecnico</th><th>Em aberto</th><th>Resolvidos</th><th>Criticos</th><th>SLA %</th><th>Tempo medio</th><th>1a resposta</th></tr></thead>
           <tbody>
-            {d.tech.length === 0 ? <tr><td colSpan={7}><div className="empty">Sem chamados atribuidos.</div></td></tr> : d.tech.map((t) => (
-              <tr key={t.name}><td>{t.name}</td><td><strong>{t.open}</strong></td><td>{t.resolved}</td><td style={{ color: t.critical ? "var(--crit)" : "inherit" }}>{t.critical}</td><td style={{ color: slaColor(t.sla), fontWeight: 700 }}>{t.sla}%</td><td>{fmtMin(t.avgRes)}</td><td>{fmtMin(t.firstResp)}</td></tr>
-            ))}
+            {d.tech.length === 0 ? <tr><td colSpan={7}><div className="empty">Sem chamados atribuidos.</div></td></tr> : d.tech.map((t) => {
+              const techOpen = d.list.filter((x) => x.assignee === t.name && isOpen(x.status)).sort((a, b) => String(a.slaDeadlineAt || "9999").localeCompare(String(b.slaDeadlineAt || "9999")));
+              const exp = expandedTech === t.name;
+              return (
+                <Fragment key={t.name}>
+                  <tr onClick={() => setExpandedTech(exp ? null : t.name)} style={{ cursor: "pointer", background: exp ? "rgba(21,101,192,.06)" : undefined }} title="Ver chamados em aberto deste tecnico">
+                    <td><span style={{ display: "inline-block", width: 14, color: "var(--muted)" }}>{exp ? "▾" : "▸"}</span>{t.name}</td>
+                    <td><strong>{t.open}</strong></td><td>{t.resolved}</td><td style={{ color: t.critical ? "var(--crit)" : "inherit" }}>{t.critical}</td><td style={{ color: slaColor(t.sla), fontWeight: 700 }}>{t.sla}%</td><td>{fmtMin(t.avgRes)}</td><td>{fmtMin(t.firstResp)}</td>
+                  </tr>
+                  {exp && (
+                    <tr><td colSpan={7} style={{ padding: 0, background: "rgba(0,0,0,.02)" }}>
+                      {techOpen.length === 0 ? <div className="empty" style={{ padding: "10px 20px" }}>Nenhum chamado em aberto.</div> : (
+                        <div style={{ padding: "8px 16px 12px" }}>
+                          {techOpen.map((x) => {
+                            const overdue = pastDue(x);
+                            return (
+                              <div key={x.id} onClick={(ev) => { ev.stopPropagation(); onGo && onGo("tickets"); }} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 8px", borderBottom: "1px solid var(--border)", cursor: onGo ? "pointer" : "default" }}>
+                                <strong style={{ minWidth: 84 }}>{x.id}</strong>
+                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.title || "(sem titulo)"}</span>
+                                <span className={`badge ${({ resolvido: "s-resolvido", "em andamento": "s-andamento", reaberto: "s-reaberto", aberto: "s-aberto" })[norm(x.status)] || "s-espera"}`} style={{ whiteSpace: "nowrap" }}>{x.status}</span>
+                                <span style={{ fontSize: 12, color: overdue ? "var(--crit)" : "var(--muted)", whiteSpace: "nowrap" }}>{x.slaDeadlineAt ? `Prazo: ${new Date(x.slaDeadlineAt).toLocaleString("pt-BR")}` : "Sem prazo"}{overdue ? " · vencido" : ""}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td></tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

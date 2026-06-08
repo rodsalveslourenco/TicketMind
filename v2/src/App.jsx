@@ -8,6 +8,25 @@ const OPEN_STATUSES = ["aberto", "em andamento", "em espera", "pausado", "aguard
 const SLA_BY_PRIORITY = { critica: 15, alta: 60, media: 240, baixa: 480 };
 
 function norm(v) { return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
+function computeSlaFields(priority, dueDate, openedAtIso) {
+  const openedMs = new Date(openedAtIso || Date.now()).getTime();
+  if (dueDate) {
+    const deadlineMs = new Date(`${dueDate}T23:59:59.999`).getTime();
+    if (Number.isFinite(deadlineMs)) {
+      return { slaTargetMinutes: Math.max(15, Math.round((deadlineMs - openedMs) / 60000)), slaDeadlineAt: new Date(deadlineMs).toISOString() };
+    }
+  }
+  const minutes = SLA_BY_PRIORITY[norm(priority)] || 240;
+  return { slaTargetMinutes: minutes, slaDeadlineAt: new Date(openedMs + minutes * 60000).toISOString() };
+}
+function ticketDeadlineMs(t) {
+  return t && t.slaDeadlineAt ? new Date(t.slaDeadlineAt).getTime() : Number.POSITIVE_INFINITY;
+}
+function isTicketOverdue(t) {
+  if (!t || norm(t.status) === "resolvido") return false;
+  if (t.slaBreachedAt) return true;
+  return Boolean(t.slaDeadlineAt && new Date(t.slaDeadlineAt).getTime() < Date.now());
+}
 function isOpen(s) { return OPEN_STATUSES.includes(norm(s)); }
 function statusClass(s) {
   const n = norm(s);
@@ -135,7 +154,7 @@ function fmtDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
 }
 
-function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, onClose, onSave, onDelete, saving }) {
+function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, locations, user, onClose, onSave, onDelete, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
   const [departmentId, setDepartmentId] = useState(ticket.departmentId || "");
@@ -209,9 +228,11 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
     const dept = deptList.find((d) => String(d.id) === String(departmentId));
     const asset = (assets || []).find((a) => String(a.id) === String(assetId));
     const project = (projects || []).find((pr) => String(pr.id) === String(projectId));
+    const sla = computeSlaFields(priority, dueDate, ticket.openedAt);
     const base = {
       ...obj, assignee, watchers: watchersLabel, watcherDetails,
       priority, category, urgency, impact, dueDate,
+      slaTargetMinutes: sla.slaTargetMinutes, slaDeadlineAt: sla.slaDeadlineAt,
       assetId, assetName: asset ? (asset.assetTag || asset.name || "") : "",
       projectId, projectName: project?.name || "",
       knowledgeArticleIds: knowledgeIds,
@@ -333,9 +354,19 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
           <div className="field"><label>Prazo (SLA)</label><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
           <div className="field"><label>&nbsp;</label><button className="btn btn-ghost" onClick={() => onSave(withDept({ ...ticket, status, resolutionNotes: solution }))} disabled={saving}>Salvar dados</button></div>
         </div>
-        {ticket.slaDeadlineAt && <p style={{ fontSize: 12.5, color: ticket.slaBreachedAt ? "var(--crit)" : "var(--muted)" }}>{ticket.slaBreachedAt ? `SLA violado em ${fmtDate(ticket.slaBreachedAt)}` : `Prazo SLA: ${fmtDate(ticket.slaDeadlineAt)}`}</p>}
+        {(() => {
+          const sla = computeSlaFields(priority, dueDate, ticket.openedAt);
+          const overdue = norm(status) !== "resolvido" && new Date(sla.slaDeadlineAt).getTime() < Date.now();
+          return <p style={{ fontSize: 12.5, color: overdue ? "var(--crit)" : "var(--muted)" }}>{overdue ? `SLA violado — o prazo era ${fmtDate(sla.slaDeadlineAt)}` : `Prazo SLA: ${fmtDate(sla.slaDeadlineAt)}`} · {dueDate ? "definido pelo prazo de conclusao" : "definido pela prioridade"}</p>;
+        })()}
         <div className="form-row">
-          <div className="field"><label>Localizacao</label><input value={location} onChange={(e) => setLocation(e.target.value)} /></div>
+          <div className="field"><label>Localizacao</label>
+            <select value={location} onChange={(e) => setLocation(e.target.value)}>
+              <option value="">— Selecionar local —</option>
+              {location && !(locations || []).some((l) => l.name === location) ? <option value={location}>{location}</option> : null}
+              {(locations || []).filter((l) => norm(l.status || "ativo") === "ativo").map((l) => <option key={l.id} value={l.name}>{l.name}</option>)}
+            </select>
+          </div>
           <div className="field"><label>Origem</label><select value={source} onChange={(e) => setSource(e.target.value)}><option>Portal</option><option>E-mail</option><option>Telefone</option><option>Monitoramento</option><option>Presencial</option></select></div>
         </div>
 
@@ -463,17 +494,22 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
   );
 }
 
-function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
+function NewTicketModal({ departments, users, locations, user, onClose, onCreate, saving }) {
   const [form, setForm] = useState({
     title: "", type: "Incidente", priority: "Media", departmentId: "", category: "", location: "", source: "Portal",
-    description: "", requester: user?.name || "", requesterEmail: user?.email || "",
+    description: "", requester: user?.name || "", requesterEmail: user?.email || "", dueDate: "",
   });
+  const [watcherIds, setWatcherIds] = useState([]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const userList = users || [];
+  const locList = (locations || []).filter((l) => norm(l.status || "ativo") === "ativo");
+  const canSubmit = Boolean(form.title.trim() && form.description.trim() && (!(departments || []).length || form.departmentId));
   const submit = async () => {
-    if (!form.title.trim()) return;
-    if ((departments || []).length && !form.departmentId) return;
+    if (!canSubmit) return;
     const dept = (departments || []).find((d) => String(d.id) === String(form.departmentId));
     const nowIso = new Date().toISOString();
+    const sla = computeSlaFields(form.priority, form.dueDate, nowIso);
+    const watcherDetails = userList.filter((u) => watcherIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name, email: u.email }));
     const payload = {
       title: form.title.trim(),
       description: form.description.trim(),
@@ -490,7 +526,11 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
       source: form.source || "Portal",
       location: form.location || "",
       openedAt: nowIso,
-      slaTargetMinutes: SLA_BY_PRIORITY[(form.priority || "media").toLowerCase()] || 240,
+      dueDate: form.dueDate || "",
+      watcherDetails,
+      watchers: watcherDetails.map((w) => w.name).join(", "),
+      slaTargetMinutes: sla.slaTargetMinutes,
+      slaDeadlineAt: sla.slaDeadlineAt,
     };
     const created = await onCreate(payload);
     if (created) onClose();
@@ -509,59 +549,97 @@ function NewTicketModal({ departments, user, onClose, onCreate, saving }) {
           <div className="field"><label>Categoria</label><input value={form.category} onChange={set("category")} placeholder="Ex.: Infraestrutura" /></div>
         </div>
         <div className="form-row">
-          <div className="field"><label>Localizacao</label><input value={form.location} onChange={set("location")} /></div>
-          <div className="field"><label>Origem</label><select value={form.source} onChange={set("source")}><option>Portal</option><option>E-mail</option><option>Telefone</option><option>Monitoramento</option><option>Presencial</option></select></div>
+          <div className="field"><label>Localizacao</label><select value={form.location} onChange={set("location")}><option value="">— Selecionar local —</option>{locList.map((l) => <option key={l.id} value={l.name}>{l.name}</option>)}</select>{!locList.length ? <small style={{ color: "var(--muted)" }}>Nenhum local cadastrado. Cadastre em Locais.</small> : null}</div>
+          <div className="field"><label>Prazo de conclusao</label><input type="date" value={form.dueDate} onChange={set("dueDate")} /><small style={{ color: "var(--muted)" }}>Vazio: usa o prazo padrao da prioridade.</small></div>
         </div>
         <div className="form-row">
+          <div className="field"><label>Origem</label><select value={form.source} onChange={set("source")}><option>Portal</option><option>E-mail</option><option>Telefone</option><option>Monitoramento</option><option>Presencial</option></select></div>
           <div className="field"><label>Solicitante</label><input value={form.requester} onChange={set("requester")} /></div>
-          <div className="field"><label>E-mail do solicitante</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
         </div>
-        <div className="field"><label>Descricao</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
+        <div className="form-row">
+          <div className="field"><label>E-mail do solicitante</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
+          <div className="field"><label>Observadores (watchers)</label><select multiple value={watcherIds} onChange={(e) => setWatcherIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 84 }}>{userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+        </div>
+        <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
         <div className="drawer-actions">
-          <button className="btn btn-primary" style={{ width: "auto" }} onClick={submit} disabled={saving || !form.title.trim() || ((departments || []).length && !form.departmentId)}>{saving ? <span className="spinner" /> : "Abrir chamado"}</button>
+          <button className="btn btn-primary" style={{ width: "auto" }} onClick={submit} disabled={saving || !canSubmit}>{saving ? <span className="spinner" /> : "Abrir chamado"}</button>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
         </div>
+        {!form.description.trim() && <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 8 }}>Informe titulo, departamento de destino e descricao para abrir o chamado.</p>}
       </div>
     </div>
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, onDelete, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, onDelete, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, locations, user, saving }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [requesterFilter, setRequesterFilter] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew] = useState(false);
+  const deptOptions = useMemo(() => [...new Set(tickets.map((t) => t.department || t.queue).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
+  const requesterOptions = useMemo(() => [...new Set(tickets.map((t) => t.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
+  const assigneeOptions = useMemo(() => [...new Set(tickets.map((t) => t.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
   const filtered = useMemo(() => {
     const q = norm(search);
     return tickets
       .filter((t) => statusFilter === "abertos" ? isOpen(t.status) : statusFilter === "resolvidos" ? norm(t.status) === "resolvido" : true)
+      .filter((t) => !deptFilter || (t.department || t.queue || "") === deptFilter)
+      .filter((t) => !requesterFilter || t.requester === requesterFilter)
+      .filter((t) => !assigneeFilter || t.assignee === assigneeFilter)
       .filter((t) => !q || norm(`${t.id} ${t.title} ${t.requester} ${t.department} ${t.assignee}`).includes(q))
-      .sort((a, b) => String(b.updatedAtIso || b.openedAt || "").localeCompare(String(a.updatedAtIso || a.openedAt || "")));
-  }, [tickets, search, statusFilter]);
+      .sort((a, b) => ticketDeadlineMs(a) - ticketDeadlineMs(b));
+  }, [tickets, search, statusFilter, deptFilter, requesterFilter, assigneeFilter]);
   const current = selected ? tickets.find((t) => t.id === selected) || null : null;
+  const hasFilters = Boolean(deptFilter || requesterFilter || assigneeFilter || search);
+  const clearFilters = () => { setDeptFilter(""); setRequesterFilter(""); setAssigneeFilter(""); setSearch(""); };
+  const fmtDeadline = (t) => {
+    if (!t.slaDeadlineAt) return null;
+    const dt = new Date(t.slaDeadlineAt);
+    return Number.isNaN(dt.getTime()) ? null : dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
   return (
     <div>
-      <div className="toolbar">
+      <div className="toolbar" style={{ flexWrap: "wrap" }}>
         <input className="search" placeholder="Buscar por id, titulo, solicitante..." value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="abertos">Em aberto</option><option value="resolvidos">Resolvidos</option><option value="todos">Todos</option>
         </select>
+        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} title="Filtrar por area / departamento">
+          <option value="">Area: todas</option>{deptOptions.map((dn) => <option key={dn} value={dn}>{dn}</option>)}
+        </select>
+        <select value={requesterFilter} onChange={(e) => setRequesterFilter(e.target.value)} title="Filtrar por solicitante">
+          <option value="">Solicitante: todos</option>{requesterOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} title="Filtrar por responsavel">
+          <option value="">Responsavel: todos</option>{assigneeOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        {hasFilters ? <button className="btn btn-ghost" style={{ width: "auto" }} onClick={clearFilters}>Limpar</button> : null}
         <span style={{ color: "var(--muted)", fontSize: 13 }}>{filtered.length} chamado(s)</span>
         <button className="btn btn-primary" style={{ width: "auto", marginLeft: "auto" }} onClick={() => setShowNew(true)}>+ Novo chamado</button>
       </div>
       {filtered.length === 0 ? <div className="panel"><div className="empty">Nenhum chamado neste filtro.</div></div> : (
         <div className="ticket-list">
-          {filtered.map((t) => (
-            <div key={t.id} className={`ticket-card ${priorityClass(t.priority)}`} onClick={() => setSelected(t.id)}>
-              <div><div className="ticket-id">{t.id}</div><div className="ticket-meta">{t.priority || "Media"}</div></div>
-              <div><div className="ticket-title">{t.title || "(sem titulo)"}</div><div className="ticket-meta">{t.department || t.queue || "—"} · {t.requester || "—"} · {t.assignee || "Sem responsavel"}</div></div>
-              <div><span className={`badge ${statusClass(t.status)}`}>{t.status || "Aberto"}</span></div>
-            </div>
-          ))}
+          {filtered.map((t) => {
+            const overdue = isTicketOverdue(t);
+            const dl = fmtDeadline(t);
+            return (
+              <div key={t.id} className={`ticket-card ${priorityClass(t.priority)}`} onClick={() => setSelected(t.id)}>
+                <div><div className="ticket-id">{t.id}</div><div className="ticket-meta">{t.priority || "Media"}</div></div>
+                <div><div className="ticket-title">{t.title || "(sem titulo)"}</div><div className="ticket-meta">{t.department || t.queue || "—"} · {t.requester || "—"} · {t.assignee || "Sem responsavel"}</div></div>
+                <div style={{ textAlign: "right" }}>
+                  <span className={`badge ${statusClass(t.status)}`}>{t.status || "Aberto"}</span>
+                  {dl ? <div className="ticket-meta" style={{ marginTop: 4, color: overdue ? "var(--crit)" : "var(--muted)", fontWeight: overdue ? 700 : 400 }}>{overdue ? "Vencido" : "Prazo"}: {dl}</div> : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
-      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} assets={assets} projects={projects} knowledgeArticles={knowledgeArticles} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} onDelete={onDelete} />}
-      {showNew && <NewTicketModal departments={requestableDepts} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
+      {current && <TicketDrawer ticket={current} departments={departments} requestableDepts={requestableDepts} serviceCenter={serviceCenter} users={users} assets={assets} projects={projects} knowledgeArticles={knowledgeArticles} locations={locations} user={user} saving={saving} onClose={() => setSelected(null)} onSave={onSave} onDelete={onDelete} />}
+      {showNew && <NewTicketModal departments={requestableDepts} users={users} locations={locations} user={user} saving={saving} onClose={() => setShowNew(false)} onCreate={onCreate} />}
     </div>
   );
 }
@@ -1057,7 +1135,7 @@ export default function App() {
           <div className="panel"><div className="empty">Voce nao tem permissao para acessar este modulo. Fale com o administrador do sistema.</div></div>
         ) : (<>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} onDelete={deleteTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} onDelete={deleteTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} locations={data.locations || []} user={user} saving={saving} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
