@@ -1243,7 +1243,20 @@ app.post("/api/public/intake/:accessToken/tickets", handleAsync(async (request, 
     return;
   }
 
-  const { ticket, nextState, requesterUser, createdPreRegistration } = createPublicTicket(state, request.body || {});
+  let created;
+  try {
+    created = createPublicTicket(state, request.body || {});
+  } catch (error) {
+    // Erros de validacao do portal (campos obrigatorios, departamento de
+    // destino nao configurado, etc.) devem retornar 400 com a mensagem util
+    // para o solicitante, e nao virar um 500 "Falha interna do servidor.".
+    response.status(400).json({
+      error: error instanceof Error ? error.message : "Nao foi possivel abrir o chamado.",
+    });
+    return;
+  }
+
+  const { ticket, nextState, requesterUser, createdPreRegistration } = created;
   const persistedState = await writeState(nextState);
 
   await insertSystemLog(
