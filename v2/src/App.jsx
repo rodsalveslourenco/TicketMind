@@ -154,6 +154,56 @@ function fmtDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
 }
 
+const WATCHER_EVENT_KEYS = [
+  "ticket_status_changed",
+  "ticket_assignment_changed",
+  "ticket_commented",
+  "ticket_closed",
+  "ticket_sla_breached",
+  "ticket_approval_pending",
+  "ticket_approval_overdue",
+  "ticket_approval_reminder",
+];
+function buildWatcherDetails(users, ids) {
+  return (users || []).filter((u) => (ids || []).includes(u.id)).map((u) => ({ id: u.id, userId: u.id, name: u.name, email: u.email, eventKeys: WATCHER_EVENT_KEYS }));
+}
+function WatcherPicker({ users, value, onChange }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const list = users || [];
+  const ids = value || [];
+  const selected = list.filter((u) => ids.includes(u.id));
+  const matches = list.filter((u) => !ids.includes(u.id) && norm(`${u.name} ${u.email || ""}`).includes(norm(q))).slice(0, 30);
+  const add = (id) => { onChange([...ids, id]); setQ(""); setOpen(false); };
+  const remove = (id) => onChange(ids.filter((x) => x !== id));
+  return (
+    <div className="ac">
+      {selected.length ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+          {selected.map((u) => (
+            <span key={u.id} className="badge s-andamento" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {u.name}
+              <button type="button" onClick={() => remove(u.id)} title="Remover" style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", fontWeight: 700, padding: 0, lineHeight: 1 }}>✕</button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <input
+        value={q}
+        placeholder="Digite para buscar pessoas..."
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && matches.length > 0 && (
+        <div className="ac-list">
+          {matches.map((u) => <div key={u.id} className="ac-item" onMouseDown={() => add(u.id)}>{u.name}{u.email ? ` · ${u.email}` : ""}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, locations, user, onClose, onSave, onDelete, saving }) {
   const [status, setStatus] = useState(ticket.status || "Aberto");
   const [solution, setSolution] = useState(ticket.resolutionNotes || "");
@@ -222,7 +272,7 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
   if (!departmentId || eligibleUsers.length === 0) eligibleUsers = userList;
   const assigneeNames = [...new Set(eligibleUsers.map((u) => u.name).filter(Boolean))];
   if (assignee && !assigneeNames.includes(assignee)) assigneeNames.unshift(assignee);
-  const watcherDetails = userList.filter((u) => watcherIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  const watcherDetails = buildWatcherDetails(userList, watcherIds);
   const watchersLabel = watcherDetails.map((w) => w.name).join(", ");
   const withDept = (obj) => {
     const dept = deptList.find((d) => String(d.id) === String(departmentId));
@@ -332,9 +382,7 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
             <Autocomplete value={assignee} onChange={setAssignee} allowFreeText placeholder="Sem responsavel" options={assigneeNames.map((n) => ({ value: n, label: n }))} />
           </div>
           <div className="field"><label>Observadores (watchers)</label>
-            <select multiple value={watcherIds} onChange={(e) => setWatcherIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 90 }}>
-              {userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+            <WatcherPicker users={userList} value={watcherIds} onChange={setWatcherIds} />
           </div>
         </div>
         <div className="drawer-actions">
@@ -509,7 +557,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
     const dept = (departments || []).find((d) => String(d.id) === String(form.departmentId));
     const nowIso = new Date().toISOString();
     const sla = computeSlaFields(form.priority, form.dueDate, nowIso);
-    const watcherDetails = userList.filter((u) => watcherIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name, email: u.email }));
+    const watcherDetails = buildWatcherDetails(userList, watcherIds);
     const payload = {
       title: form.title.trim(),
       description: form.description.trim(),
@@ -558,7 +606,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
         </div>
         <div className="form-row">
           <div className="field"><label>E-mail do solicitante</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
-          <div className="field"><label>Observadores (watchers)</label><select multiple value={watcherIds} onChange={(e) => setWatcherIds(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 84 }}>{userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+          <div className="field"><label>Observadores (watchers)</label><WatcherPicker users={userList} value={watcherIds} onChange={setWatcherIds} /></div>
         </div>
         <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
         <div className="drawer-actions">
