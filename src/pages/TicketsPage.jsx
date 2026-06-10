@@ -197,6 +197,74 @@ function getPrioritySortRank(ticket) {
   return 4;
 }
 
+const TICKET_SORT_FIELDS = [
+  { value: "priority", label: "Prioridade" },
+  { value: "number", label: "Número do chamado" },
+  { value: "openedAt", label: "Data de abertura" },
+  { value: "dueDate", label: "Prazo (SLA)" },
+];
+
+function getTicketNumberValue(ticket) {
+  const digits = String(ticket?.id || "").replace(/\D/g, "");
+  return digits ? Number(digits) : 0;
+}
+
+function getTicketTimeValue(value) {
+  const time = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+function getTicketDueTimeValue(ticket) {
+  const due = String(ticket?.dueDate || "").trim();
+  if (!due) return null;
+  const time = new Date(`${due}T23:59:59.999`).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function compareTickets(left, right, sortField, sortDirection) {
+  const directionFactor = sortDirection === "asc" ? 1 : -1;
+  const tieBreak = () => {
+    const leftOpenedAt = getTicketTimeValue(left.openedAt) ?? 0;
+    const rightOpenedAt = getTicketTimeValue(right.openedAt) ?? 0;
+    return rightOpenedAt - leftOpenedAt;
+  };
+
+  if (sortField === "priority") {
+    const rankDelta = getPrioritySortRank(left) - getPrioritySortRank(right);
+    // desc = mais urgentes primeiro (menor rank primeiro); asc = inverso.
+    if (rankDelta !== 0) return sortDirection === "asc" ? -rankDelta : rankDelta;
+    return tieBreak();
+  }
+
+  if (sortField === "number") {
+    const delta = getTicketNumberValue(left) - getTicketNumberValue(right);
+    if (delta !== 0) return delta * directionFactor;
+    return tieBreak();
+  }
+
+  if (sortField === "openedAt") {
+    const leftTime = getTicketTimeValue(left.openedAt) ?? 0;
+    const rightTime = getTicketTimeValue(right.openedAt) ?? 0;
+    const delta = leftTime - rightTime;
+    if (delta !== 0) return delta * directionFactor;
+    return tieBreak();
+  }
+
+  if (sortField === "dueDate") {
+    const leftDue = getTicketDueTimeValue(left);
+    const rightDue = getTicketDueTimeValue(right);
+    // Chamados sem Prazo (SLA) sempre por ultimo, independente da direcao.
+    if (leftDue === null && rightDue === null) return tieBreak();
+    if (leftDue === null) return 1;
+    if (rightDue === null) return -1;
+    const delta = leftDue - rightDue;
+    if (delta !== 0) return delta * directionFactor;
+    return tieBreak();
+  }
+
+  return tieBreak();
+}
+
 function isTriageTicket(ticket) {
   const status = normalizeText(ticket?.status);
   return status === "aberto" || ticket?.unassigned || ticket?.criticalWaitingTechnician;
@@ -337,6 +405,8 @@ function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [priorityFilter, setPriorityFilter] = useState("Todas");
   const [slaFilter, setSlaFilter] = useState("Todos");
+  const [sortField, setSortField] = useState("priority");
+  const [sortDirection, setSortDirection] = useState("desc");
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [advancedFilters, setAdvancedFilters] = useState({
     query: "",
@@ -854,14 +924,8 @@ function TicketsPage() {
       });
     }
 
-    return currentTickets.slice().sort((left, right) => {
-      const rankDelta = getPrioritySortRank(left) - getPrioritySortRank(right);
-      if (rankDelta !== 0) return rankDelta;
-      const leftOpenedAt = left.openedAt ? new Date(left.openedAt).getTime() : 0;
-      const rightOpenedAt = right.openedAt ? new Date(right.openedAt).getTime() : 0;
-      return rightOpenedAt - leftOpenedAt;
-    });
-  }, [advancedFilters, priorityFilter, search, searchTickets, slaFilter, statusFilter, tickets]);
+    return currentTickets.slice().sort((left, right) => compareTickets(left, right, sortField, sortDirection));
+  }, [advancedFilters, priorityFilter, search, searchTickets, slaFilter, sortField, sortDirection, statusFilter, tickets]);
   const triageTickets = useMemo(
     () => filteredTickets.filter(isTriageTicket),
     [filteredTickets],
@@ -1557,6 +1621,8 @@ function TicketsPage() {
     setStatusFilter("Todos");
     setPriorityFilter("Todas");
     setSlaFilter("Todos");
+    setSortField("priority");
+    setSortDirection("desc");
     handleSearchChange("");
     setAdvancedFilters({
       query: "",
@@ -1584,6 +1650,8 @@ function TicketsPage() {
       statusFilter,
       priorityFilter,
       slaFilter,
+      sortField,
+      sortDirection,
       advancedFilters,
     };
     setSavedFilters((current) => [preset, ...current.filter((item) => item.name !== trimmedName)].slice(0, 10));
@@ -1598,6 +1666,8 @@ function TicketsPage() {
     setStatusFilter(preset.statusFilter || "Todos");
     setPriorityFilter(preset.priorityFilter || "Todas");
     setSlaFilter(preset.slaFilter || "Todos");
+    setSortField(preset.sortField || "priority");
+    setSortDirection(preset.sortDirection || "desc");
     setAdvancedFilters({ query: "", requester: "", assignee: "Todos", department: "Todos", category: "Todas", queue: "Todas", source: "Todas", dateFrom: "", dateTo: "", ...(preset.advancedFilters || {}) });
   };
 
@@ -1994,6 +2064,21 @@ function TicketsPage() {
                   <option>Vencido</option>
                   <option>Crítico sem técnico</option>
                   <option>Sem técnico</option>
+                </select>
+              </label>
+              <label>
+                <span>Ordenar por</span>
+                <select onChange={(event) => setSortField(event.target.value)} value={sortField}>
+                  {TICKET_SORT_FIELDS.map((field) => (
+                    <option key={field.value} value={field.value}>{field.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Ordem</span>
+                <select onChange={(event) => setSortDirection(event.target.value)} value={sortDirection}>
+                  <option value="desc">Decrescente</option>
+                  <option value="asc">Crescente</option>
                 </select>
               </label>
             </div>

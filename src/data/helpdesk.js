@@ -143,20 +143,23 @@ export function getSlaPolicyMinutes(priority) {
 export function resolveTicketSlaSettings({ openedAt, dueDate, slaTargetMinutes, fallbackMinutes = SLA_POLICY_MINUTES.media, nowIso = new Date().toISOString() }) {
   const openedAtIso = String(openedAt || nowIso).trim() || nowIso;
   const openedAtMs = new Date(openedAtIso).getTime();
-  const fallbackTargetMinutes = Math.max(15, Number(slaTargetMinutes) || Number(fallbackMinutes) || SLA_POLICY_MINUTES.media);
+  const trimmedDueDate = String(dueDate || "").trim();
 
-  if (!dueDate) {
+  // Sem o campo Prazo (SLA) preenchido nao ha prazo automatico:
+  // o chamado nunca deve ser tratado como vencido.
+  if (!trimmedDueDate) {
     return {
-      slaTargetMinutes: fallbackTargetMinutes,
-      slaDeadlineAt: new Date(openedAtMs + fallbackTargetMinutes * 60 * 1000).toISOString(),
+      slaTargetMinutes: 0,
+      slaDeadlineAt: "",
     };
   }
 
-  const dueDateDeadlineMs = new Date(`${dueDate}T23:59:59.999`).getTime();
+  const dueDateDeadlineMs = new Date(`${trimmedDueDate}T23:59:59.999`).getTime();
   if (Number.isNaN(openedAtMs) || Number.isNaN(dueDateDeadlineMs)) {
+    // Prazo informado mas invalido: tambem nao gera prazo automatico.
     return {
-      slaTargetMinutes: fallbackTargetMinutes,
-      slaDeadlineAt: new Date(openedAtMs + fallbackTargetMinutes * 60 * 1000).toISOString(),
+      slaTargetMinutes: 0,
+      slaDeadlineAt: "",
     };
   }
 
@@ -168,15 +171,19 @@ export function resolveTicketSlaSettings({ openedAt, dueDate, slaTargetMinutes, 
 
 export function formatDateLabel(isoValue) {
   if (!isoValue) return "";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(isoValue));
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(date);
 }
 
 export function formatTimestampLabel(isoValue) {
   if (!isoValue) return "";
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return "";
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(new Date(isoValue));
+  }).format(date);
 }
 
 export function formatDurationLabel(minutes) {
@@ -491,12 +498,16 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
   let slaBreachedAt = ticket.slaBreachedAt || "";
   let nextHistory = history;
   const resolvedAtMs = resolvedAt ? new Date(resolvedAt).getTime() : Number.NaN;
-  const slaDeadlineAtMs = new Date(slaDeadlineAt).getTime();
-  if (isResolved && Number.isFinite(resolvedAtMs) && Number.isFinite(slaDeadlineAtMs)) {
+  const slaDeadlineAtMs = slaDeadlineAt ? new Date(slaDeadlineAt).getTime() : Number.NaN;
+  const hasSlaDeadline = Number.isFinite(slaDeadlineAtMs);
+  if (!hasSlaDeadline) {
+    // Sem prazo (SLA) definido: nao ha violacao automatica a registrar.
+    slaBreachedAt = "";
+  } else if (isResolved && Number.isFinite(resolvedAtMs)) {
     // Preserva o registro de violacao ja existente (nao apaga ao resolver no prazo).
     slaBreachedAt = resolvedAtMs > slaDeadlineAtMs ? slaBreachedAt || resolvedAt : slaBreachedAt;
   }
-  if (!isResolved && new Date(nowIso).getTime() > slaDeadlineAtMs && !slaBreachedAt) {
+  if (hasSlaDeadline && !isResolved && new Date(nowIso).getTime() > slaDeadlineAtMs && !slaBreachedAt) {
     slaBreachedAt = nowIso;
     nextHistory = [
       createHistoryEntry({
@@ -537,10 +548,13 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
     escalation: ticket?.escalation && typeof ticket.escalation === "object" ? ticket.escalation : {},
     slaTargetMinutes,
     slaDeadlineAt,
-    initialResponseTargetMinutes: Number(ticket.initialResponseTargetMinutes) || Math.max(15, Math.round(slaTargetMinutes * 0.25)),
-    initialResponseDeadlineAt:
-      String(ticket.initialResponseDeadlineAt || "").trim() ||
-      new Date(new Date(openedAt).getTime() + Math.max(15, Math.round(slaTargetMinutes * 0.25)) * 60 * 1000).toISOString(),
+    initialResponseTargetMinutes: hasSlaDeadline
+      ? Number(ticket.initialResponseTargetMinutes) || Math.max(15, Math.round(slaTargetMinutes * 0.25))
+      : 0,
+    initialResponseDeadlineAt: hasSlaDeadline
+      ? String(ticket.initialResponseDeadlineAt || "").trim() ||
+        new Date(new Date(openedAt).getTime() + Math.max(15, Math.round(slaTargetMinutes * 0.25)) * 60 * 1000).toISOString()
+      : "",
     firstResponseAt: String(ticket.firstResponseAt || "").trim(),
     firstResponseAtLabel: ticket.firstResponseAt ? formatTimestampLabel(ticket.firstResponseAt) : "",
     slaBreachedAt,
@@ -567,17 +581,23 @@ export function syncTicketRecord(ticket, users, nowIso = new Date().toISOString(
 
 export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   const now = new Date(nowIso).getTime();
-  const deadline = new Date(ticket.slaDeadlineAt).getTime();
-  const firstResponseDeadline = new Date(ticket.initialResponseDeadlineAt || ticket.slaDeadlineAt).getTime();
+  const deadline = ticket.slaDeadlineAt ? new Date(ticket.slaDeadlineAt).getTime() : Number.NaN;
+  const hasSlaDeadline = Number.isFinite(deadline);
+  const firstResponseDeadlineRaw = ticket.initialResponseDeadlineAt || "";
+  const firstResponseDeadline = firstResponseDeadlineRaw ? new Date(firstResponseDeadlineRaw).getTime() : Number.NaN;
+  const hasFirstResponseDeadline = Number.isFinite(firstResponseDeadline);
   const isResolved = normalizeText(ticket.status) === "resolvido";
   const resolvedAtMs = ticket.resolvedAt ? new Date(ticket.resolvedAt).getTime() : Number.NaN;
   const slaReferenceTime = isResolved && Number.isFinite(resolvedAtMs) ? resolvedAtMs : now;
-  const remainingMinutes = Math.round((deadline - slaReferenceTime) / 60000);
+  const remainingMinutes = hasSlaDeadline ? Math.round((deadline - slaReferenceTime) / 60000) : null;
   const initialResponseReferenceTime = isResolved && Number.isFinite(resolvedAtMs) ? resolvedAtMs : now;
-  const initialResponseRemainingMinutes = Math.round((firstResponseDeadline - initialResponseReferenceTime) / 60000);
-  const isOverdue = !isResolved && remainingMinutes < 0;
-  const initialResponseOverdue = !ticket.firstResponseAt && !isResolved && initialResponseRemainingMinutes < 0;
-  const dueSoon = !isResolved && remainingMinutes >= 0 && remainingMinutes <= 60;
+  const initialResponseRemainingMinutes = hasFirstResponseDeadline
+    ? Math.round((firstResponseDeadline - initialResponseReferenceTime) / 60000)
+    : null;
+  const isOverdue = hasSlaDeadline && !isResolved && remainingMinutes < 0;
+  const initialResponseOverdue =
+    hasFirstResponseDeadline && !ticket.firstResponseAt && !isResolved && initialResponseRemainingMinutes < 0;
+  const dueSoon = hasSlaDeadline && !isResolved && remainingMinutes >= 0 && remainingMinutes <= 60;
   const unassigned = isTicketUnassigned(ticket);
   const criticalWaitingTechnician = normalizeText(ticket.priority) === "critica" && unassigned && isOpenTicketStatus(ticket.status);
   const approvalDueAt = ticket.approval?.dueAt ? new Date(ticket.approval.dueAt).getTime() : null;
@@ -585,16 +605,20 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   const approvalRemainingMinutes = approvalDueAt ? Math.round((approvalDueAt - now) / 60000) : null;
   const approvalDueSoon = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes >= 0 && approvalRemainingMinutes <= 60;
   const approvalOverdue = approvalPending && Number.isFinite(approvalRemainingMinutes) && approvalRemainingMinutes < 0;
-  const resolvedLate = isResolved && remainingMinutes < 0;
+  const resolvedLate = isResolved && hasSlaDeadline && remainingMinutes < 0;
   const slaLabel = isResolved
     ? ticket.resolvedAt
-      ? resolvedLate
-        ? `Resolvido fora do SLA por ${formatDurationLabel(Math.abs(remainingMinutes))}`
-        : `Resolvido dentro do SLA com ${formatDurationLabel(Math.max(0, remainingMinutes))} de folga`
+      ? !hasSlaDeadline
+        ? "Resolvido"
+        : resolvedLate
+          ? `Resolvido fora do SLA por ${formatDurationLabel(Math.abs(remainingMinutes))}`
+          : `Resolvido dentro do SLA com ${formatDurationLabel(Math.max(0, remainingMinutes))} de folga`
       : "Resolvido"
-    : isOverdue
-      ? `SLA vencido ha ${formatDurationLabel(Math.abs(remainingMinutes))}`
-      : `Vence em ${formatDurationLabel(remainingMinutes)}`;
+    : !hasSlaDeadline
+      ? "Sem prazo (SLA) definido"
+      : isOverdue
+        ? `SLA vencido ha ${formatDurationLabel(Math.abs(remainingMinutes))}`
+        : `Vence em ${formatDurationLabel(remainingMinutes)}`;
   const resolutionMinutes = ticket.resolvedAt
     ? Math.max(0, Math.round((new Date(ticket.resolvedAt).getTime() - new Date(ticket.openedAt).getTime()) / 60000))
     : null;
@@ -602,7 +626,7 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
   return {
     ...ticket,
     slaRemainingMinutes: remainingMinutes,
-    slaState: isResolved ? "resolved" : isOverdue ? "overdue" : dueSoon ? "due_soon" : "within_sla",
+    slaState: isResolved ? "resolved" : !hasSlaDeadline ? "no_sla" : isOverdue ? "overdue" : dueSoon ? "due_soon" : "within_sla",
     slaLabel,
     slaResolvedLate: resolvedLate,
     isOverdue,
@@ -613,9 +637,11 @@ export function enrichTicketRuntime(ticket, nowIso = new Date().toISOString()) {
     initialResponseOverdue,
     initialResponseLabel: ticket.firstResponseAt
       ? `1a resposta em ${ticket.firstResponseAtLabel}`
-      : initialResponseOverdue
-        ? `1a resposta vencida ha ${formatDurationLabel(Math.abs(initialResponseRemainingMinutes))}`
-        : `1a resposta em ${formatDurationLabel(initialResponseRemainingMinutes)}`,
+      : !hasFirstResponseDeadline
+        ? "1a resposta sem prazo"
+        : initialResponseOverdue
+          ? `1a resposta vencida ha ${formatDurationLabel(Math.abs(initialResponseRemainingMinutes))}`
+          : `1a resposta em ${formatDurationLabel(initialResponseRemainingMinutes)}`,
     approvalPending,
     approvalRemainingMinutes,
     approvalDueSoon,

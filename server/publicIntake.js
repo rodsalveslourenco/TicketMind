@@ -414,7 +414,10 @@ export function createPublicTicket(state = {}, payload = {}) {
     nowIso,
   });
   const slaTargetMinutes = slaSettings.slaTargetMinutes;
-  const initialResponseTargetMinutes = Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25));
+  const hasSlaDeadline = Boolean(slaSettings.slaDeadlineAt);
+  const initialResponseTargetMinutes = hasSlaDeadline
+    ? Math.max(15, Number(payload.initialResponseTargetMinutes) || Math.round(slaTargetMinutes * 0.25))
+    : 0;
   const ticketId = buildNextTicketId(currentTickets, type);
 
   const ticket = {
@@ -441,7 +444,9 @@ export function createPublicTicket(state = {}, payload = {}) {
     slaTargetMinutes,
     slaDeadlineAt: slaSettings.slaDeadlineAt,
     initialResponseTargetMinutes,
-    initialResponseDeadlineAt: new Date(new Date(openedAt).getTime() + initialResponseTargetMinutes * 60 * 1000).toISOString(),
+    initialResponseDeadlineAt: hasSlaDeadline
+      ? new Date(new Date(openedAt).getTime() + initialResponseTargetMinutes * 60 * 1000).toISOString()
+      : "",
     firstResponseAt: "",
     updatedAt: formatTimestampLabel(nowIso),
     updatedAtIso: nowIso,
