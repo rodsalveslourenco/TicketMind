@@ -16,8 +16,9 @@ function computeSlaFields(priority, dueDate, openedAtIso) {
       return { slaTargetMinutes: Math.max(15, Math.round((deadlineMs - openedMs) / 60000)), slaDeadlineAt: new Date(deadlineMs).toISOString() };
     }
   }
-  const minutes = SLA_BY_PRIORITY[norm(priority)] || 240;
-  return { slaTargetMinutes: minutes, slaDeadlineAt: new Date(openedMs + minutes * 60000).toISOString() };
+  // Sem o campo Prazo (SLA) preenchido nao ha prazo automatico:
+  // o chamado nunca deve ser tratado como vencido.
+  return { slaTargetMinutes: 0, slaDeadlineAt: "" };
 }
 function ticketDeadlineMs(t) {
   return t && t.slaDeadlineAt ? new Date(t.slaDeadlineAt).getTime() : Number.POSITIVE_INFINITY;
@@ -26,6 +27,24 @@ function isTicketOverdue(t) {
   if (!t || norm(t.status) === "resolvido") return false;
   if (t.slaBreachedAt) return true;
   return Boolean(t.slaDeadlineAt && new Date(t.slaDeadlineAt).getTime() < Date.now());
+}
+function ticketNumV2(t) { const d = String((t && t.id) || "").replace(/\D/g, ""); return d ? Number(d) : 0; }
+function ticketOpenedMsV2(t) { const ms = t && t.openedAt ? new Date(t.openedAt).getTime() : NaN; return Number.isFinite(ms) ? ms : 0; }
+function prioRankV2(t) { const n = norm(t && t.priority); if (n === "critica") return 1; if (n === "alta") return 2; if (n === "media") return 3; return 4; }
+// Ordenacao da lista de chamados por campo + direcao (crescente/decrescente).
+function cmpTicketsV2(a, b, field, dir) {
+  const f = dir === "asc" ? 1 : -1;
+  const tie = () => ticketOpenedMsV2(b) - ticketOpenedMsV2(a);
+  if (field === "numero") { const d = ticketNumV2(a) - ticketNumV2(b); return d ? d * f : tie(); }
+  if (field === "abertura") { const d = ticketOpenedMsV2(a) - ticketOpenedMsV2(b); return d ? d * f : tie(); }
+  if (field === "prioridade") { const d = prioRankV2(a) - prioRankV2(b); return d ? (dir === "asc" ? -d : d) : tie(); }
+  // prazo (padrao): chamados sem prazo (SLA) sempre por ultimo, independente da direcao.
+  const am = ticketDeadlineMs(a), bm = ticketDeadlineMs(b);
+  const aInf = !Number.isFinite(am), bInf = !Number.isFinite(bm);
+  if (aInf && bInf) return tie();
+  if (aInf) return 1;
+  if (bInf) return -1;
+  const d = am - bm; return d ? d * f : tie();
 }
 function isOpen(s) { return OPEN_STATUSES.includes(norm(s)); }
 function statusClass(s) {
@@ -404,8 +423,9 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
         </div>
         {(() => {
           const sla = computeSlaFields(priority, dueDate, ticket.openedAt);
-          const overdue = norm(status) !== "resolvido" && new Date(sla.slaDeadlineAt).getTime() < Date.now();
-          return <p style={{ fontSize: 12.5, color: overdue ? "var(--crit)" : "var(--muted)" }}>{overdue ? `SLA violado — o prazo era ${fmtDate(sla.slaDeadlineAt)}` : `Prazo SLA: ${fmtDate(sla.slaDeadlineAt)}`} · {dueDate ? "definido pelo prazo de conclusao" : "definido pela prioridade"}</p>;
+          const hasDeadline = Boolean(sla.slaDeadlineAt);
+          const overdue = hasDeadline && norm(status) !== "resolvido" && new Date(sla.slaDeadlineAt).getTime() < Date.now();
+          return <p style={{ fontSize: 12.5, color: overdue ? "var(--crit)" : "var(--muted)" }}>{!hasDeadline ? "Sem prazo (SLA) definido — preencha o Prazo (SLA) para definir o vencimento" : overdue ? `SLA violado — o prazo era ${fmtDate(sla.slaDeadlineAt)}` : `Prazo SLA: ${fmtDate(sla.slaDeadlineAt)} · definido pelo prazo de conclusao`}</p>;
         })()}
         <div className="form-row">
           <div className="field"><label>Localizacao</label>
@@ -627,6 +647,8 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew] = useState(false);
+  const [sortField, setSortField] = useState("prazo");
+  const [sortDir, setSortDir] = useState("asc");
   const deptOptions = useMemo(() => [...new Set(tickets.map((t) => t.department || t.queue).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
   const requesterOptions = useMemo(() => [...new Set(tickets.map((t) => t.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
   const assigneeOptions = useMemo(() => [...new Set(tickets.map((t) => t.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
@@ -638,8 +660,8 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
       .filter((t) => !requesterFilter || t.requester === requesterFilter)
       .filter((t) => !assigneeFilter || t.assignee === assigneeFilter)
       .filter((t) => !q || norm(`${t.id} ${t.title} ${t.requester} ${t.department} ${t.assignee}`).includes(q))
-      .sort((a, b) => ticketDeadlineMs(a) - ticketDeadlineMs(b));
-  }, [tickets, search, statusFilter, deptFilter, requesterFilter, assigneeFilter]);
+      .sort((a, b) => cmpTicketsV2(a, b, sortField, sortDir));
+  }, [tickets, search, statusFilter, deptFilter, requesterFilter, assigneeFilter, sortField, sortDir]);
   const current = selected ? tickets.find((t) => t.id === selected) || null : null;
   const hasFilters = Boolean(deptFilter || requesterFilter || assigneeFilter || search);
   const clearFilters = () => { setDeptFilter(""); setRequesterFilter(""); setAssigneeFilter(""); setSearch(""); };
@@ -663,6 +685,16 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
         </select>
         <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} title="Filtrar por responsavel">
           <option value="">Responsavel: todos</option>{assigneeOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={sortField} onChange={(e) => setSortField(e.target.value)} title="Ordenar por">
+          <option value="prazo">Ordenar: Prazo (SLA)</option>
+          <option value="prioridade">Ordenar: Prioridade</option>
+          <option value="numero">Ordenar: Numero</option>
+          <option value="abertura">Ordenar: Abertura</option>
+        </select>
+        <select value={sortDir} onChange={(e) => setSortDir(e.target.value)} title="Ordem">
+          <option value="asc">Crescente</option>
+          <option value="desc">Decrescente</option>
         </select>
         {hasFilters ? <button className="btn btn-ghost" style={{ width: "auto" }} onClick={clearFilters}>Limpar</button> : null}
         <span style={{ color: "var(--muted)", fontSize: 13 }}>{filtered.length} chamado(s)</span>
