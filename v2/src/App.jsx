@@ -167,10 +167,16 @@ function Login({ onSuccess }) {
   );
 }
 
+const TZ_BR = "America/Sao_Paulo"; // GMT-03:00 (horario de Brasilia)
 function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR");
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR", { timeZone: TZ_BR });
+}
+function fmtDateTimeBR(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 const WATCHER_EVENT_KEYS = [
@@ -382,7 +388,7 @@ function TicketDrawer({ ticket, departments, requestableDepts, serviceCenter, us
           <div className="k">Responsavel</div><div>{ticket.assignee || "Sem responsavel"}</div>
           <div className="k">Prioridade</div><div>{ticket.priority || "Media"}</div>
           <div className="k">Categoria</div><div>{ticket.category || "—"}</div>
-          <div className="k">Aberto em</div><div>{ticket.openedAtLabel || fmtDate(ticket.openedAt)}</div>
+          <div className="k">Aberto em</div><div>{fmtDateTimeBR(ticket.openedAt)}</div>
         </div>
         {ticket.description && (<><div className="section-title">Descricao</div><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{ticket.description}</p></>)}
 
@@ -668,7 +674,7 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
   const fmtDeadline = (t) => {
     if (!t.slaDeadlineAt) return null;
     const dt = new Date(t.slaDeadlineAt);
-    return Number.isNaN(dt.getTime()) ? null : dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return Number.isNaN(dt.getTime()) ? null : dt.toLocaleString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
   return (
     <div>
@@ -708,7 +714,7 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
             return (
               <div key={t.id} className={`ticket-card ${priorityClass(t.priority)}`} onClick={() => setSelected(t.id)}>
                 <div><div className="ticket-id">{t.id}</div><div className="ticket-meta">{t.priority || "Media"}</div></div>
-                <div><div className="ticket-title">{t.title || "(sem titulo)"}</div><div className="ticket-meta">{t.department || t.queue || "—"} · {t.requester || "—"} · {t.assignee || "Sem responsavel"}</div></div>
+                <div><div className="ticket-title">{t.title || "(sem titulo)"}</div><div className="ticket-meta">{t.department || t.queue || "—"} · {t.requester || "—"} · {t.assignee || "Sem responsavel"}</div><div className="ticket-meta">Aberto: {fmtDateTimeBR(t.openedAt)}</div></div>
                 <div style={{ textAlign: "right" }}>
                   <span className={`badge ${statusClass(t.status)}`}>{t.status || "Aberto"}</span>
                   {dl ? <div className="ticket-meta" style={{ marginTop: 4, color: overdue ? "var(--crit)" : "var(--muted)", fontWeight: overdue ? 700 : 400 }}>{overdue ? "Vencido" : "Prazo"}: {dl}</div> : null}
