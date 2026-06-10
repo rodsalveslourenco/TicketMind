@@ -11,7 +11,7 @@ function norm(v) { return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "
 function computeSlaFields(priority, dueDate, openedAtIso) {
   const openedMs = new Date(openedAtIso || Date.now()).getTime();
   if (dueDate) {
-    const deadlineMs = new Date(`${dueDate}T23:59:59.999`).getTime();
+    const deadlineMs = new Date(`${dueDate}T23:59:59.999-03:00`).getTime();
     if (Number.isFinite(deadlineMs)) {
       return { slaTargetMinutes: Math.max(15, Math.round((deadlineMs - openedMs) / 60000)), slaDeadlineAt: new Date(deadlineMs).toISOString() };
     }
@@ -21,12 +21,16 @@ function computeSlaFields(priority, dueDate, openedAtIso) {
   return { slaTargetMinutes: 0, slaDeadlineAt: "" };
 }
 function ticketDeadlineMs(t) {
-  return t && t.slaDeadlineAt ? new Date(t.slaDeadlineAt).getTime() : Number.POSITIVE_INFINITY;
+  // SLA segue estritamente o campo Prazo (SLA) (dueDate). Sem prazo => sem vencimento.
+  const due = t && t.dueDate ? String(t.dueDate).slice(0, 10) : "";
+  if (!due) return Number.POSITIVE_INFINITY;
+  const ms = new Date(`${due}T23:59:59.999-03:00`).getTime();
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
 }
 function isTicketOverdue(t) {
   if (!t || norm(t.status) === "resolvido") return false;
-  if (t.slaBreachedAt) return true;
-  return Boolean(t.slaDeadlineAt && new Date(t.slaDeadlineAt).getTime() < Date.now());
+  const ms = ticketDeadlineMs(t);
+  return Number.isFinite(ms) && ms < Date.now();
 }
 function ticketNumV2(t) { const d = String((t && t.id) || "").replace(/\D/g, ""); return d ? Number(d) : 0; }
 function ticketOpenedMsV2(t) { const ms = t && t.openedAt ? new Date(t.openedAt).getTime() : NaN; return Number.isFinite(ms) ? ms : 0; }
@@ -672,9 +676,9 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
   const hasFilters = Boolean(deptFilter || requesterFilter || assigneeFilter || search);
   const clearFilters = () => { setDeptFilter(""); setRequesterFilter(""); setAssigneeFilter(""); setSearch(""); };
   const fmtDeadline = (t) => {
-    if (!t.slaDeadlineAt) return null;
-    const dt = new Date(t.slaDeadlineAt);
-    return Number.isNaN(dt.getTime()) ? null : dt.toLocaleString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const ms = ticketDeadlineMs(t);
+    if (!Number.isFinite(ms)) return null;
+    return new Date(ms).toLocaleString("pt-BR", { timeZone: TZ_BR, day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
   return (
     <div>
