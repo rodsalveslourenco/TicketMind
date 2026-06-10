@@ -194,10 +194,27 @@ function csatAvg(list) {
   if (!vals.length) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
+// SLA segue estritamente o campo Prazo (SLA) (dueDate), fim de dia em GMT-03.
+function ticketDeadlineMsV2(t) {
+  const due = t && t.dueDate ? String(t.dueDate).slice(0, 10) : "";
+  if (!due) return Number.POSITIVE_INFINITY;
+  const ms = new Date(`${due}T23:59:59.999-03:00`).getTime();
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+function isOverduePrazo(t) {
+  if (!t || norm(t.status) === "resolvido") return false;
+  const ms = ticketDeadlineMsV2(t);
+  return Number.isFinite(ms) && ms < Date.now();
+}
+function resolvedLatePrazo(t) {
+  if (!t || norm(t.status) !== "resolvido" || !t.resolvedAt) return false;
+  const ms = ticketDeadlineMsV2(t);
+  return Number.isFinite(ms) && new Date(t.resolvedAt).getTime() > ms;
+}
 function slaPct(list) {
   const m = list.filter((t) => isOpen(t.status) || norm(t.status) === "resolvido");
   if (!m.length) return 100;
-  const breached = m.filter((t) => t.isOverdue || t.slaResolvedLate || t.slaBreachedAt || (t.slaDeadlineAt && norm(t.status) !== "resolvido" && new Date(t.slaDeadlineAt).getTime() < Date.now())).length;
+  const breached = m.filter((t) => isOverduePrazo(t) || resolvedLatePrazo(t)).length;
   return Math.round(((m.length - breached) / m.length) * 100);
 }
 function fmtMin(m) {
@@ -237,7 +254,7 @@ export function Reports({ tickets }) {
     const byDept = countBy(list, (t) => t.department || t.queue || "—").slice(0, 8);
     const byAssignee = countBy(list.filter((t) => t.assignee), (t) => t.assignee).slice(0, 8);
     const resolved = list.filter((t) => norm(t.status) === "resolvido");
-    const breached = list.filter((t) => t.slaBreachedAt || t.isOverdue);
+    const breached = list.filter((t) => isOverduePrazo(t) || resolvedLatePrazo(t));
     const sla = slaPct(list);
     const deptNames = [...new Set(list.map((t) => t.department || t.queue || "—"))].filter((x) => x && x !== "—");
     const slaByDept = deptNames.map((dn) => [dn, slaPct(list.filter((t) => (t.department || t.queue || "—") === dn))]).sort((a, b) => a[1] - b[1]).slice(0, 8);
@@ -248,7 +265,7 @@ export function Reports({ tickets }) {
   const prioColor = (p) => ({ critica: "var(--crit)", alta: "var(--warn)", media: "var(--info)", baixa: "var(--muted)" }[norm(p)] || "var(--info)");
   const exportTickets = () => {
     const header = ["ID", "Titulo", "Status", "Prioridade", "Departamento", "Solicitante", "Responsavel", "Aberto em", "Resolvido em", "SLA prazo", "SLA violado"];
-    const rows = data.list.map((t) => [t.id, t.title || "", t.status || "", t.priority || "", t.department || t.queue || "", t.requester || "", t.assignee || "", t.openedAt || "", t.resolvedAt || "", t.slaDeadlineAt || "", t.slaBreachedAt ? "Sim" : "Nao"]);
+    const rows = data.list.map((t) => [t.id, t.title || "", t.status || "", t.priority || "", t.department || t.queue || "", t.requester || "", t.assignee || "", t.openedAt || "", t.resolvedAt || "", Number.isFinite(ticketDeadlineMsV2(t)) ? new Date(ticketDeadlineMsV2(t)).toISOString() : "", (isOverduePrazo(t) || resolvedLatePrazo(t)) ? "Sim" : "Nao"]);
     downloadCsv(`chamados-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
   };
   const exportProd = () => {
@@ -295,9 +312,7 @@ export function Reports({ tickets }) {
 
 /* ---------- Dashboard rico ---------- */
 function pastDue(t) {
-  if (norm(t.status) === "resolvido") return false;
-  if (t.slaBreachedAt) return true;
-  return Boolean(t.slaDeadlineAt && new Date(t.slaDeadlineAt).getTime() < Date.now());
+  return isOverduePrazo(t);
 }
 export function Dashboard({ tickets, onGo }) {
   const [filter, setFilter] = useState(null);
@@ -336,7 +351,7 @@ export function Dashboard({ tickets, onGo }) {
     for (let i = 5; i >= 0; i -= 1) { const dt = new Date(base.getFullYear(), base.getMonth() - i, 1); months.push(dt); }
     const vol6 = months.map((dt) => { const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`; const label = dt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""); return [label, list.filter((t) => String(t.openedAt || "").slice(0, 7) === key).length]; });
     const tech = technicianProductivity(list).slice(0, 8);
-    const agenda = open.filter((t) => t.slaDeadlineAt && !t.slaBreachedAt).map((t) => ({ id: t.id, title: t.title, when: t.slaDeadlineAt, assignee: t.assignee, dept: t.department || t.queue })).sort((a, b) => String(a.when).localeCompare(String(b.when))).slice(0, 6);
+    const agenda = open.filter((t) => Number.isFinite(ticketDeadlineMsV2(t))).map((t) => ({ id: t.id, title: t.title, when: new Date(ticketDeadlineMsV2(t)).toISOString(), assignee: t.assignee, dept: t.department || t.queue })).sort((a, b) => String(a.when).localeCompare(String(b.when))).slice(0, 6);
     const alertas = [];
     slaRisco.slice(0, 6).forEach((t) => alertas.push({ kind: "crit", text: `SLA em risco: ${t.id} — ${t.title || ""}` }));
     open.filter((t) => !t.assignee).slice(0, 6).forEach((t) => alertas.push({ kind: "warn", text: `Sem responsavel: ${t.id} — ${t.title || ""}` }));
@@ -402,7 +417,7 @@ export function Dashboard({ tickets, onGo }) {
           <thead><tr><th>Tecnico</th><th>Em aberto</th><th>Resolvidos</th><th>Criticos</th><th>SLA %</th><th>Tempo medio</th><th>1a resposta</th></tr></thead>
           <tbody>
             {d.tech.length === 0 ? <tr><td colSpan={7}><div className="empty">Sem chamados atribuidos.</div></td></tr> : d.tech.map((t) => {
-              const techOpen = d.list.filter((x) => x.assignee === t.name && isOpen(x.status)).sort((a, b) => String(a.slaDeadlineAt || "9999").localeCompare(String(b.slaDeadlineAt || "9999")));
+              const techOpen = d.list.filter((x) => x.assignee === t.name && isOpen(x.status)).sort((a, b) => ticketDeadlineMsV2(a) - ticketDeadlineMsV2(b));
               const exp = expandedTech === t.name;
               return (
                 <Fragment key={t.name}>
@@ -421,7 +436,7 @@ export function Dashboard({ tickets, onGo }) {
                                 <strong style={{ minWidth: 84 }}>{x.id}</strong>
                                 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.title || "(sem titulo)"}</span>
                                 <span className={`badge ${({ resolvido: "s-resolvido", "em andamento": "s-andamento", reaberto: "s-reaberto", aberto: "s-aberto" })[norm(x.status)] || "s-espera"}`} style={{ whiteSpace: "nowrap" }}>{x.status}</span>
-                                <span style={{ fontSize: 12, color: overdue ? "var(--crit)" : "var(--muted)", whiteSpace: "nowrap" }}>{x.slaDeadlineAt ? `Prazo: ${new Date(x.slaDeadlineAt).toLocaleString("pt-BR")}` : "Sem prazo"}{overdue ? " · vencido" : ""}</span>
+                                <span style={{ fontSize: 12, color: overdue ? "var(--crit)" : "var(--muted)", whiteSpace: "nowrap" }}>{Number.isFinite(ticketDeadlineMsV2(x)) ? `Prazo: ${new Date(ticketDeadlineMsV2(x)).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Sem prazo"}{overdue ? " · vencido" : ""}</span>
                               </div>
                             );
                           })}
