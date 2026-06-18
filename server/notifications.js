@@ -504,6 +504,45 @@ function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
   };
 }
 
+function buildTicketResolvedMessage(ticket = {}, state = {}, baseUrl = "", recipients = []) {
+  const placeholders = buildPlaceholders(state, ticket, "Chamado resolvido", baseUrl);
+  const solucao = resolveTicketComments(ticket) || "(Sem descricao da solucao registrada.)";
+  const text = [
+    "Ola,",
+    "",
+    `O chamado ${placeholders.numero_chamado} foi RESOLVIDO.`,
+    "",
+    `Titulo: ${placeholders.titulo}`,
+    `Status: ${placeholders.status}`,
+    `Prioridade: ${placeholders.prioridade}`,
+    `Tecnico responsavel: ${placeholders.tecnico || "-"}`,
+    `Departamento: ${placeholders.departamento || "-"}`,
+    "",
+    "Solucao aplicada:",
+    solucao,
+    "",
+    `Acompanhe o chamado: ${placeholders.link_chamado}`,
+  ].join("\n");
+  const esc = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.5">
+      <p>Ola,</p>
+      <p>O chamado <strong>${esc(placeholders.numero_chamado)}</strong> foi <strong style="color:#15803d">RESOLVIDO</strong>.</p>
+      <table style="border-collapse:collapse;margin:8px 0">
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Titulo</td><td><strong>${esc(placeholders.titulo)}</strong></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Status</td><td>${esc(placeholders.status)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Prioridade</td><td>${esc(placeholders.prioridade)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Tecnico</td><td>${esc(placeholders.tecnico) || "-"}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Departamento</td><td>${esc(placeholders.departamento) || "-"}</td></tr>
+      </table>
+      <p style="margin-bottom:4px"><strong>Solucao aplicada:</strong></p>
+      <pre style="font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px;margin-top:0">${esc(solucao)}</pre>
+      <p><a href="${esc(placeholders.link_chamado)}" style="display:inline-block;padding:10px 16px;background:#1565c0;color:#fff;text-decoration:none;border-radius:8px">Abrir chamado</a></p>
+    </div>
+  `;
+  return { to: recipients, subject: `[TicketMind] Chamado resolvido - ${placeholders.numero_chamado}`, text, html };
+}
+
 function getRecipients(rule, state) {
   const userEmails = (Array.isArray(rule?.recipientUserIds) ? rule.recipientUserIds : [])
     .map((userId) => (state.users || []).find((user) => user.id === userId)?.email || "")
@@ -791,12 +830,20 @@ export async function sendPasswordRecoveryEmail(
 export async function processTicketNotifications({ previousState, nextState, persistState, baseUrl }) {
   const rules = Array.isArray(nextState.notificationRules) ? nextState.notificationRules.filter((rule) => rule.active) : [];
   const hasTicketCreatedForwarding = Boolean(OPERATIONS_FORWARD_EMAIL || FACILITIES_FORWARD_EMAIL);
-  if (!rules.length && !hasTicketCreatedForwarding) return;
+
+  const previousTickets = new Map((previousState?.tickets || []).map((ticket) => [ticket.id, ticket]));
+  const nextTickets = new Map((nextState?.tickets || []).map((ticket) => [ticket.id, ticket]));
+  // O e-mail de "chamado resolvido" e embutido (independe de regras cadastradas),
+  // entao, mesmo sem regras, precisamos processar quando ha transicao para
+  // "Resolvido".
+  const hasResolvedTransition = Array.from(nextTickets.values()).some((ticket) => {
+    const previous = previousTickets.get(ticket.id);
+    return previous && normalizeText(previous.status) !== "resolvido" && normalizeText(ticket.status) === "resolvido";
+  });
+  if (!rules.length && !hasTicketCreatedForwarding && !hasResolvedTransition) return;
 
   const eventsMap = new Map((nextState.notificationEvents || []).map((event) => [event.key, event]));
   const layoutsMap = new Map((nextState.emailLayouts || []).map((layout) => [layout.id, layout]));
-  const previousTickets = new Map((previousState?.tickets || []).map((ticket) => [ticket.id, ticket]));
-  const nextTickets = new Map((nextState?.tickets || []).map((ticket) => [ticket.id, ticket]));
   const successfulLogKeys = new Set(
     (nextState.notificationLogs || [])
       .filter((log) => normalizeText(log.status) === "enviado")
@@ -868,7 +915,31 @@ export async function processTicketNotifications({ previousState, nextState, per
       successfulLogKeys.add(createdDeliveryKey);
     }
 
+    // E-mail automatico de "chamado resolvido" (embutido): notifica o
+    // solicitante + observadores sempre que o status passa para "Resolvido",
+    // com a solucao aplicada, independentemente de regras cadastradas.
+    if (previousTicket && normalizeText(previousTicket.status) !== "resolvido" && normalizeText(nextTicket.status) === "resolvido") {
+      const resolvedRecipients = Array.from(new Set([
+        String(nextTicket.requesterEmail || "").trim().toLowerCase(),
+        ...getWatcherRecipients(nextTicket, "ticket_closed"),
+      ].filter(Boolean)));
+      const resolvedDedupeKey = `ticket_resolved_builtin:${nextTicket.id}:${nextTicket.resolvedAt || nextTicket.updatedAtIso || ""}`;
+      if (resolvedRecipients.length && !successfulLogKeys.has(resolvedDedupeKey)) {
+        const resolvedMessage = buildTicketResolvedMessage(nextTicket, nextState, baseUrl, resolvedRecipients);
+        try {
+          const method = await deliverEmail(nextState, resolvedMessage);
+          nextLogs.unshift(buildNotificationLogEntry({ eventKey: "ticket_closed", ticketId: nextTicket.id, recipients: resolvedRecipients, status: "Enviado", dedupeKey: resolvedDedupeKey, subject: resolvedMessage.subject, method }));
+        } catch (error) {
+          nextLogs.unshift(buildNotificationLogEntry({ eventKey: "ticket_closed", ticketId: nextTicket.id, recipients: resolvedRecipients, status: "Falha", error: error instanceof Error ? error.message : "Falha ao enviar email de resolucao.", dedupeKey: resolvedDedupeKey, subject: resolvedMessage.subject, method: "Falha" }));
+        }
+        successfulLogKeys.add(resolvedDedupeKey);
+      }
+    }
+
     for (const change of changes) {
+      // O e-mail de resolucao e tratado pelo bloco embutido acima; evitamos que
+      // uma eventual regra "ticket_closed" gere e-mail duplicado.
+      if (change.key === "ticket_closed") continue;
       const rule = rules.find((candidate) => candidate.eventKey === change.key);
       if (!rule) continue;
 

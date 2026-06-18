@@ -649,7 +649,8 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
   );
 }
 
-function TicketsView({ tickets, onSave, onCreate, onDelete, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, locations, user, saving }) {
+function TicketsView({ tickets, onSave, onCreate, onDelete, departments, requestableDepts, serviceCenter, users, assets, projects, knowledgeArticles, locations, user, saving, onEditingChange }) {
+  const [scope, setScope] = useState("tratar");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("abertos");
   const [deptFilter, setDeptFilter] = useState("");
@@ -659,19 +660,31 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
   const [showNew, setShowNew] = useState(false);
   const [sortField, setSortField] = useState("prazo");
   const [sortDir, setSortDir] = useState("asc");
+  // Avisa o App quando ha um chamado aberto/em edicao, para pausar o refresh
+  // automatico de 20s e nao atrapalhar o que o usuario esta digitando.
+  useEffect(() => { onEditingChange?.(Boolean(selected || showNew)); }, [selected, showNew]);
+  useEffect(() => () => onEditingChange?.(false), []);
+  // "Abertos por mim" = sou o solicitante; "Para tratar" = os demais (fila de
+  // atendimento / atribuidos a mim), dentro do que ja e visivel ao usuario.
+  const myId = String(user?.id || "");
+  const myEmail = String(user?.email || "").trim().toLowerCase();
+  const openedByMe = (t) => (Boolean(myId) && String(t.requesterId || "") === myId) || (Boolean(myEmail) && String(t.requesterEmail || "").trim().toLowerCase() === myEmail);
+  const countMine = tickets.filter(openedByMe).length;
+  const countTratar = tickets.length - countMine;
   const deptOptions = useMemo(() => [...new Set(tickets.map((t) => t.department || t.queue).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
   const requesterOptions = useMemo(() => [...new Set(tickets.map((t) => t.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
   const assigneeOptions = useMemo(() => [...new Set(tickets.map((t) => t.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [tickets]);
   const filtered = useMemo(() => {
     const q = norm(search);
     return tickets
+      .filter((t) => scope === "meus" ? openedByMe(t) : !openedByMe(t))
       .filter((t) => statusFilter === "abertos" ? isOpen(t.status) : statusFilter === "resolvidos" ? norm(t.status) === "resolvido" : true)
       .filter((t) => !deptFilter || (t.department || t.queue || "") === deptFilter)
       .filter((t) => !requesterFilter || t.requester === requesterFilter)
       .filter((t) => !assigneeFilter || t.assignee === assigneeFilter)
       .filter((t) => !q || norm(`${t.id} ${t.title} ${t.requester} ${t.department} ${t.assignee}`).includes(q))
       .sort((a, b) => cmpTicketsV2(a, b, sortField, sortDir));
-  }, [tickets, search, statusFilter, deptFilter, requesterFilter, assigneeFilter, sortField, sortDir]);
+  }, [tickets, scope, search, statusFilter, deptFilter, requesterFilter, assigneeFilter, sortField, sortDir]);
   const current = selected ? tickets.find((t) => t.id === selected) || null : null;
   const hasFilters = Boolean(deptFilter || requesterFilter || assigneeFilter || search);
   const clearFilters = () => { setDeptFilter(""); setRequesterFilter(""); setAssigneeFilter(""); setSearch(""); };
@@ -682,6 +695,10 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
   };
   return (
     <div>
+      <div className="ticket-tabs" style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <button className={`btn ${scope === "tratar" ? "btn-primary" : "btn-ghost"}`} style={{ width: "auto" }} onClick={() => { setScope("tratar"); setSelected(null); }}>Para tratar ({countTratar})</button>
+        <button className={`btn ${scope === "meus" ? "btn-primary" : "btn-ghost"}`} style={{ width: "auto" }} onClick={() => { setScope("meus"); setSelected(null); }}>Abertos por mim ({countMine})</button>
+      </div>
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
         <input className="search" placeholder="Buscar por id, titulo, solicitante..." value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -962,6 +979,7 @@ export default function App() {
   const [data, setData] = useState({});
   const [view, setView] = useState("dashboard");
   const [saving, setSaving] = useState(false);
+  const [ticketEditing, setTicketEditing] = useState(false);
   const [toast, setToast] = useState(null);
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("tm2.collapsed") === "1"; } catch { return false; } });
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -980,6 +998,15 @@ export default function App() {
     const d = state?.data || state || {};
     setData(d);
     if (d.currentUser) setUser(d.currentUser);
+  };
+
+  // Atualizacao silenciosa apenas da lista de chamados (usada pelo refresh
+  // automatico de 20s). Nao mexe nos demais dados para nao atrapalhar formularios
+  // abertos em outros modulos.
+  const refreshTickets = async () => {
+    const state = await api.state();
+    const d = state?.data || state || {};
+    if (Array.isArray(d.tickets)) setData((cur) => ({ ...cur, tickets: d.tickets }));
   };
 
   // Token do portal publico. Aceita o formato novo (?portal=token) E o link do
@@ -1022,6 +1049,18 @@ export default function App() {
     const allowed = MENU.flatMap((g) => g.items).filter((it) => !it.perm || hasPerm(user, it.perm)).map((it) => it.key);
     if (allowed.length && !allowed.includes(view)) setView(allowed[0]);
   }, [user, view]);
+
+  // Refresh automatico da lista de chamados a cada 20s (inclusive em segundo
+  // plano). Pausa enquanto um chamado esta aberto/em edicao ou durante um
+  // salvamento, para nao sobrescrever o que o usuario esta fazendo.
+  useEffect(() => {
+    if (!user) return undefined;
+    const id = window.setInterval(() => {
+      if (ticketEditing || saving) return;
+      refreshTickets().catch(() => { /* silencioso */ });
+    }, 20000);
+    return () => window.clearInterval(id);
+  }, [user, ticketEditing, saving]);
 
   const createTicket = async (payload) => {
     setSaving(true);
@@ -1225,7 +1264,7 @@ export default function App() {
           <div className="panel"><div className="empty">Voce nao tem permissao para acessar este modulo. Fale com o administrador do sistema.</div></div>
         ) : (<>
         {view === "dashboard" && <Dashboard tickets={tickets} onGo={setView} />}
-        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} onDelete={deleteTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} locations={data.locations || []} user={user} saving={saving} />}
+        {view === "tickets" && <TicketsView tickets={tickets} onSave={saveTicket} onCreate={createTicket} onDelete={deleteTicket} departments={(data.departments || []).filter((d) => norm(d.status) === "ativo")} requestableDepts={requestableDepartments(data.departments || [], data.serviceCenter || {})} serviceCenter={data.serviceCenter || {}} users={data.users || []} assets={data.assets || []} projects={data.projects || []} knowledgeArticles={data.knowledgeArticles || []} locations={data.locations || []} user={user} saving={saving} onEditingChange={setTicketEditing} />}
         {view === "reports" && <Reports tickets={tickets} />}
         {view === "logs" && <LogsView />}
         {view === "serviceCenter" && <ServiceCenterView serviceCenter={data.serviceCenter || {}} departments={data.departments || []} users={data.users || []} onSave={saveServiceCenter} saving={saving} />}
