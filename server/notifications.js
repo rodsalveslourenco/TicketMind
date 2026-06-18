@@ -198,53 +198,46 @@ export function buildPasswordRecoveryForwardMessage({
 
 export function buildTicketCreatedForwardMessage(ticket = {}, state = {}, baseUrl = "", intendedRecipients = []) {
   const forwardingRecipients = resolveTicketCreatedForwardRecipients(ticket, state);
-  const watchers = Array.isArray(ticket.watcherDetails) ? ticket.watcherDetails.map((watcher) => watcher.email || watcher.name || "").filter(Boolean) : [];
-  const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
-  const followUps = Array.isArray(ticket.followUps) ? ticket.followUps : [];
-  const checklistItems = Array.isArray(ticket.checklistItems) ? ticket.checklistItems : [];
   const placeholders = buildPlaceholders(state, ticket, "Abertura de chamado", baseUrl);
+  const urgencia = ticket.urgency || ticket.priority || "-";
+  const dataAbertura = ticket.openedAtLabel || ticket.openedAt || "";
   const lines = [
-    "Encaminhamento operacional de abertura de chamado.",
-    "",
     `Chamado: ${ticket.id || ""}`,
+    `Data de abertura: ${dataAbertura}`,
     `Titulo: ${ticket.title || ""}`,
-    `Descricao: ${ticket.description || ""}`,
+    `Urgencia: ${urgencia}`,
     `Solicitante: ${ticket.requester || ""}`,
-    `Email do solicitante: ${ticket.requesterEmail || ""}`,
-    `Tipo: ${ticket.type || ""}`,
-    `Status inicial: ${ticket.status || ""}`,
-    `Prioridade: ${ticket.priority || ""}`,
-    `Urgencia: ${ticket.urgency || ""}`,
-    `Impacto: ${ticket.impact || ""}`,
-    `Departamento: ${ticket.department || placeholders.departamento || ""}`,
-    `Fila: ${ticket.queue || ""}`,
-    `Categoria: ${ticket.category || ""}`,
-    `Origem: ${ticket.source || ""}`,
-    `Localizacao: ${ticket.location || ""}`,
-    `Data de abertura: ${ticket.openedAtLabel || ticket.openedAt || ""}`,
-    `SLA: ${ticket.sla || ""}`,
-    `Projeto: ${ticket.projectName || ""}`,
-    `Ativo: ${ticket.assetName || ""}`,
-    `Chamado pai: ${ticket.parentTicketId || ""}`,
-    `Aprovador atual: ${ticket.approval?.currentApproverName || ticket.approval?.approverName || ""}`,
-    `Valor para aprovacao: ${ticket.approvalAmount || 0}`,
-    `Watchers: ${watchers.join(", ") || ticket.watchers || ""}`,
-    `Anexos: ${attachments.length}`,
-    `Checklist inicial: ${checklistItems.length}`,
-    `Follow-ups iniciais: ${followUps.length}`,
+    `E-mail: ${ticket.requesterEmail || ""}`,
+    "",
+    "Descricao:",
+    ticket.description || "",
+    "",
     `Link do chamado: ${placeholders.link_chamado || ""}`,
   ];
-
-  const aiAnalysisText = formatAiAnalysisText(ticket.aiAnalysis);
-  if (aiAnalysisText) lines.push(aiAnalysisText);
-
   const forwardingNotice = buildForwardingTextNotice(intendedRecipients, forwardingRecipients);
   const text = `${lines.join("\n")}${forwardingNotice}`;
+  const esc = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.5">
+      <p>Novo chamado aberto: <strong>${esc(ticket.id || "")}</strong></p>
+      <table style="border-collapse:collapse;margin:8px 0">
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Numero</td><td><strong>${esc(ticket.id || "")}</strong></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Data de abertura</td><td>${esc(dataAbertura)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Titulo</td><td><strong>${esc(ticket.title || "")}</strong></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Urgencia</td><td>${esc(urgencia)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Solicitante</td><td>${esc(ticket.requester || "")}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">E-mail</td><td>${esc(ticket.requesterEmail || "")}</td></tr>
+      </table>
+      <p style="margin-bottom:4px"><strong>Descricao:</strong></p>
+      <pre style="font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px;margin-top:0">${esc(ticket.description || "")}</pre>
+      <p><a href="${esc(placeholders.link_chamado || "")}" style="display:inline-block;padding:10px 16px;background:#1565c0;color:#fff;text-decoration:none;border-radius:8px">Abrir chamado</a></p>
+    </div>
+  `;
   return {
     to: forwardingRecipients,
     subject: `[TicketMind] Abertura de chamado - ${ticket.id || ""}`,
     text,
-    html: buildPreformattedHtml(text),
+    html,
   };
 }
 
@@ -529,7 +522,7 @@ function buildTicketResolvedMessage(ticket = {}, state = {}, baseUrl = "", recip
     `Titulo: ${placeholders.titulo}`,
     `Status: ${placeholders.status}`,
     `Prioridade: ${placeholders.prioridade}`,
-    `Tecnico responsavel: ${placeholders.tecnico || "-"}`,
+    `Agente de Solucao: ${placeholders.tecnico || "-"}`,
     `Departamento: ${placeholders.departamento || "-"}`,
     "",
     "Solucao aplicada:",
@@ -546,7 +539,7 @@ function buildTicketResolvedMessage(ticket = {}, state = {}, baseUrl = "", recip
         <tr><td style="padding:2px 12px 2px 0;color:#64748b">Titulo</td><td><strong>${esc(placeholders.titulo)}</strong></td></tr>
         <tr><td style="padding:2px 12px 2px 0;color:#64748b">Status</td><td>${esc(placeholders.status)}</td></tr>
         <tr><td style="padding:2px 12px 2px 0;color:#64748b">Prioridade</td><td>${esc(placeholders.prioridade)}</td></tr>
-        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Tecnico</td><td>${esc(placeholders.tecnico) || "-"}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#64748b">Agente de Solucao</td><td>${esc(placeholders.tecnico) || "-"}</td></tr>
         <tr><td style="padding:2px 12px 2px 0;color:#64748b">Departamento</td><td>${esc(placeholders.departamento) || "-"}</td></tr>
       </table>
       <p style="margin-bottom:4px"><strong>Solucao aplicada:</strong></p>
