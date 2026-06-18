@@ -595,6 +595,18 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
     description: "", requester: user?.name || "", requesterEmail: user?.email || "", dueDate: "",
   });
   const [watcherIds, setWatcherIds] = useState([]);
+  const [attachments, setAttachments] = useState([]);
+  const addAttachment = (file) => {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { window.alert("Anexo muito grande (max 4MB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const att = { id: `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, name: file.name, type: file.type, size: file.size, dataUrl: reader.result, addedAt: new Date().toISOString(), addedBy: user?.name || "" };
+      setAttachments((list) => [att, ...list]);
+    };
+    reader.readAsDataURL(file);
+  };
+  const removeAttachment = (id) => setAttachments((list) => list.filter((a) => a.id !== id));
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const userList = users || [];
   const locList = (locations || []).filter((l) => norm(l.status || "ativo") === "ativo");
@@ -624,6 +636,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
       dueDate: form.dueDate || "",
       watcherDetails,
       watchers: watcherDetails.map((w) => w.name).join(", "),
+      attachments,
       slaTargetMinutes: sla.slaTargetMinutes,
       slaDeadlineAt: sla.slaDeadlineAt,
     };
@@ -656,6 +669,18 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
           <div className="field"><label>Observadores (watchers)</label><WatcherPicker users={userList} value={watcherIds} onChange={setWatcherIds} /></div>
         </div>
         <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
+        <div className="section-title">Anexos</div>
+        <div className="drawer-actions">
+          <input type="file" onChange={(e) => { addAttachment(e.target.files?.[0]); e.target.value = ""; }} />
+        </div>
+        <div className="attach-list">
+          {attachments.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Nenhum anexo.</p> : attachments.map((a) => (
+            <div className="attach" key={a.id || a.name}>
+              <a href={a.dataUrl || a.url || "#"} download={a.name} target="_blank" rel="noreferrer">📎 {a.name}</a>
+              <button className="attach-rm" onClick={() => removeAttachment(a.id)} title="Remover">✕</button>
+            </div>
+          ))}
+        </div>
         <div className="drawer-actions">
           <button className="btn btn-primary" style={{ width: "auto" }} onClick={submit} disabled={saving || !canSubmit}>{saving ? <span className="spinner" /> : "Abrir chamado"}</button>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
