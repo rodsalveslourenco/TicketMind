@@ -309,6 +309,16 @@ function isFullName(value) {
   return String(value || "").trim().split(/\s+/).filter((word) => word.length >= 2).length >= 2;
 }
 
+// Valida e-mail. Regra wegamarine: dominios da wegamarine exigem wegamarine.com.br.
+function isValidEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+  const domain = email.split("@")[1] || "";
+  const mentionsWega = domain === "wegamarine" || domain.startsWith("wegamarine.");
+  if (mentionsWega && domain !== "wegamarine.com.br") return false;
+  return true;
+}
+
 export function createPublicTicket(state = {}, payload = {}) {
   const currentTickets = normalizeCollection(state.tickets);
   const currentUsers = normalizeCollection(state.users);
@@ -332,6 +342,9 @@ export function createPublicTicket(state = {}, payload = {}) {
   const targetDepartment = resolveDefaultDepartment(state, matchedUser, payload.destinationDepartmentId);
   if (requesterName && !isFullName(requesterName)) {
     throw new Error("Informe o nome completo do solicitante (nome e sobrenome).");
+  }
+  if (requesterEmail && !isValidEmail(requesterEmail)) {
+    throw new Error("E-mail invalido. Para enderecos @wegamarine, use o dominio completo @wegamarine.com.br.");
   }
   if (
     !requesterEmail ||

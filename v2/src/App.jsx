@@ -13,6 +13,17 @@ function isFullName(value) {
   return String(value || "").trim().split(/\s+/).filter((w) => w.length >= 2).length >= 2;
 }
 
+// Valida e-mail. Regra wegamarine: se o dominio for da wegamarine, exige o
+// dominio completo wegamarine.com.br; outros dominios sao aceitos normalmente.
+function isValidEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+  const domain = email.split("@")[1] || "";
+  const mentionsWega = domain === "wegamarine" || domain.startsWith("wegamarine.");
+  if (mentionsWega && domain !== "wegamarine.com.br") return false;
+  return true;
+}
+
 function norm(v) { return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 function computeSlaFields(priority, dueDate, openedAtIso) {
   const openedMs = new Date(openedAtIso || Date.now()).getTime();
@@ -587,7 +598,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const userList = users || [];
   const locList = (locations || []).filter((l) => norm(l.status || "ativo") === "ativo");
-  const canSubmit = Boolean(form.title.trim() && form.description.trim() && isFullName(form.requester) && (!(departments || []).length || form.departmentId));
+  const canSubmit = Boolean(form.title.trim() && form.description.trim() && isFullName(form.requester) && isValidEmail(form.requesterEmail) && (!(departments || []).length || form.departmentId));
   const submit = async () => {
     if (!canSubmit) return;
     const dept = (departments || []).find((d) => String(d.id) === String(form.departmentId));
@@ -641,7 +652,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
           <div className="field"><label>Solicitante (nome completo) *</label><input value={form.requester} onChange={set("requester")} placeholder="Nome e sobrenome" /></div>
         </div>
         <div className="form-row">
-          <div className="field"><label>E-mail do solicitante</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
+          <div className="field"><label>E-mail do solicitante *</label><input value={form.requesterEmail} onChange={set("requesterEmail")} placeholder="nome@empresa.com" />{form.requesterEmail.trim() && !isValidEmail(form.requesterEmail) ? <small style={{ color: "var(--crit)" }}>E-mail invalido. Se for @wegamarine, use @wegamarine.com.br.</small> : null}</div>
           <div className="field"><label>Observadores (watchers)</label><WatcherPicker users={userList} value={watcherIds} onChange={setWatcherIds} /></div>
         </div>
         <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} placeholder="Descreva o chamado..." /></div>
@@ -928,11 +939,12 @@ function PublicPortal({ token }) {
           <>
             <div className="form-row">
               <div className="field"><label>Seu nome completo *</label><input value={form.requesterName} onChange={set("requesterName")} placeholder="Nome e sobrenome" />{form.requesterName.trim() && !isFullName(form.requesterName) ? <small style={{ color: "var(--crit)" }}>Informe nome e sobrenome.</small> : null}</div>
-              <div className="field"><label>Seu e-mail</label>
+              <div className="field"><label>Seu e-mail *</label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input value={form.requesterEmail} onChange={set("requesterEmail")} onBlur={doLookup} />
+                  <input value={form.requesterEmail} onChange={set("requesterEmail")} onBlur={doLookup} placeholder="nome@empresa.com" />
                   <button type="button" className="btn btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={doLookup}>Buscar</button>
                 </div>
+                {form.requesterEmail.trim() && !isValidEmail(form.requesterEmail) ? <small style={{ color: "var(--crit)" }}>E-mail invalido. Se for @wegamarine, use @wegamarine.com.br.</small> : null}
               </div>
             </div>
             {lookup && (lookup.hasRegisteredUser || lookup.hasPreRegisteredUser || (lookup.previousTickets || []).length) ? (
@@ -972,7 +984,7 @@ function PublicPortal({ token }) {
             </div>
             <div className="field"><label>Titulo *</label><input value={form.title} onChange={set("title")} /></div>
             <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} /></div>
-            <button className="btn btn-primary" disabled={busy || !form.title.trim() || !form.description.trim() || !form.destinationDepartmentId || !form.requesterDepartmentId || !form.requesterLocation || !isFullName(form.requesterName) || !form.requesterEmail.trim()} onClick={submit}>{busy ? <span className="spinner" /> : "Abrir chamado"}</button>
+            <button className="btn btn-primary" disabled={busy || !form.title.trim() || !form.description.trim() || !form.destinationDepartmentId || !form.requesterDepartmentId || !form.requesterLocation || !isFullName(form.requesterName) || !isValidEmail(form.requesterEmail)} onClick={submit}>{busy ? <span className="spinner" /> : "Abrir chamado"}</button>
           </>
         )}
       </div>
