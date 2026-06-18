@@ -7,6 +7,12 @@ const STATUS_OPTIONS = ["Aberto", "Em andamento", "Em espera", "Pausado", "Aguar
 const OPEN_STATUSES = ["aberto", "em andamento", "em espera", "pausado", "aguardando usuario", "aguardando aprovacao", "reaberto"];
 const SLA_BY_PRIORITY = { critica: 15, alta: 60, media: 240, baixa: 480 };
 
+// Exige nome completo do solicitante: ao menos duas palavras com 2+ letras
+// (nome e sobrenome). Vale para abertura interna e para o portal externo.
+function isFullName(value) {
+  return String(value || "").trim().split(/\s+/).filter((w) => w.length >= 2).length >= 2;
+}
+
 function norm(v) { return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 function computeSlaFields(priority, dueDate, openedAtIso) {
   const openedMs = new Date(openedAtIso || Date.now()).getTime();
@@ -581,7 +587,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const userList = users || [];
   const locList = (locations || []).filter((l) => norm(l.status || "ativo") === "ativo");
-  const canSubmit = Boolean(form.title.trim() && form.description.trim() && (!(departments || []).length || form.departmentId));
+  const canSubmit = Boolean(form.title.trim() && form.description.trim() && isFullName(form.requester) && (!(departments || []).length || form.departmentId));
   const submit = async () => {
     if (!canSubmit) return;
     const dept = (departments || []).find((d) => String(d.id) === String(form.departmentId));
@@ -632,7 +638,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
         </div>
         <div className="form-row">
           <div className="field"><label>Origem</label><select value={form.source} onChange={set("source")}><option>Portal</option><option>E-mail</option><option>Telefone</option><option>Monitoramento</option><option>Presencial</option></select></div>
-          <div className="field"><label>Solicitante</label><input value={form.requester} onChange={set("requester")} /></div>
+          <div className="field"><label>Solicitante (nome completo) *</label><input value={form.requester} onChange={set("requester")} placeholder="Nome e sobrenome" /></div>
         </div>
         <div className="form-row">
           <div className="field"><label>E-mail do solicitante</label><input value={form.requesterEmail} onChange={set("requesterEmail")} /></div>
@@ -644,6 +650,7 @@ function NewTicketModal({ departments, users, locations, user, onClose, onCreate
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
         </div>
         {!form.description.trim() && <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 8 }}>Informe titulo, departamento de destino e descricao para abrir o chamado.</p>}
+        {!isFullName(form.requester) && <p style={{ color: "var(--crit)", fontSize: 12.5, marginTop: 8 }}>Informe o nome completo do solicitante (nome e sobrenome).</p>}
       </div>
     </div>
   );
@@ -920,7 +927,7 @@ function PublicPortal({ token }) {
         ) : (
           <>
             <div className="form-row">
-              <div className="field"><label>Seu nome</label><input value={form.requesterName} onChange={set("requesterName")} /></div>
+              <div className="field"><label>Seu nome completo *</label><input value={form.requesterName} onChange={set("requesterName")} placeholder="Nome e sobrenome" />{form.requesterName.trim() && !isFullName(form.requesterName) ? <small style={{ color: "var(--crit)" }}>Informe nome e sobrenome.</small> : null}</div>
               <div className="field"><label>Seu e-mail</label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={form.requesterEmail} onChange={set("requesterEmail")} onBlur={doLookup} />
@@ -965,7 +972,7 @@ function PublicPortal({ token }) {
             </div>
             <div className="field"><label>Titulo *</label><input value={form.title} onChange={set("title")} /></div>
             <div className="field"><label>Descricao *</label><textarea className="solution" value={form.description} onChange={set("description")} /></div>
-            <button className="btn btn-primary" disabled={busy || !form.title.trim() || !form.description.trim() || !form.destinationDepartmentId || !form.requesterDepartmentId || !form.requesterLocation || !form.requesterName.trim() || !form.requesterEmail.trim()} onClick={submit}>{busy ? <span className="spinner" /> : "Abrir chamado"}</button>
+            <button className="btn btn-primary" disabled={busy || !form.title.trim() || !form.description.trim() || !form.destinationDepartmentId || !form.requesterDepartmentId || !form.requesterLocation || !isFullName(form.requesterName) || !form.requesterEmail.trim()} onClick={submit}>{busy ? <span className="spinner" /> : "Abrir chamado"}</button>
           </>
         )}
       </div>

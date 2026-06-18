@@ -304,6 +304,11 @@ export function lookupPublicRequester(state = {}, email = "") {
   };
 }
 
+// Exige nome completo do solicitante: ao menos duas palavras com 2+ letras.
+function isFullName(value) {
+  return String(value || "").trim().split(/\s+/).filter((word) => word.length >= 2).length >= 2;
+}
+
 export function createPublicTicket(state = {}, payload = {}) {
   const currentTickets = normalizeCollection(state.tickets);
   const currentUsers = normalizeCollection(state.users);
@@ -325,6 +330,9 @@ export function createPublicTicket(state = {}, payload = {}) {
     resolveDepartmentByName(allDepartments, matchedUser?.department) ||
     null;
   const targetDepartment = resolveDefaultDepartment(state, matchedUser, payload.destinationDepartmentId);
+  if (requesterName && !isFullName(requesterName)) {
+    throw new Error("Informe o nome completo do solicitante (nome e sobrenome).");
+  }
   if (
     !requesterEmail ||
     !requesterName ||
