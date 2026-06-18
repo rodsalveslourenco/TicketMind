@@ -504,6 +504,20 @@ function buildPlaceholders(state, ticket, eventLabel, baseUrl) {
   };
 }
 
+// Auto-completa e-mails wegamarine incompletos (ex.: @wegamarine -> @wegamarine.com.br)
+// para enviar a notificacao de chamados ja abertos com e-mail incompleto.
+function completeRequesterEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  const at = email.indexOf("@");
+  if (at < 1) return email;
+  const local = email.slice(0, at);
+  let domain = email.slice(at + 1);
+  if ((domain === "wegamarine" || domain.startsWith("wegamarine.")) && domain !== "wegamarine.com.br" && !domain.endsWith(".wegamarine.com.br")) {
+    domain = "wegamarine.com.br";
+  }
+  return `${local}@${domain}`;
+}
+
 function buildTicketResolvedMessage(ticket = {}, state = {}, baseUrl = "", recipients = []) {
   const placeholders = buildPlaceholders(state, ticket, "Chamado resolvido", baseUrl);
   const solucao = resolveTicketComments(ticket) || "(Sem descricao da solucao registrada.)";
@@ -920,9 +934,9 @@ export async function processTicketNotifications({ previousState, nextState, per
     // com a solucao aplicada, independentemente de regras cadastradas.
     if (previousTicket && normalizeText(previousTicket.status) !== "resolvido" && normalizeText(nextTicket.status) === "resolvido") {
       const resolvedRecipients = Array.from(new Set([
-        String(nextTicket.requesterEmail || "").trim().toLowerCase(),
-        ...getWatcherRecipients(nextTicket, "ticket_closed"),
-      ].filter(Boolean)));
+        completeRequesterEmail(nextTicket.requesterEmail),
+        ...getWatcherRecipients(nextTicket, "ticket_closed").map(completeRequesterEmail),
+      ].filter((email) => email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))));
       const resolvedDedupeKey = `ticket_resolved_builtin:${nextTicket.id}:${nextTicket.resolvedAt || nextTicket.updatedAtIso || ""}`;
       if (resolvedRecipients.length && !successfulLogKeys.has(resolvedDedupeKey)) {
         const resolvedMessage = buildTicketResolvedMessage(nextTicket, nextState, baseUrl, resolvedRecipients);
