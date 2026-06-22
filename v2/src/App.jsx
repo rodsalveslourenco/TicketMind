@@ -701,8 +701,8 @@ function TicketsView({ tickets, onSave, onCreate, onDelete, departments, request
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew] = useState(false);
-  const [sortField, setSortField] = useState("prazo");
-  const [sortDir, setSortDir] = useState("asc");
+  const [sortField, setSortField] = useState("abertura");
+  const [sortDir, setSortDir] = useState("desc");
   // Avisa o App quando ha um chamado aberto/em edicao, para pausar o refresh
   // automatico de 20s e nao atrapalhar o que o usuario esta digitando.
   useEffect(() => { onEditingChange?.(Boolean(selected || showNew)); }, [selected, showNew]);
