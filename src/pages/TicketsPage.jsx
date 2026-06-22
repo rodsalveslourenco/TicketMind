@@ -405,7 +405,7 @@ function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [priorityFilter, setPriorityFilter] = useState("Todas");
   const [slaFilter, setSlaFilter] = useState("Todos");
-  const [sortField, setSortField] = useState("priority");
+  const [sortField, setSortField] = useState("openedAt");
   const [sortDirection, setSortDirection] = useState("desc");
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [advancedFilters, setAdvancedFilters] = useState({
@@ -1666,7 +1666,7 @@ function TicketsPage() {
     setStatusFilter(preset.statusFilter || "Todos");
     setPriorityFilter(preset.priorityFilter || "Todas");
     setSlaFilter(preset.slaFilter || "Todos");
-    setSortField(preset.sortField || "priority");
+    setSortField(preset.sortField || "openedAt");
     setSortDirection(preset.sortDirection || "desc");
     setAdvancedFilters({ query: "", requester: "", assignee: "Todos", department: "Todos", category: "Todas", queue: "Todas", source: "Todas", dateFrom: "", dateTo: "", ...(preset.advancedFilters || {}) });
   };
