@@ -598,8 +598,10 @@ function buildApprovalReminderChange(ticket, existingLogKeys, now = new Date()) 
   if (Number.isNaN(requestedAt.getTime())) return null;
   const elapsedMs = now.getTime() - requestedAt.getTime();
   if (elapsedMs < APPROVAL_REMINDER_INTERVAL_MS) return null;
-  const reminderBucket = Math.floor(elapsedMs / APPROVAL_REMINDER_INTERVAL_MS);
-  const dedupeKey = `ticket_approval_reminder:${ticket.id}:${ticket?.approval?.currentApproverId || ticket?.approval?.approverId || "sem-aprovador"}:${reminderBucket}`;
+  // Envio unico: a dedupeKey NAO inclui mais o "bucket" de tempo. Apos o primeiro
+  // lembrete enviado, a deduplicacao impede qualquer reenvio (antes uma nova chave era
+  // gerada a cada APPROVAL_REMINDER_INTERVAL_MS, ~1h, disparando um e-mail por hora).
+  const dedupeKey = `ticket_approval_reminder:${ticket.id}:${ticket?.approval?.currentApproverId || ticket?.approval?.approverId || "sem-aprovador"}`;
   if (existingLogKeys.has(dedupeKey)) return null;
   return {
     key: "ticket_approval_reminder",
